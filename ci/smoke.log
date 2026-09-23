@@ -1,7 +1,7 @@
 REAL smoke test
 == first instance ==
 
-main pid=3160 alive=True
+main pid=2572 alive=True
 == second instance (--exit) ==
 second instance exit code 0
 main instance exit code 0
@@ -11,8 +11,8 @@ main instance exit code 0
 first instance alive=True
 
 
-unexpected settings message: [2026-09-23 20:44:48.883] [info] Settings: D:\a\_temp\real-settings-test\real.settings.json (tray=on, minimizeToTray=on, startMinimized=on, closeButton=minimize, dataFlow=render, role=console, period=min, updates=off, priority=normal)
-unexpected settings message: [2026-09-23 20:44:54.941] [info] Settings: D:\a\_temp\real-settings-test\real.settings.json (tray=on, minimizeToTray=on, startMinimized=on, closeButton=minimize, dataFlow=render, role=console, period=min, updates=off, priority=normal)
-FAILED: the generated settings file does not load cleanly
-at <ScriptBlock>, D:\a\_temp\ae633f20-f636-4ffa-bd74-c5ce88020fa1.ps1: line 77
+== diagnostics report ==
+diagnostics exit code -1073741819
+FAILED: REAL-diagnostics.txt was not written
+at <ScriptBlock>, D:\a\_temp\66f8215d-879c-4c8d-af8a-94f415cd2fec.ps1: line 88
 at <ScriptBlock>, <No file>: line 1
