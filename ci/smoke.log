@@ -1,7 +1,7 @@
 REAL smoke test
 == first instance ==
 
-main pid=5576 alive=True
+main pid=8064 alive=True
 == second instance (--exit) ==
 second instance exit code 0
 main instance exit code 0
@@ -13,8 +13,21 @@ first instance alive=True
 
 == diagnostics report ==
 diagnostics exit code -1073741819
+log file exists: True; size: 6183
 == application log after the diagnostics run ==
 
+== crash information ==
+Application Error: Faulting application name: REAL.exe, version: 0.0.0.0, time stamp: 0x6ab43cf4
+Faulting module name: REAL.exe, version: 0.0.0.0, time stamp: 0x6ab43cf4
+Exception code: 0xc0000005
+Fault offset: 0x00000000000578f0
+Faulting process id: 0x1890
+Faulting application start time: 0x01dd4b9e17d677df
+Faulting application path: D:\a\_temp\real-settings-test\REAL.exe
+Faulting module path: D:\a\_temp\real-settings-test\REAL.exe
+Report Id: a1ed82e3-f4f6-48a0-a0a1-5365b1f59fa9
+Faulting package full name: 
+Faulting package-relative application ID: 
 FAILED: REAL-diagnostics.txt was not written
-at <ScriptBlock>, D:\a\_temp\74663c87-52fa-4332-a106-db3d5394e6de.ps1: line 92
+at <ScriptBlock>, D:\a\_temp\2b3bbbe6-47e7-4707-9470-ee13548be655.ps1: line 104
 at <ScriptBlock>, <No file>: line 1
