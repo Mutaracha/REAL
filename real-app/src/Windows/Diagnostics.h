@@ -69,9 +69,10 @@ std::string GetWindowsVersion();
 // locate a crash in the diagnostics code on a machine without a debugger.
 void TraceStep(const char* step);
 
-// Text report about the system, the audio endpoints and the current settings.
-// Written to a file so that a user can send one file instead of screenshots.
-std::wstring BuildReport(const Config::Settings& settings, const std::wstring& settingsPath);
+// Text report (UTF-8) about the system, the audio endpoints and the current
+// settings. Written to a file so that a user can send one file instead of
+// screenshots.
+std::string BuildReport(const Config::Settings& settings, const std::wstring& settingsPath);
 
 // All active endpoints of the given flow, with the periods they support.
 std::vector<EndpointInfo> EnumerateEndpoints(EDataFlow dataFlow, ::IMMDeviceEnumerator& enumerator);

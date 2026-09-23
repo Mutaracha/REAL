@@ -304,7 +304,7 @@ std::vector<EndpointInfo> miniant::Windows::Diagnostics::EnumerateEndpoints(
     return result;
 }
 
-std::wstring miniant::Windows::Diagnostics::BuildReport(
+std::string miniant::Windows::Diagnostics::BuildReport(
     const Config::Settings& settings,
     const std::wstring& settingsPath) {
     std::string text;
@@ -436,11 +436,8 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
 
     TraceStep("report: text built");
     Log::Info("Diagnostics: the report text has been built ({} bytes).", text.size());
-    TraceStep("report: after Log::Info");
     Log::Flush();
     TraceStep("report: after Log::Flush");
 
-    const std::wstring wide = Text::ToWide(text);
-    TraceStep("report: after Text::ToWide");
-    return wide;
+    return text;
 }

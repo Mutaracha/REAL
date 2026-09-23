@@ -1023,19 +1023,16 @@ void App::CancelAudioRetry() {
     ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::AudioRetry));
 }
 
-std::wstring App::WriteDiagnosticsReport() {
-    const std::wstring report = Windows::Diagnostics::BuildReport(m_settings, m_settingsPath);
-    Windows::Diagnostics::TraceStep("RunDiagnostics: report built");
-    const std::string utf8 = Text::ToUtf8(report);
+std::wstring App::WriteDiagnosticsReport(const std::string& report) {
 
     std::wstring path = Windows::Filesystem::JoinPath(
         Windows::Filesystem::GetExecutableDirectory(),
         DIAGNOSTICS_FILE_NAME);
 
-    if (!Windows::Filesystem::WriteTextFileUtf8(path, utf8)) {
+    if (!Windows::Filesystem::WriteTextFileUtf8(path, report)) {
         // The installation directory may be read-only (e.g. Program Files).
         path = Windows::Filesystem::JoinPath(Windows::Filesystem::GetTempDirectory(), DIAGNOSTICS_FILE_NAME);
-        if (!Windows::Filesystem::WriteTextFileUtf8(path, utf8)) {
+        if (!Windows::Filesystem::WriteTextFileUtf8(path, report)) {
             return {};
         }
     }
@@ -1055,11 +1052,13 @@ int App::RunDiagnostics() {
     Log::Info("Diagnostics: collecting information about the audio devices...");
     Log::Flush();
 
-    const std::wstring report = Windows::Diagnostics::BuildReport(m_settings, m_settingsPath);
+    const std::string report = Windows::Diagnostics::BuildReport(m_settings, m_settingsPath);
+    Windows::Diagnostics::TraceStep("RunDiagnostics: report built");
+
     Log::Info("Diagnostics: the report is ready.");
     Log::Flush();
-    const std::string utf8 = Text::ToUtf8(report);
-    const std::wstring path = WriteDiagnosticsReport();
+
+    const std::wstring path = WriteDiagnosticsReport(report);
     Windows::Diagnostics::TraceStep("RunDiagnostics: report written");
 
     if (!path.empty()) {
@@ -1077,7 +1076,7 @@ int App::RunDiagnostics() {
         const bool redirected = ::freopen_s(&stream, "CONOUT$", "w", stdout) == 0 && stream != nullptr;
 
         if (redirected) {
-            std::cout << utf8;
+            std::cout << report;
             if (!path.empty()) {
                 std::cout << "Report written to " << Text::ToUtf8(path) << std::endl;
             }
@@ -1106,7 +1105,8 @@ int App::RunDiagnostics() {
 }
 
 void App::ShowDiagnostics() {
-    const std::wstring path = WriteDiagnosticsReport();
+    const std::wstring path = WriteDiagnosticsReport(
+        Windows::Diagnostics::BuildReport(m_settings, m_settingsPath));
     if (path.empty()) {
         Log::Error("The diagnostics report could not be written.");
         if (m_window != nullptr) {

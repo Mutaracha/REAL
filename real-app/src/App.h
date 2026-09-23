@@ -60,7 +60,7 @@ private:
     void CancelAudioRetry();
     int RunDiagnostics();
     void ShowDiagnostics();
-    std::wstring WriteDiagnosticsReport();
+    std::wstring WriteDiagnosticsReport(const std::string& report);
     bool IsStartWithWindowsEnabled() const;
     void SetStartWithWindows(bool enabled);
     bool NotifyRunningInstance(UINT message) const;
