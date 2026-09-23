@@ -255,7 +255,7 @@ jobs:
 
       - name: Upload artifact
         if: steps.build.outcome == 'success' && steps.smoke.outcome == 'success'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: REAL-x64
           path: |
