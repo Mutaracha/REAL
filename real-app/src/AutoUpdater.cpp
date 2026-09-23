@@ -1,211 +1,129 @@
 #include "AutoUpdater.h"
 
+#include "AppVersion.h"
+#include "Http/HttpClient.h"
+#include "Text.h"
 #include "Windows/Filesystem.h"
-
-#include "CurlWrapper/Writers/CurlFileWriter.h"
-#include "CurlWrapper/Writers/CurlMemoryWriter.h"
 
 #include <nlohmann/json.hpp>
 
-using namespace miniant::AutoUpdater;
-using namespace miniant::CurlWrapper;
-using namespace miniant::Windows::Filesystem;
+#include <Windows.h>
+
+#include <filesystem>
 
 using json = nlohmann::json;
+using namespace miniant::AutoUpdater;
 
-tl::expected<std::tuple<Version, json>, AutoUpdaterError> GetUpdaterRelease(CurlHandle& curl) {
-    curl.Reset();
-    curl.SetUrl("https://api.github.com/repos/miniant-git/REAL/releases/tags/updater-v3");
-    curl.SetUserAgent("real_updater_v2");
+namespace {
 
-    CurlMemoryWriter memoryWriter;
-    tl::expected responseCode = memoryWriter.InitiateRequest(curl);
-    if (!responseCode) {
-        return tl::make_unexpected(AutoUpdaterError(responseCode.error()));
-    }
+constexpr size_t MAX_RELEASE_NOTES_LENGTH = 500;
 
-    if (*responseCode != 200) {
-        return tl::make_unexpected(AutoUpdaterError("GET request failed."));
-    }
-
-    json response = json::parse(memoryWriter.GetBuffer());
-    tl::expected version = Version::Find(response["name"]);
-    if (!version) {
-        return tl::make_unexpected(AutoUpdaterError(version.error()));
-    }
-
-    return { { std::move(*version), std::move(response) } };
 }
 
-tl::expected<std::tuple<Version, json>, AutoUpdaterError> GetUpdateRelease(CurlHandle& curl) {
-    tl::expected updaterRelease = GetUpdaterRelease(curl);
-    if (updaterRelease) {
-        return updaterRelease;
+AutoUpdater::AutoUpdater(std::string repository, int timeoutSeconds):
+    m_repository(std::move(repository)),
+    m_timeoutSeconds(timeoutSeconds) {}
+
+tl::expected<UpdateInfo, std::string> AutoUpdater::GetLatestRelease() const {
+    if (m_repository.empty()) {
+        return tl::make_unexpected(std::string("No repository is configured for update checks (updates.repository)."));
     }
 
-    curl.Reset();
-    curl.SetUrl("https://api.github.com/repos/miniant-git/REAL/releases/latest");
-    curl.SetUserAgent("real_updater_v2");
+    const std::wstring url = L"https://api.github.com/repos/" + Text::ToWide(m_repository) + L"/releases/latest";
 
-    CurlMemoryWriter memoryWriter;
-    tl::expected responseCode = memoryWriter.InitiateRequest(curl);
-    if (!responseCode) {
-        return tl::make_unexpected(AutoUpdaterError(responseCode.error()));
+    std::vector<std::pair<std::wstring, std::wstring>> headers;
+    headers.emplace_back(L"User-Agent", L"REAL-updater/" + Text::ToWide(AppInfo::VERSION.ToString()));
+    headers.emplace_back(L"Accept", L"application/vnd.github+json");
+    headers.emplace_back(L"Cache-Control", L"no-cache");
+
+    const Http::Response response = Http::Get(url, headers, m_timeoutSeconds);
+    if (!response.networkOk) {
+        return tl::make_unexpected(std::string("Could not reach GitHub: ") + response.error);
     }
 
-    if (*responseCode != 200) {
-        return tl::make_unexpected(AutoUpdaterError("GET request failed."));
+    if (response.statusCode == 404) {
+        return tl::make_unexpected(std::string("The repository '") + m_repository + "' has no published releases.");
     }
 
-    json response = json::parse(memoryWriter.GetBuffer());
-    tl::expected latestVersion = Version::Find(response["name"]);
-    if (!latestVersion) {
-        return tl::make_unexpected(AutoUpdaterError(latestVersion.error()));
+    if (response.statusCode == 403 || response.statusCode == 429) {
+        return tl::make_unexpected(std::string("GitHub refused the request (HTTP ") + std::to_string(response.statusCode) + "), probably the API rate limit.");
     }
 
-    return { { std::move(*latestVersion), std::move(response) } };
-}
-
-tl::expected<std::string, AutoUpdaterError> FindUpdateAssetUrl(const json& response) {
-    for (const auto& asset : response["assets"]) {
-        if (asset["name"] == "update") {
-            return { asset["browser_download_url"] };
-        }
+    if (response.statusCode != 200) {
+        return tl::make_unexpected(std::string("GitHub returned HTTP ") + std::to_string(response.statusCode) + ".");
     }
 
-    return tl::make_unexpected(AutoUpdaterError("Could not find update asset URL."));
-}
-
-WindowsString GetAppTempDirectory() {
-    return GetTempDirectory() + L"miniant\\REAL\\";
-}
-
-tl::expected<std::string, AutoUpdaterError> GetReleaseNotes(const json& body) {
-    static const std::string notesStartMarker("\r\n[//]: # (begin_release_notes)");
-    static const std::string notesEndMarker("\r\n[//]: # (end_release_notes)");
-
-    std::string bodyString(body);
-    size_t notesStart = bodyString.find(notesStartMarker);
-    size_t notesEnd = bodyString.rfind(notesEndMarker);
-
-    if (notesStart == std::string::npos || notesEnd == std::string::npos) {
-        return tl::make_unexpected(AutoUpdaterError("Could not find release notes."));
+    json release;
+    try {
+        release = json::parse(response.body);
+    } catch (const json::exception& error) {
+        return tl::make_unexpected(std::string("Could not parse the GitHub response: ") + error.what());
     }
 
-    notesStart += notesStartMarker.length();
-    return bodyString.substr(notesStart, notesEnd - notesStart);
-}
-
-AutoUpdater::AutoUpdater() {
-    CurlHandle::InitialiseCurl();
-}
-AutoUpdater::~AutoUpdater() {
-    CurlHandle::CleanupCurl();
-}
-
-std::optional<std::string> AutoUpdater::IsAppSuperseded() {
-    tl::expected curl = CurlHandle::Create();
-    if (!curl) {
-        return {};
-    }
-
-    curl->SetUrl("https://api.github.com/repos/miniant-git/REAL/releases/tags/superseded");
-    curl->SetUserAgent("real_updater_v2");
-
-    CurlMemoryWriter memoryWriter;
-    tl::expected responseCode = memoryWriter.InitiateRequest(*curl);
-    if (!responseCode) {
-        return {};
-    }
-
-    if (*responseCode != 200) {
-        return {};
-    }
-
-    json response = json::parse(memoryWriter.GetBuffer());
-    auto notes = GetReleaseNotes(response["body"]);
-    if (!notes) {
-        return {};
-    }
-
-    return *notes;
-}
-
-tl::expected<bool, AutoUpdaterError> AutoUpdater::CleanupPreviousSetup() {
-    const WindowsString executableToDelete = GetExecutablePath() + L"~DELETE";
-    if (IsFile(executableToDelete)) {
-        if (!DeleteFile(executableToDelete)) {
-            return tl::make_unexpected(AutoUpdaterError("Could not delete temporary file."));
-        }
-
-        return true;
-    }
-
-    return false;
-}
-
-tl::expected<UpdateInfo, AutoUpdaterError> AutoUpdater::GetUpdateInfo() const {
-    tl::expected curl = CurlHandle::Create();
-    if (!curl) {
-        return tl::make_unexpected(AutoUpdaterError(curl.error()));
-    }
-
-    tl::expected release = GetUpdateRelease(*curl);
-    if (!release) {
-        return tl::make_unexpected(AutoUpdaterError(release.error()));
-    }
-
-    auto[version, response] = std::move(*release);
-    tl::expected downloadUrl = FindUpdateAssetUrl(response);
-    if (!downloadUrl) {
-        return tl::make_unexpected(AutoUpdaterError(downloadUrl.error()));
+    if (!release.is_object()) {
+        return tl::make_unexpected(std::string("Unexpected GitHub response."));
     }
 
     UpdateInfo info;
-    info.version = std::move(version);
-    info.downloadUrl = std::move(*downloadUrl);
-    if (tl::expected releaseNotes = GetReleaseNotes(response["body"]); releaseNotes) {
-        info.releaseNotes = *releaseNotes;
+
+    const auto urlIt = release.find("html_url");
+    if (urlIt != release.end() && urlIt->is_string()) {
+        info.releaseUrl = urlIt->get<std::string>();
+    }
+
+    const auto tagIt = release.find("tag_name");
+    if (tagIt != release.end() && tagIt->is_string()) {
+        info.tag = tagIt->get<std::string>();
+    }
+
+    const auto nameIt = release.find("name");
+    if (nameIt != release.end() && nameIt->is_string()) {
+        const std::string name = nameIt->get<std::string>();
+        if (auto version = Version::Find(name)) {
+            info.version = *version;
+        }
+    }
+
+    if (info.version == Version() && !info.tag.empty()) {
+        if (auto version = Version::Find(info.tag)) {
+            info.version = *version;
+        }
+    }
+
+    if (info.version == Version()) {
+        return tl::make_unexpected(std::string("Could not detect the version of the latest release."));
+    }
+
+    const auto bodyIt = release.find("body");
+    if (bodyIt != release.end() && bodyIt->is_string()) {
+        std::string notes = bodyIt->get<std::string>();
+        if (notes.size() > MAX_RELEASE_NOTES_LENGTH) {
+            notes.resize(MAX_RELEASE_NOTES_LENGTH);
+            notes += "...";
+        }
+
+        info.releaseNotes = notes;
     }
 
     return info;
 }
 
-tl::expected<void, AutoUpdaterError> AutoUpdater::ApplyUpdate(const UpdateInfo& info) const {
-    tl::expected curl = CurlHandle::Create();
-    if (!curl) {
-        return tl::make_unexpected(AutoUpdaterError(curl.error()));
+bool AutoUpdater::CleanupPreviousInstall(std::string* message) {
+    const std::wstring executable = Windows::Filesystem::GetExecutablePath();
+    if (executable.empty()) {
+        return false;
     }
 
-    curl->SetUrl(info.downloadUrl);
-    curl->FollowRedirects(true);
-
-    WindowsString tempDirectory = GetAppTempDirectory();
-    if (!CreateDirectory(tempDirectory)) {
-        return tl::make_unexpected(AutoUpdaterError("Could not create temporary app directory."));
+    const std::wstring leftover = executable + L"~DELETE";
+    if (!Windows::Filesystem::IsFile(leftover)) {
+        return false;
     }
 
-    std::filesystem::path updateFile(tempDirectory + L"update");
-    CurlFileWriter fileWriter(updateFile);
-    fileWriter.InitiateRequest(*curl);
-    fileWriter.Close();
-
-    WindowsString executable = GetExecutablePath();
-    std::optional<WindowsString> executableDirectory = GetParentDirectory(executable);
-    if (!executableDirectory) {
-        return tl::make_unexpected(AutoUpdaterError("Could not get the application's executable file directory."));
+    std::error_code error;
+    const bool removed = std::filesystem::remove(std::filesystem::path(leftover), error);
+    if (!removed && message != nullptr) {
+        *message = std::string("Could not delete the leftover file from a previous update: ") + error.message();
     }
 
-    WindowsString renameExecutableCommand = GetRenameCommand(executable, L"REAL.exe~DELETE");
-    WindowsString renameZipCommand = GetRenameCommand(updateFile, L"update.zip");
-    updateFile.replace_extension(".zip");
-    WindowsString extractCommand = GetExtractZipCommand(updateFile, *executableDirectory);
-    WindowsString deleteCommand = GetDeleteCommand(updateFile);
-    if (!ExecuteCommand(
-        renameExecutableCommand + L" && " + renameZipCommand + L" && " + extractCommand + L" && " + deleteCommand,
-        !CanWriteTo(executable) || !CanWriteTo(*executableDirectory))) {
-        return tl::make_unexpected(AutoUpdaterError("A filesystem error was encountered during the update procedure."));
-    }
-
-    return {};
+    return removed;
 }

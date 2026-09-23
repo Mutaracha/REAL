@@ -1,44 +1,40 @@
-// REAL — внешний файл настроек (пример с пояснениями).
-// Расположение: в том же каталоге, что REAL.exe (имя: real.settings.json).
-// Кодировка: UTF-8 (BOM допускается). Формат: JSON.
+// REAL — внешний файл настроек (пример со всеми ключами и пояснениями).
 //
-// Приоритет значений:  командная строка  >  <каталог exe>\real.settings.json
-//                      >  %LOCALAPPDATA%\REAL\settings.json  >  значения по умолчанию
+// Расположение: рядом с REAL.exe, имя файла — real.settings.json
+// Кодировка: UTF-8 (BOM допускается). Комментарии // и /* */ поддерживаются.
 //
-// ВНИМАНИЕ: этот файл — документация. Шаблон, который приложение создаёт
-// автоматически при первом запуске, будет тем же JSON без комментариев.
+// Приоритет: командная строка > этот файл > встроенные значения по умолчанию.
+// Полный справочник: docs/CONFIG.md
 {
   "configVersion": 1,
 
   // ── Приложение и окно ────────────────────────────────────────────────────
   "application": {
-    "startMinimizedToTray": false,   // стартовать свёрнутым в трей (замена флага --tray)
-    "minimizeToTray": true,          // «свернуть» прячет окно в трей, а не в панель задач
-    "closeButtonAction": "minimize", // minimize | exit  — что делает крестик
-    "showConsoleWindow": true,       // false — работаем без окна консоли
-    "singleInstance": true,          // второй запуск не создаёт второй аудиопоток
-    "startWithWindows": false,       // добавляет себя в HKCU\...\Run
-    "language": "ru"                 // ru | en (интерфейс/сообщения)
+    "startMinimizedToTray": false,   // стартовать свёрнутым в трей (аналог --tray)
+    "minimizeToTray": true,          // «свернуть» прячет окно в трей
+    "closeButtonAction": "minimize", // minimize | exit — поведение крестика
+    "showConsole": false,            // true — дополнительно окно консоли с журналом
+    "singleInstance": true,          // одна копия; REAL.exe --reinit передаст команду ей
+    "startWithWindows": false        // автозапуск (HKCU\...\Run)
   },
 
-  // ── Иконка в трее ────────────────────────────────────────────────────────
+  // ── Значок в трее ────────────────────────────────────────────────────────
   "tray": {
     "enabled": true,
-    "showStatusInTooltip": true,     // подсказка вида «2.67 мс · Speakers (Realtek)»
+    "showStatusInTooltip": true,     // подсказка «REAL - 2.67 ms - Speakers (Realtek)»
     "notifications": {
-      "onError": true,               // balloon при ошибке
-      "onDeviceChange": true,        // balloon при смене устройства по умолчанию
-      "onStateChange": false         // balloon при включении/выключении режима
+      "onError": true,               // уведомление об ошибке
+      "onDeviceChange": true,        // уведомление о смене устройства
+      "onStateChange": false         // уведомление о вкл/выкл
     },
     "menu": {
-      "showStatus": true,
-      "toggleEnabled": true,
-      "reinitialize": true,          // ручной сброс — пункт 2 требований
-      "targetDevice": false,         // подменю выбора целевого устройства
-      "openSettings": true,
-      "openLog": true,
-      "checkForUpdates": false,      // показывать пункт только если updates.mode != "off"
-      "startWithWindows": true,
+      "showStatus": true,            // строка со статусом в меню
+      "toggleEnabled": true,         // пункт «включено»
+      "reinitialize": true,          // ручная переинициализация
+      "openSettings": true,          // открыть этот файл
+      "openLog": true,               // открыть журнал
+      "checkForUpdates": true,       // виден только если updates.mode != "off"
+      "startWithWindows": true,      // переключатель автозапуска
       "about": true,
       "exit": true
     }
@@ -48,68 +44,52 @@
   "audio": {
     "enabledOnStartup": true,
 
-    "dataFlow": "render",            // render | capture | both  (both = ещё и микрофоны)
+    "dataFlow": "render",            // render | capture | both
     "role": "console",               // console | multimedia | communications
 
-    "deviceSelection": "default",    // default | allActive | list
-    "deviceIds": [],                 // если deviceSelection = "list"
-    "deviceNameFilter": [],          // подстроки friendly name, напр. ["Speakers", "USB"]
-
     "periodSelection": "min",        // min | fundamental | fixed
-    "requestedPeriodFrames": 0,      // для fixed: кратно fundamental и в [min, max]; 0 = «решай сам»
-    "allowPeriodSnap": true,         // принять период, уже залоченный другим приложением
+    "requestedPeriodFrames": 0,      // для "fixed": период в кадрах (0 = решает приложение)
+    "allowPeriodSnap": true,         // принять период, уже зафиксированный другим приложением
+    "releaseOnExit": true,           // снять поток при выходе
 
-    "reinitOn": {
+    // Когда переинициализировать потоки автоматически
+    "reinit": {
       "defaultDeviceChanged": true,  // основное: смена устройства по умолчанию
       "deviceStateChanged": true,    // устройство стало активным/неактивным
-      "deviceAdded": false,          // новое устройство (применять только если попало в цель)
-      "deviceRemoved": false,
-      "resumeFromSleep": true,       // Win11 Modern Standby пересоздаёт устройства
-      "sessionUnlock": true,
-      "audioServiceRestart": true    // перезапуск Audiosrv
-    },
-    "reinitDebounceMs": 1000,        // антидребезг: Windows шлёт пачку событий
-    "healthCheckSeconds": 30,        // периодическая проверка живости потока, 0 = выключить
-
-    "releaseStreamIfNoChangeNeeded": false, // не держать поток, если период уже минимален
-    "exitIfNoChangeNeeded": false,          // (для режима разового запуска) выйти, если нечего делать
-    "releaseOnExit": true
+      "deviceAdded": false,          // новое устройство
+      "deviceRemoved": false,        // устройство удалено
+      "resumeFromSleep": true,       // выход из сна / Modern Standby
+      "sessionUnlock": true,         // разблокировка сеанса
+      "debounceMs": 1000             // антидребезг (Windows шлёт пачку событий)
+    }
   },
 
-  // ── Побочные эффекты низкой латентности ──────────────────────────────────
+  // ── Побочные эффекты низкой задержки ─────────────────────────────────────
   "performance": {
     "processPriority": "normal",     // normal | belowNormal | idle
-    "disablePowerThrottling": true,  // Win11: PROCESS_POWER_THROTTLING_EXECUTION_SPEED
-                                     // (ослабляет эффект «занятого» ядра CPU)
-    "mmcssProAudioThread": false,    // только если появится свой поток рендера
-    "experimental": {
-      "restrictCpuSets": false       // по мотивам LowAudioLatency; требует прав, «на свой риск»
-    }
+    "disablePowerThrottling": true   // Windows 11: снять троттлинг, чтобы не «занимать» ядро CPU
   },
 
   // ── Обновления ───────────────────────────────────────────────────────────
   "updates": {
-    "mode": "off",                   // off | notify | check   (off — ни одного сетевого запроса)
-    "repository": "Mutaracha/REAL",  // если решите публиковать релизы своего форка
-    "assetName": "update",           // имя ассета в релизе GitHub
-    "allowPrerelease": false,
+    "mode": "off",                   // off | manual   (off — ни одного сетевого запроса)
+    "repository": "Mutaracha/REAL",  // откуда смотреть релизы
     "timeoutSeconds": 15,
-    "checkOnStartup": false,
-    "showSupersededNotice": false    // проверка тега «superseded» апстрима
+    "checkOnStartup": false          // проверять при запуске (только при mode = "manual")
   },
 
-  // ── Горячие клавиши (глобальные) ─────────────────────────────────────────
+  // ── Глобальные горячие клавиши ───────────────────────────────────────────
   "hotkeys": {
-    "toggleEnabled": "Ctrl+Alt+L",
-    "reinitialize": "Ctrl+Alt+R",
-    "enabled": true
+    "enabled": true,
+    "toggleEnabled": "Ctrl+Alt+L",   // вкл/выкл снижение задержки
+    "reinitialize": "Ctrl+Alt+R"     // переинициализация
   },
 
   // ── Журнал ───────────────────────────────────────────────────────────────
   "logging": {
     "level": "info",                 // trace | debug | info | warn | error | off
-    "toConsole": true,
-    "toFile": true,                  // файловый лог критичен для диагностики на Windows 11
+    "toConsole": false,
+    "toFile": true,
     "filePath": "REAL.log",          // относительно каталога exe или абсолютный путь
     "maxFileSizeMb": 1,
     "maxFiles": 3

@@ -1,28 +1,61 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.16)
 
-project(miniant-real)
+project(miniant-real VERSION 0.3.0 LANGUAGES CXX)
+
+# Release by default: the v0.2.0 project forced a Debug build (debug CRT, not
+# redistributable) which is not what we want to ship.
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-FILE(GLOB_RECURSE REAL_APP_INPUT src/*.cpp src/*.h res/*.rc res/*.h)
-add_executable(real-app WIN32 ${REAL_APP_INPUT})
+# Link the C runtime statically so that the executable does not need the
+# Microsoft Visual C++ Redistributable (nor a debug runtime).
+option(REAL_STATIC_RUNTIME "Link the C runtime statically (/MT)" ON)
 
-target_compile_definitions(real-app PUBLIC _UNICODE UNICODE)
-target_compile_options(real-app PRIVATE /JMC)
+if(REAL_STATIC_RUNTIME)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
-set(CMAKE_PREFIX_PATH "deps")
+# No external dependencies are needed anymore:
+#  - the update check uses WinHTTP (part of Windows),
+#  - spdlog, nlohmann/json and tl::expected are header-only and vendored in deps/.
+file(GLOB_RECURSE REAL_APP_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/res/*.rc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/res/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/res/*.manifest")
 
-find_package(curl REQUIRED CONFIG)
-target_link_libraries(real-app curl)
+add_executable(real-app WIN32 ${REAL_APP_SOURCES})
 
-find_package(expected REQUIRED)
-target_link_libraries(real-app expected)
+target_compile_definitions(real-app PRIVATE
+    UNICODE
+    _UNICODE
+    WIN32_LEAN_AND_MEAN
+    NOMINMAX
+    SPDLOG_WCHAR_FILENAMES)
 
-find_package(json REQUIRED)
-target_link_libraries(real-app json)
+target_compile_options(real-app PRIVATE /utf-8 /W3)
 
-find_package(spdlog REQUIRED)
-target_link_libraries(real-app spdlog)
+target_include_directories(real-app PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/deps/expected/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/deps/json"
+    "${CMAKE_CURRENT_SOURCE_DIR}/deps/spdlog/include")
 
-source_group(TREE . FILES ${REAL_APP_INPUT})
+target_link_libraries(real-app PRIVATE
+    winhttp
+    ole32
+    oleaut32
+    uuid
+    shell32
+    advapi32
+    user32
+    gdi32)
+
+set_target_properties(real-app PROPERTIES OUTPUT_NAME "REAL")
+
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${REAL_APP_SOURCES})

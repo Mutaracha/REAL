@@ -1,40 +1,35 @@
 #pragma once
 
-#include "ExpectedError.h"
 #include "Version.h"
 
-#include <optional>
+#include <tl/expected.hpp>
+
+#include <string>
 
 namespace miniant::AutoUpdater {
 
 struct UpdateInfo {
     Version version;
-    std::string downloadUrl;
-    std::optional<std::string> releaseNotes;
+    std::string tag;
+    std::string releaseUrl;
+    std::string releaseNotes;
 };
 
-class AutoUpdaterError : public ExpectedError {
-public:
-    explicit AutoUpdaterError(std::string message) noexcept:
-        ExpectedError(std::move(message)) {}
-
-    explicit AutoUpdaterError(const char* message):
-        ExpectedError(message) {}
-
-    explicit AutoUpdaterError(const ExpectedError& error):
-        ExpectedError(error.GetMessage()) {}
-};
-
+// Update checks are never forced: the application only looks for a newer
+// release when the user asks for it (tray menu, --check-updates) and the
+// settings allow it. A newer release is reported, never installed silently.
 class AutoUpdater {
 public:
-    AutoUpdater();
-    ~AutoUpdater();
+    AutoUpdater(std::string repository, int timeoutSeconds);
 
-    std::optional<std::string> IsAppSuperseded();
+    tl::expected<UpdateInfo, std::string> GetLatestRelease() const;
 
-    tl::expected<bool, AutoUpdaterError> CleanupPreviousSetup();
-    tl::expected<UpdateInfo, AutoUpdaterError> GetUpdateInfo() const;
-    tl::expected<void, AutoUpdaterError> ApplyUpdate(const UpdateInfo& info) const;
+    // Removes the "<exe>~DELETE" file left behind by the self-updater of v0.2.0.
+    static bool CleanupPreviousInstall(std::string* message);
+
+private:
+    std::string m_repository;
+    int m_timeoutSeconds;
 };
 
 }

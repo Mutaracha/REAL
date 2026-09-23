@@ -1,28 +1,68 @@
 #pragma once
 
-#include "MessagingWindow.h"
+#include "../Commands.h"
+#include "WindowsError.h"
 
+#include <tl/expected.hpp>
+
+#include <Windows.h>
 #include <shellapi.h>
+
+#include <functional>
+#include <string>
 
 namespace miniant::Windows {
 
+struct TrayMenuState {
+    bool enabled = true;
+    bool showStatus = true;
+    std::wstring statusText;
+
+    bool toggleEnabled = true;
+    bool reinitialize = true;
+    bool openSettings = true;
+    bool openLog = true;
+    bool checkForUpdates = true;
+    bool startWithWindows = true;
+    bool about = true;
+    bool exit = true;
+};
+
+// System tray icon with a context menu, tooltip and balloon notifications.
 class TrayIcon {
 public:
-    using TrayEventHandler = std::function<std::optional<LRESULT>(TrayIcon&)>;
+    using CommandHandler = std::function<void(miniant::Command)>;
 
-    TrayIcon(MessagingWindow& window, HICON hIcon);
-    ~TrayIcon() noexcept;
+    TrayIcon(HWND owner, UINT callbackMessage, HICON icon);
+    ~TrayIcon();
+
+    TrayIcon(const TrayIcon&) = delete;
+    TrayIcon& operator=(const TrayIcon&) = delete;
 
     tl::expected<void, WindowsError> Show();
-    tl::expected<void, WindowsError> Hide();
+    void Hide();
+    bool IsVisible() const;
 
-    void SetLButtonUpHandler(TrayEventHandler handler) noexcept;
+    void SetTooltip(const std::wstring& text);
+    void SetMenuState(const TrayMenuState& state);
+    void SetCommandHandler(CommandHandler handler);
+
+    void Notify(const std::wstring& title, const std::wstring& text, bool error);
+
+    // Called from the window procedure for the tray callback message.
+    void HandleMessage(WPARAM wParam, LPARAM lParam);
+
+    // Called when "TaskbarCreated" arrives (the shell has been restarted).
+    void Recreate();
 
 private:
-    NOTIFYICONDATA m_data;
-    MessagingWindow& m_window;
-    TrayEventHandler m_lButtonUpHandler;
-    bool m_shown = false;
+    void ShowContextMenu();
+
+    HWND m_owner;
+    NOTIFYICONDATAW m_data = {};
+    TrayMenuState m_state;
+    CommandHandler m_handler;
+    bool m_visible = false;
 };
 
 }

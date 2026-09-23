@@ -1,0 +1,61 @@
+name: build
+
+on:
+  push:
+    branches:
+      - master
+      - 'arena/**'
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Windows (MSVC, Release)
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S real-app -B build -A x64
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Show output
+        run: Get-ChildItem -Recurse build -Include *.exe,*.pdb | Select-Object FullName
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: REAL-x64
+          path: build/Release/REAL.exe
+          if-no-files-found: error
+
+  release:
+    name: Attach the executable to the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download the artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: REAL-x64
+          path: artifacts
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            && gh release upload "$GITHUB_REF_NAME" artifacts/REAL.exe --repo "$GITHUB_REPOSITORY" --clobber \
+            || gh release create "$GITHUB_REF_NAME" artifacts/REAL.exe --repo "$GITHUB_REPOSITORY" \
+                 --title "REAL $GITHUB_REF_NAME" --generate-notes

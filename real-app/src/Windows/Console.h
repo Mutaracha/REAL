@@ -1,19 +1,26 @@
 #pragma once
 
-#include <functional>
+#include <string>
 
 namespace miniant::Windows {
 
+// Optional console that mirrors the log output.
+//
+// Unlike the previous implementation, closing the console window does not send
+// WM_CLOSE to conhost (which terminates the process); the window is only hidden
+// or shown. Ctrl+C / Ctrl+Break are swallowed so that an accidental key press in
+// the console does not stop the latency reduction.
 class Console {
 public:
-    Console(std::function<void()> onShow);
+    static bool Attach();
+    static void Detach();
 
-    void Open();
-    void Close();
+    static bool IsAttached();
+    static bool IsVisible();
 
-private:
-    std::function<void()> m_onShow;
-    bool m_opened = false;
+    static void Show();
+    static void Hide();
+    static void Toggle();
 };
 
 }
