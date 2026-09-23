@@ -1,5 +1,9 @@
 #include "App.h"
 
+#include <wtsapi32.h>
+
+#include <cwchar>
+
 #include "AppMessages.h"
 #include "AppVersion.h"
 #include "AutoUpdater.h"
@@ -328,6 +332,13 @@ bool App::InitializeUi() {
         });
 
     const HWND windowHandle = m_window->GetHWindow();
+
+    // Needed for WM_WTSSESSION_CHANGE (re-initialise the audio streams after
+    // the session has been unlocked).
+    if (::WTSRegisterSessionNotification(windowHandle, NOTIFY_FOR_THIS_SESSION) == FALSE) {
+        Log::Debug("Session notifications are not available: {}", Windows::DescribeLastError());
+    }
+
     Log::Buffer().SetNotifyHandler([windowHandle]() {
         ::PostMessageW(windowHandle, WM_APP_LOG_LINES, 0, 0);
         });
@@ -498,6 +509,7 @@ void App::UpdateTrayMenuState() {
     state.openLog = m_settings.tray.menu.openLog;
     state.checkForUpdates = m_settings.tray.menu.checkForUpdates && m_settings.updates.mode != Config::UpdatesMode::Off;
     state.startWithWindows = m_settings.tray.menu.startWithWindows;
+    state.startWithWindowsChecked = IsStartWithWindowsEnabled();
     state.about = m_settings.tray.menu.about;
     state.exit = m_settings.tray.menu.exit;
 
@@ -735,6 +747,7 @@ void App::OnCommand(Command command) {
             SetStartWithWindows(enable);
             m_settings.application.startWithWindows = enable;
             SaveSettings();
+            UpdateTrayMenuState();
             break;
         }
 
@@ -809,6 +822,24 @@ void App::OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 
     if (message == WM_APP_DEVICE_EVENT) {
         OnDeviceEvent(wParam, lParam);
+        return;
+    }
+
+    if (message == WM_POWERBROADCAST) {
+        // The audio engine is reset when the machine leaves a sleep state; the
+        // streams have to be re-created or the buffer size stays at its default.
+        if (wParam == PBT_APMRESUMEAUTOMATIC || wParam == PBT_APMRESUMESUSPEND) {
+            OnSystemResume(L"resume from sleep");
+        }
+
+        return;
+    }
+
+    if (message == WM_WTSSESSION_CHANGE) {
+        if (wParam == WTS_SESSION_UNLOCK) {
+            OnSystemResume(L"session unlock");
+        }
+
         return;
     }
 
@@ -911,6 +942,25 @@ void App::OnDeviceEvent(WPARAM wParam, LPARAM lParam) {
         return;
     }
 
+    const int debounce = m_settings.audio.reinit.debounceMs > 0 ? m_settings.audio.reinit.debounceMs : 500;
+    ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent));
+    ::SetTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent), static_cast<UINT>(debounce), nullptr);
+}
+
+void App::OnSystemResume(const wchar_t* reason) {
+    const bool relevant =
+        std::wcscmp(reason, L"session unlock") == 0
+            ? m_settings.audio.reinit.sessionUnlock
+            : m_settings.audio.reinit.resumeFromSleep;
+
+    if (!relevant || !m_audioEnabled) {
+        return;
+    }
+
+    Log::Info("The system reported {}; re-applying the low latency mode...", Text::ToUtf8(reason));
+
+    // The device list is not ready immediately after a resume; reuse the same
+    // debounce timer as for device notifications.
     const int debounce = m_settings.audio.reinit.debounceMs > 0 ? m_settings.audio.reinit.debounceMs : 500;
     ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent));
     ::SetTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent), static_cast<UINT>(debounce), nullptr);
@@ -1045,6 +1095,7 @@ void App::Shutdown() {
     if (m_window != nullptr) {
         ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::Validate));
         ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent));
+        ::WTSUnRegisterSessionNotification(m_window->GetHWindow());
     }
 
     m_audio.Shutdown();

@@ -54,6 +54,7 @@ private:
     void OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam);
     void OnTimer(UINT_PTR timerId);
     void OnDeviceEvent(WPARAM wParam, LPARAM lParam);
+    void OnSystemResume(const wchar_t* reason);
     bool IsStartWithWindowsEnabled() const;
     void SetStartWithWindows(bool enabled);
     bool NotifyRunningInstance(UINT message) const;

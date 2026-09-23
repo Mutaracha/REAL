@@ -24,6 +24,7 @@ struct TrayMenuState {
     bool openLog = true;
     bool checkForUpdates = true;
     bool startWithWindows = true;
+    bool startWithWindowsChecked = false;
     bool about = true;
     bool exit = true;
 };

@@ -42,6 +42,16 @@ jobs:
         run: |
           if (Test-Path ci/build.log) { Get-Content ci/build.log -Tail 200 }
 
+      # The documented MSVC-only build path must keep working as well.
+      - name: Build without CMake (build.bat)
+        if: steps.build.outcome == 'success'
+        shell: cmd
+        run: |
+          cd real-app
+          call build.bat
+          if errorlevel 1 exit /b 1
+          if not exist build\REAL.exe exit /b 1
+
       # The runner has no audio endpoint, so the application is expected to log
       # the failure and keep running. This checks that the executable starts,
       # writes its log, answers a second instance and shuts down cleanly.
@@ -99,7 +109,13 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          if (Test-Path ci/smoke.log) { Get-Content ci/smoke.log }
+          if (Test-Path ci/smoke.log) {
+            Get-Content ci/smoke.log
+            "# Smoke test`n" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            '```' | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            Get-Content ci/smoke.log | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            '```' | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          }
 
       # Compiler or runtime diagnostics are published both as check annotations
       # and as files in the repository, so that the reason of a failure is
@@ -117,6 +133,12 @@ jobs:
             $errors += Get-Content ci/smoke.log | Select-Object -Last 12
           }
           foreach ($line in $errors) { Write-Host "::error::$line" }
+          if ($errors.Count -gt 0) {
+            "# Diagnostics`n" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            '```' | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            $errors | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            '```' | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          }
 
       - name: Commit diagnostics
         if: (steps.build.outcome == 'failure' || steps.smoke.outcome == 'failure') && github.event_name == 'push'

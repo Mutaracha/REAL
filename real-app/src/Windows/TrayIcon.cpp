@@ -190,7 +190,11 @@ void TrayIcon::ShowContextMenu() {
     }
 
     if (m_state.startWithWindows) {
-        ::AppendMenuW(menu, MF_STRING, MENU_ID_START_WITH_WINDOWS, L"Start with Windows");
+        ::AppendMenuW(
+            menu,
+            MF_STRING | (m_state.startWithWindowsChecked ? MF_CHECKED : 0),
+            MENU_ID_START_WITH_WINDOWS,
+            L"Start with Windows");
     }
 
     ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);

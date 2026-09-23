@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cwctype>
+#include <cstring>
 
 using namespace miniant::Audio;
 using namespace miniant::Windows;

@@ -54,6 +54,7 @@ target_link_libraries(real-app PRIVATE
     oleaut32
     uuid
     shell32
+    wtsapi32
     advapi32
     user32
     gdi32)

@@ -44,7 +44,7 @@ cl /nologo /O2 /MT /EHsc /std:c++17 /utf-8 /W3 ^
     /link /SUBSYSTEM:WINDOWS /NOLOGO ^
     /MANIFEST:EMBED /MANIFESTINPUT:res\app.manifest ^
     build\real-app.res ^
-    winhttp.lib ole32.lib oleaut32.lib uuid.lib shell32.lib advapi32.lib user32.lib gdi32.lib
+    winhttp.lib ole32.lib oleaut32.lib uuid.lib shell32.lib wtsapi32.lib advapi32.lib user32.lib gdi32.lib
 
 if errorlevel 1 (
     echo [build] Build failed.
