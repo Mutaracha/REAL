@@ -179,15 +179,21 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
         }
 
         const AudioStreamInfo& info = stream->GetInfo();
-        Log::Info("Low latency stream started: {}", DescribeStreamWin32(info));
 
-        if (info.lowLatencyNotAvailable) {
+        if (!stream->IsActive()) {
+            // The driver has nothing smaller than the default buffer, so no
+            // stream is held (see MinimumLatencyAudioClient::Start).
+            m_streamsInfo.push_back(info);
             Log::Warn(
-                "The driver of '{}' does not offer a period smaller than the default one ({} frames): "
-                "the audio engine cannot be switched to a smaller buffer for this device.",
+                "The driver of '{}' does not offer a period smaller than the default one ({} frames, {:.2f} ms): "
+                "the audio engine already uses its smallest buffer for this device, so nothing has to be held open.",
                 Text::ToUtf8(info.deviceName),
-                info.defaultPeriod);
+                info.defaultPeriod,
+                info.PeriodMilliseconds(info.defaultPeriod));
+            continue;
         }
+
+        Log::Info("Low latency stream started: {}", DescribeStreamWin32(info));
 
         if (info.acceptedLockedPeriod) {
             Log::Info(
@@ -199,14 +205,16 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
         m_streams.push_back(std::move(*stream));
     }
 
-    if (m_streams.empty()) {
+    if (m_streams.empty() && !errors.empty()) {
         std::string message = "Could not enable low latency mode.";
-        if (!errors.empty()) {
-            message += " ";
-            message += errors.front();
-        }
+        message += " ";
+        message += errors.front();
 
         return tl::make_unexpected(WindowsError(message));
+    }
+
+    if (m_streams.empty() && m_streamsInfo.empty()) {
+        return tl::make_unexpected(WindowsError("No audio endpoint could be inspected."));
     }
 
     return {};
@@ -218,6 +226,21 @@ std::wstring AudioSession::GetStatusText() const {
     }
 
     const AudioStreamInfo& first = m_streamsInfo.front();
+
+    if (m_streams.empty()) {
+        // Every inspected device already uses its smallest buffer.
+        std::string text = fmt::format(
+            "driver already uses its smallest buffer ({:.2f} ms) - {}",
+            first.PeriodMilliseconds(first.currentPeriod),
+            Text::ToUtf8(first.deviceName.empty() ? std::wstring(L"<unknown device>") : first.deviceName));
+
+        if (m_streamsInfo.size() > 1) {
+            text += fmt::format(" (+{} more)", m_streamsInfo.size() - 1);
+        }
+
+        return Text::ToWide(text);
+    }
+
     std::string text = fmt::format(
         "{:.2f} ms - {}",
         first.PeriodMilliseconds(first.currentPeriod),

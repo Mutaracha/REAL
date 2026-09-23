@@ -10,16 +10,28 @@
 #include "Log.h"
 #include "Text.h"
 #include "Windows/Console.h"
+#include "Windows/Diagnostics.h"
 #include "Windows/Filesystem.h"
 
 #include <spdlog/fmt/fmt.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
 #include <vector>
 
 using namespace miniant;
+
+namespace {
+
+// The first retry happens quickly, later ones slow down; the endpoint usually
+// becomes available again as soon as the device has been switched on.
+constexpr unsigned int INITIAL_AUDIO_RETRY_MS = 2000;
+constexpr unsigned int MAXIMUM_AUDIO_RETRY_MS = 30000;
+constexpr const wchar_t* DIAGNOSTICS_FILE_NAME = L"REAL-diagnostics.txt";
+
+}
 
 namespace {
 
@@ -31,7 +43,6 @@ const wchar_t SIGNAL_REINITIALIZE[] = L"REAL.Signal.Reinitialize";
 const wchar_t SIGNAL_ENABLE[] = L"REAL.Signal.Enable";
 const wchar_t SIGNAL_DISABLE[] = L"REAL.Signal.Disable";
 const wchar_t SIGNAL_EXIT[] = L"REAL.Signal.Exit";
-const wchar_t SIGNAL_CHECK_UPDATES[] = L"REAL.Signal.CheckForUpdates";
 
 const UINT VALIDATE_INTERVAL_MS = 30000;
 
@@ -154,6 +165,10 @@ int App::Run() {
         return 0;
     }
 
+    if (m_options.action == CommandLine::Action::Diagnose) {
+        return RunDiagnostics();
+    }
+
     const bool settingsLoaded = LoadSettings();
 
     if (m_settings.application.singleInstance) {
@@ -175,7 +190,6 @@ int App::Run() {
             case CommandLine::Action::Enable: signal = m_signalEnable; break;
             case CommandLine::Action::Disable: signal = m_signalDisable; break;
             case CommandLine::Action::Exit: signal = m_signalExit; break;
-            case CommandLine::Action::CheckForUpdates: signal = m_signalCheckUpdates; break;
             default: break;
         }
 
@@ -411,7 +425,6 @@ void App::RegisterSignalMessages() {
     m_signalEnable = ::RegisterWindowMessageW(SIGNAL_ENABLE);
     m_signalDisable = ::RegisterWindowMessageW(SIGNAL_DISABLE);
     m_signalExit = ::RegisterWindowMessageW(SIGNAL_EXIT);
-    m_signalCheckUpdates = ::RegisterWindowMessageW(SIGNAL_CHECK_UPDATES);
 }
 
 bool App::NotifyRunningInstance(UINT message) const {
@@ -483,11 +496,21 @@ void App::ApplyAudio() {
     if (!result) {
         Log::Error("{}", result.error().GetMessage());
 
+        Log::Info("Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.");
+
         if (m_settings.tray.notifications.onError) {
             m_window->Notify(L"REAL - audio", Text::ToWide(result.error().GetMessage()), true);
         }
-    } else if (m_settings.tray.notifications.onStateChange) {
-        m_window->Notify(L"REAL", m_audio.GetStatusText(), false);
+
+        m_lastApplyFailed = true;
+        ScheduleAudioRetry();
+    } else {
+        m_lastApplyFailed = false;
+        CancelAudioRetry();
+
+        if (m_settings.tray.notifications.onStateChange) {
+            m_window->Notify(L"REAL", m_audio.GetStatusText(), false);
+        }
     }
 
     UpdateStatus();
@@ -517,7 +540,6 @@ void App::UpdateTrayMenuState() {
     state.reinitialize = m_settings.tray.menu.reinitialize;
     state.openSettings = m_settings.tray.menu.openSettings;
     state.openLog = m_settings.tray.menu.openLog;
-    state.checkForUpdates = m_settings.tray.menu.checkForUpdates && m_settings.updates.mode != Config::UpdatesMode::Off;
     state.startWithWindows = m_settings.tray.menu.startWithWindows;
     state.startWithWindowsChecked = IsStartWithWindowsEnabled();
     state.about = m_settings.tray.menu.about;
@@ -655,11 +677,10 @@ void App::StartUpdateCheck() {
     Log::Info("Checking for updates in '{}'...", m_settings.updates.repository);
 
     const std::string repository = m_settings.updates.repository;
-    const int timeoutSeconds = m_settings.updates.timeoutSeconds;
     const HWND windowHandle = m_window != nullptr ? m_window->GetHWindow() : nullptr;
 
-    m_updateThread = std::thread([this, repository, timeoutSeconds, windowHandle]() {
-        AutoUpdater::AutoUpdater updater(repository, timeoutSeconds);
+    m_updateThread = std::thread([this, repository, windowHandle]() {
+        AutoUpdater::AutoUpdater updater(repository);
         auto release = updater.GetLatestRelease();
 
         std::string message;
@@ -727,16 +748,21 @@ void App::OnCommand(Command command) {
         case Command::ToggleEnabled:
             m_audioEnabled = !m_audioEnabled;
             Log::Info("Latency reduction {}.", m_audioEnabled ? "enabled" : "disabled");
+            CancelAudioRetry();
             ApplyAudio();
             break;
 
         case Command::Reinitialize:
             if (!m_audioEnabled) {
-                Log::Info("Reinitialisation requested while the latency reduction is disabled.");
-                break;
+                // "Reinitialize now" always does something visible: it enables
+                // the latency reduction again and applies it.
+                Log::Info("The latency reduction was disabled; enabling it and reinitialising the audio streams.");
+                m_audioEnabled = true;
+            } else {
+                Log::Info("Reinitialising the audio streams...");
             }
 
-            Log::Info("Reinitialising the audio streams...");
+            CancelAudioRetry();
             ApplyAudio();
             break;
 
@@ -748,8 +774,8 @@ void App::OnCommand(Command command) {
             OpenLogFile();
             break;
 
-        case Command::CheckForUpdates:
-            StartUpdateCheck();
+        case Command::Diagnose:
+            ShowDiagnostics();
             break;
 
         case Command::ToggleStartWithWindows: {
@@ -880,11 +906,6 @@ void App::OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         return;
     }
 
-    if (message == m_signalCheckUpdates) {
-        StartUpdateCheck();
-        return;
-    }
-
     if (message == m_signalExit) {
         OnCommand(Command::Exit);
         return;
@@ -901,14 +922,34 @@ void App::OnTimer(UINT_PTR timerId) {
         if (!valid) {
             Log::Info("Reinitialising the audio streams: {}", valid.error().GetMessage());
             ApplyAudio();
+            return;
         }
 
+        if (m_lastApplyFailed) {
+            Log::Info("The latency reduction could not be applied earlier; trying again.");
+            ApplyAudio();
+        }
+
+        return;
+    }
+
+    if (timerId == static_cast<UINT_PTR>(TimerId::AudioRetry)) {
+        ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::AudioRetry));
+
+        if (!m_audioEnabled || m_audio.IsActive()) {
+            return;
+        }
+
+        Log::Info("Retrying to enable the low latency mode...");
+        ApplyAudio();
         return;
     }
 
     if (timerId == static_cast<UINT_PTR>(TimerId::DeviceEvent)) {
         ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent));
 
+        CancelAudioRetry();
+        m_lastApplyFailed = false;
         Log::Info("Audio device change detected; re-applying the low latency mode...");
         ApplyAudio();
 
@@ -955,6 +996,100 @@ void App::OnDeviceEvent(WPARAM wParam, LPARAM lParam) {
     const int debounce = m_settings.audio.reinit.debounceMs > 0 ? m_settings.audio.reinit.debounceMs : 500;
     ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent));
     ::SetTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent), static_cast<UINT>(debounce), nullptr);
+}
+
+void App::ScheduleAudioRetry() {
+    if (m_window == nullptr || m_shuttingDown) {
+        return;
+    }
+
+    m_retryDelayMs = m_retryDelayMs == 0
+        ? INITIAL_AUDIO_RETRY_MS
+        : std::min(m_retryDelayMs * 2, MAXIMUM_AUDIO_RETRY_MS);
+
+    Log::Info("Another attempt to enable the low latency mode will be made in {} ms.", m_retryDelayMs);
+
+    ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::AudioRetry));
+    ::SetTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::AudioRetry), m_retryDelayMs, nullptr);
+}
+
+void App::CancelAudioRetry() {
+    m_retryDelayMs = 0;
+
+    if (m_window == nullptr) {
+        return;
+    }
+
+    ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::AudioRetry));
+}
+
+std::wstring App::WriteDiagnosticsReport() {
+    const std::wstring report = Windows::Diagnostics::BuildReport(m_settings, m_settingsPath);
+    const std::string utf8 = Text::ToUtf8(report);
+
+    std::wstring path = Windows::Filesystem::JoinPath(
+        Windows::Filesystem::GetExecutableDirectory(),
+        DIAGNOSTICS_FILE_NAME);
+
+    if (!Windows::Filesystem::WriteTextFileUtf8(path, utf8)) {
+        // The installation directory may be read-only (e.g. Program Files).
+        path = Windows::Filesystem::JoinPath(Windows::Filesystem::GetTempDirectory(), DIAGNOSTICS_FILE_NAME);
+        if (!Windows::Filesystem::WriteTextFileUtf8(path, utf8)) {
+            return {};
+        }
+    }
+
+    return path;
+}
+
+int App::RunDiagnostics() {
+    LoadSettings();
+
+    const std::wstring report = Windows::Diagnostics::BuildReport(m_settings, m_settingsPath);
+    const std::string utf8 = Text::ToUtf8(report);
+    const std::wstring path = WriteDiagnosticsReport();
+
+    if (::AttachConsole(ATTACH_PARENT_PROCESS) != FALSE) {
+        ::SetConsoleOutputCP(CP_UTF8);
+
+        FILE* stream = nullptr;
+        ::freopen_s(&stream, "CONOUT$", "w", stdout);
+        std::cout << utf8;
+        if (!path.empty()) {
+            std::cout << "Report written to " << Text::ToUtf8(path) << std::endl;
+        }
+
+        std::cout.flush();
+        ::FreeConsole();
+        return path.empty() ? 1 : 0;
+    }
+
+    if (path.empty()) {
+        ::MessageBoxW(
+            nullptr,
+            L"The diagnostics report could not be written to a file.",
+            AppInfo::NAME,
+            MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
+    ::ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    return 0;
+}
+
+void App::ShowDiagnostics() {
+    const std::wstring path = WriteDiagnosticsReport();
+    if (path.empty()) {
+        Log::Error("The diagnostics report could not be written.");
+        if (m_window != nullptr) {
+            m_window->Notify(L"REAL - diagnostics", L"The diagnostics report could not be written.", true);
+        }
+
+        return;
+    }
+
+    Log::Info("Diagnostics report written to {}.", Text::ToUtf8(path));
+    ::ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 void App::OnSystemResume(const wchar_t* reason) {
@@ -1105,6 +1240,7 @@ void App::Shutdown() {
     if (m_window != nullptr) {
         ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::Validate));
         ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent));
+        ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::AudioRetry));
         ::WTSUnRegisterSessionNotification(m_window->GetHWindow());
     }
 

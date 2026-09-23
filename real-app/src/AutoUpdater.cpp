@@ -18,11 +18,14 @@ namespace {
 
 constexpr size_t MAX_RELEASE_NOTES_LENGTH = 500;
 
+// One request with a generous timeout: the user has just started the
+// application and is not waiting for it.
+constexpr int REQUEST_TIMEOUT_SECONDS = 15;
+
 }
 
-AutoUpdater::AutoUpdater(std::string repository, int timeoutSeconds):
-    m_repository(std::move(repository)),
-    m_timeoutSeconds(timeoutSeconds) {}
+AutoUpdater::AutoUpdater(std::string repository):
+    m_repository(std::move(repository)) {}
 
 tl::expected<UpdateInfo, std::string> AutoUpdater::GetLatestRelease() const {
     if (m_repository.empty()) {
@@ -36,7 +39,7 @@ tl::expected<UpdateInfo, std::string> AutoUpdater::GetLatestRelease() const {
     headers.emplace_back(L"Accept", L"application/vnd.github+json");
     headers.emplace_back(L"Cache-Control", L"no-cache");
 
-    const Http::Response response = Http::Get(url, headers, m_timeoutSeconds);
+    const Http::Response response = Http::Get(url, headers, REQUEST_TIMEOUT_SECONDS);
     if (!response.networkOk) {
         return tl::make_unexpected(std::string("Could not reach GitHub: ") + response.error);
     }

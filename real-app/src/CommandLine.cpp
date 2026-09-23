@@ -80,8 +80,8 @@ Options miniant::CommandLine::Parse() {
             continue;
         }
 
-        if (argumentUtf8 == "--check-updates") {
-            options.action = Action::CheckForUpdates;
+        if (argumentUtf8 == "--diagnose" || argumentUtf8 == "--diag") {
+            options.action = Action::Diagnose;
             continue;
         }
 
@@ -153,10 +153,14 @@ std::wstring miniant::CommandLine::HelpText() {
     stream << L"  --reinit              Re-initialise the audio streams (e.g. after a device change)\n";
     stream << L"  --enable              Enable the latency reduction\n";
     stream << L"  --disable             Disable the latency reduction (audio engine returns to its default)\n";
-    stream << L"  --check-updates       Check for a newer release\n";
     stream << L"  --exit                Close the running instance\n";
+    stream << L"\nDiagnostics:\n";
+    stream << L"  --diagnose            Write a report about the audio devices and drivers (REAL-diagnostics.txt)\n";
     stream << L"\n  --help, -h, /?        Show this help\n";
     stream << L"  --version             Show the version\n";
+    stream << L"\nSettings: real.settings.json next to REAL.exe (created on the first run).\n";
+    stream << L"Every parameter is documented by comments inside that file,\n";
+    stream << L"see also docs/CONFIG.md in the repository.\n";
     return stream.str();
 }
 

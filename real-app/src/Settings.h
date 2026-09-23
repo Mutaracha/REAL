@@ -70,7 +70,6 @@ struct TrayMenuSettings {
     bool reinitialize = true;
     bool openSettings = true;
     bool openLog = true;
-    bool checkForUpdates = true;
     bool startWithWindows = true;
     bool about = true;
     bool exit = true;
@@ -100,9 +99,12 @@ struct PerformanceSettings {
 };
 
 struct UpdateSettings {
+    // Off by default: no network request at all unless the user asks for it.
+    // In "manual" mode a single check happens at startup when checkOnStartup is
+    // enabled; the application never checks again while it is running and never
+    // installs anything by itself.
     UpdatesMode mode = UpdatesMode::Off;
     std::string repository = "Mutaracha/REAL";
-    int timeoutSeconds = 15;
     bool checkOnStartup = false;
 };
 
@@ -145,7 +147,11 @@ std::wstring GetDefaultPath();
 
 LoadResult Load(const std::wstring& path);
 bool Write(const Settings& settings, const std::wstring& path);
+// Plain JSON without comments (used as a fallback).
 std::string ToJsonString(const Settings& settings);
+// JSON with comments that explain every parameter: this is what is written to
+// the settings file, so that the file itself is the reference.
+std::string ToDocumentedJsonString(const Settings& settings);
 std::string Describe(const Settings& settings);
 
 }

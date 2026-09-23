@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configure
         run: cmake -S real-app -B ${{ env.BUILD_DIR }} -A x64
@@ -103,6 +103,56 @@ jobs:
             "the application reported a failure, exit code $($main.ExitCode)" | Out-File -Append -Encoding utf8 $log
             exit 1
           }
+
+          # The settings file is generated with comments; it must be readable by
+          # the application itself (a second start loads it without warnings).
+          "== generated settings file ==" | Out-File -Append -Encoding utf8 $log
+          $work = Join-Path $env:RUNNER_TEMP "real-settings-test"
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+          Copy-Item $exe (Join-Path $work "REAL.exe")
+          $first = Start-Process -FilePath (Join-Path $work "REAL.exe") -ArgumentList '--tray' -WorkingDirectory $work -PassThru
+          Start-Sleep -Seconds 6
+          (Join-Path $work "REAL.log") | ForEach-Object { if (Test-Path $_) { Remove-Item $_ } }
+          $second = Start-Process -FilePath (Join-Path $work "REAL.exe") -ArgumentList '--exit' -WorkingDirectory $work -PassThru
+          $second.WaitForExit(20000) | Out-Null
+          Start-Sleep -Seconds 3
+          $strict = Start-Process -FilePath (Join-Path $work "REAL.exe") -ArgumentList '--tray' -WorkingDirectory $work -PassThru
+          Start-Sleep -Seconds 5
+          $exit2 = Start-Process -FilePath (Join-Path $work "REAL.exe") -ArgumentList '--exit' -WorkingDirectory $work -PassThru
+          $exit2.WaitForExit(20000) | Out-Null
+          if ($first.HasExited) { $first.Kill() }
+          if ($strict.HasExited) { $strict.Kill() }
+          if (-not (Test-Path (Join-Path $work "real.settings.json"))) {
+            "real.settings.json was not created next to the executable" | Out-File -Append -Encoding utf8 $log
+            exit 1
+          }
+          Get-Content (Join-Path $work "real.settings.json") -TotalCount 12 | Out-File -Append -Encoding utf8 $log
+          $settingsLog = Join-Path $work "REAL.log"
+          if (Test-Path $settingsLog) {
+            Get-Content $settingsLog | Out-File -Append -Encoding utf8 $log
+            $bad = Select-String -Path $settingsLog -Pattern "Could not parse the settings file|Settings: .*expected|Settings: unknown"
+            if ($bad) {
+              "the generated settings file does not load cleanly" | Out-File -Append -Encoding utf8 $log
+              exit 1
+            }
+          } else {
+            "no log was written during the settings test" | Out-File -Append -Encoding utf8 $log
+            exit 1
+          }
+
+          # --diagnose must produce a report even on a runner without audio.
+          "== diagnostics report ==" | Out-File -Append -Encoding utf8 $log
+          $diag = Start-Process -FilePath (Join-Path $work "REAL.exe") -ArgumentList '--no-config','--diagnose' -WorkingDirectory $work -PassThru -Wait
+          if ($diag.ExitCode -ne 0) {
+            "the diagnostics report could not be written, exit code $($diag.ExitCode)" | Out-File -Append -Encoding utf8 $log
+            exit 1
+          }
+          if (-not (Test-Path (Join-Path $work "REAL-diagnostics.txt"))) {
+            "REAL-diagnostics.txt was not written" | Out-File -Append -Encoding utf8 $log
+            exit 1
+          }
+          Get-Content (Join-Path $work "REAL-diagnostics.txt") | Out-File -Append -Encoding utf8 $log
+
           "smoke test passed" | Out-File -Append -Encoding utf8 $log
 
       - name: Show smoke test output
@@ -153,7 +203,7 @@ jobs:
 
       - name: Upload artifact
         if: steps.build.outcome == 'success' && steps.smoke.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: REAL-x64
           path: ${{ env.BUILD_DIR }}/Release/REAL.exe
@@ -174,7 +224,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configure
         run: cmake -S real-app -B ${{ env.BUILD_DIR }} -A x64

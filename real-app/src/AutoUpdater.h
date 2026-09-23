@@ -15,12 +15,13 @@ struct UpdateInfo {
     std::string releaseNotes;
 };
 
-// Update checks are never forced: the application only looks for a newer
-// release when the user asks for it (tray menu, --check-updates) and the
-// settings allow it. A newer release is reported, never installed silently.
+// Update checks are never forced and never happen while the application is
+// running: at most one check is made at startup, and only when the settings ask
+// for it (updates.mode = "manual" and updates.checkOnStartup = true). A newer
+// release is reported to the user, never downloaded or installed silently.
 class AutoUpdater {
 public:
-    AutoUpdater(std::string repository, int timeoutSeconds);
+    explicit AutoUpdater(std::string repository);
 
     tl::expected<UpdateInfo, std::string> GetLatestRelease() const;
 
@@ -29,7 +30,6 @@ public:
 
 private:
     std::string m_repository;
-    int m_timeoutSeconds;
 };
 
 }

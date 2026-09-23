@@ -295,12 +295,11 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
             ReadBool(*menu, "reinitialize", settings.tray.menu.reinitialize, result.warnings, "tray.menu");
             ReadBool(*menu, "openSettings", settings.tray.menu.openSettings, result.warnings, "tray.menu");
             ReadBool(*menu, "openLog", settings.tray.menu.openLog, result.warnings, "tray.menu");
-            ReadBool(*menu, "checkForUpdates", settings.tray.menu.checkForUpdates, result.warnings, "tray.menu");
             ReadBool(*menu, "startWithWindows", settings.tray.menu.startWithWindows, result.warnings, "tray.menu");
             ReadBool(*menu, "about", settings.tray.menu.about, result.warnings, "tray.menu");
             ReadBool(*menu, "exit", settings.tray.menu.exit, result.warnings, "tray.menu");
             WarnUnknownKeys(*menu, "tray.menu",
-                { "showStatus", "toggleEnabled", "reinitialize", "openSettings", "openLog", "checkForUpdates", "startWithWindows", "about", "exit" },
+                { "showStatus", "toggleEnabled", "reinitialize", "openSettings", "openLog", "startWithWindows", "about", "exit" },
                 result.warnings);
         }
 
@@ -343,9 +342,8 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
     if (const json* section = FindSection(root, "updates")) {
         ReadEnum(*section, "mode", UPDATES_MODE_MAP, settings.updates.mode, result.warnings, "updates");
         ReadString(*section, "repository", settings.updates.repository, result.warnings, "updates");
-        ReadInt(*section, "timeoutSeconds", settings.updates.timeoutSeconds, 1, 120, result.warnings, "updates");
         ReadBool(*section, "checkOnStartup", settings.updates.checkOnStartup, result.warnings, "updates");
-        WarnUnknownKeys(*section, "updates", { "mode", "repository", "timeoutSeconds", "checkOnStartup" }, result.warnings);
+        WarnUnknownKeys(*section, "updates", { "mode", "repository", "checkOnStartup" }, result.warnings);
     }
 
     if (const json* section = FindSection(root, "hotkeys")) {
@@ -366,6 +364,71 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
     }
 
     return result;
+}
+
+namespace {
+
+std::string JsonValue(bool value) {
+    return value ? "true" : "false";
+}
+
+std::string JsonValue(int value) {
+    return std::to_string(value);
+}
+
+std::string JsonValue(unsigned int value) {
+    return std::to_string(value);
+}
+
+std::string JsonValue(const std::string& value) {
+    return json(value).dump();
+}
+
+std::string JsonValue(const char* value) {
+    return json(value).dump();
+}
+
+// The settings file that the application writes is filled with comments, so it
+// doubles as the reference: every parameter is explained next to its value.
+// Text::StripJsonComments() removes the comments when the file is read back,
+// and Config::Write() verifies that the result still parses.
+class SettingsDocument {
+public:
+    void Blank() {
+        m_text += "\n";
+    }
+
+    void Comment(int indent, const std::string& comment) {
+        m_text += std::string(static_cast<size_t>(indent), ' ') + "// " + comment + "\n";
+    }
+
+    void Line(int indent, const std::string& line) {
+        m_text += std::string(static_cast<size_t>(indent), ' ') + line + "\n";
+    }
+
+    template <typename T>
+    void Key(int indent, const char* name, const T& value, const std::string& comment, bool comma = true) {
+        Comment(indent, comment);
+        Line(indent, std::string("\"") + name + "\": " + JsonValue(value) + (comma ? "," : ""));
+    }
+
+    void SectionOpen(int indent, const char* name, const std::string& comment) {
+        Comment(indent, comment);
+        Line(indent, std::string("\"") + name + "\": {");
+    }
+
+    void SectionClose(int indent, bool comma) {
+        Line(indent, comma ? "}," : "}");
+    }
+
+    const std::string& Text() const {
+        return m_text;
+    }
+
+private:
+    std::string m_text;
+};
+
 }
 
 std::string miniant::Config::ToJsonString(const Settings& settings) {
@@ -392,7 +455,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     menu["reinitialize"] = settings.tray.menu.reinitialize;
     menu["openSettings"] = settings.tray.menu.openSettings;
     menu["openLog"] = settings.tray.menu.openLog;
-    menu["checkForUpdates"] = settings.tray.menu.checkForUpdates;
     menu["startWithWindows"] = settings.tray.menu.startWithWindows;
     menu["about"] = settings.tray.menu.about;
     menu["exit"] = settings.tray.menu.exit;
@@ -426,7 +488,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     json& updates = root["updates"];
     updates["mode"] = ToString(settings.updates.mode);
     updates["repository"] = settings.updates.repository;
-    updates["timeoutSeconds"] = settings.updates.timeoutSeconds;
     updates["checkOnStartup"] = settings.updates.checkOnStartup;
 
     json& hotkeys = root["hotkeys"];
@@ -445,8 +506,160 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     return root.dump(2);
 }
 
+std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
+    SettingsDocument document;
+
+    document.Line(0, "{");
+    document.Key(2, "configVersion", settings.configVersion,
+        "Версия формата настроек, служебное поле. Текущая версия: 1.", true);
+    document.Blank();
+
+    document.SectionOpen(2, "application", "Окно, запуск и автозапуск приложения.");
+    document.Key(4, "startMinimizedToTray", settings.application.startMinimizedToTray,
+        "true — стартовать сразу свёрнутым в трей (то же, что ключ запуска --tray).", true);
+    document.Key(4, "minimizeToTray", settings.application.minimizeToTray,
+        "true — кнопка «Свернуть» прячет окно в трей, а не в панель задач.", true);
+    document.Key(4, "closeButtonAction", ToString(settings.application.closeButtonAction),
+        "Что делает крестик окна: \"minimize\" (в трей) или \"exit\" (завершить программу).", true);
+    document.Key(4, "showConsole", settings.application.showConsole,
+        "true — дополнительно открыть окно консоли с журналом (то же, что --console).", true);
+    document.Key(4, "singleInstance", settings.application.singleInstance,
+        "true — одна копия: повторный запуск передаёт команду работающей (--reinit, --exit и т.д.).", true);
+    document.Key(4, "startWithWindows", settings.application.startWithWindows,
+        "true — автозапуск при входе в систему (запись REAL в HKCU\\...\\Run).", false);
+    document.SectionClose(2, true);
+    document.Blank();
+
+    document.SectionOpen(2, "tray", "Значок в системном трее.");
+    document.Key(4, "enabled", settings.tray.enabled,
+        "true — показывать значок в трее (левый клик — окно, правый — меню).", true);
+    document.Key(4, "showStatusInTooltip", settings.tray.showStatusInTooltip,
+        "true — показывать текущий размер буфера в подсказке значка.", true);
+    document.SectionOpen(4, "notifications", "Всплывающие уведомления.");
+    document.Key(6, "onError", settings.tray.notifications.onError,
+        "true — уведомлять об ошибках включения низкой задержки.", true);
+    document.Key(6, "onDeviceChange", settings.tray.notifications.onDeviceChange,
+        "true — уведомлять о смене аудиоустройства.", true);
+    document.Key(6, "onStateChange", settings.tray.notifications.onStateChange,
+        "true — уведомлять о включении/выключении режима.", false);
+    document.SectionClose(4, true);
+    document.SectionOpen(4, "menu", "Состав меню значка (false — пункт скрыт).");
+    document.Key(6, "showStatus", settings.tray.menu.showStatus,
+        "Строка с текущим статусом первой строкой меню.", true);
+    document.Key(6, "toggleEnabled", settings.tray.menu.toggleEnabled,
+        "Пункт «Latency reduction enabled» (включить/выключить режим).", true);
+    document.Key(6, "reinitialize", settings.tray.menu.reinitialize,
+        "Пункт «Reinitialize now» (переинициализация без перезапуска).", true);
+    document.Key(6, "openSettings", settings.tray.menu.openSettings,
+        "Пункт «Settings file...» — открыть этот файл настроек.", true);
+    document.Key(6, "openLog", settings.tray.menu.openLog,
+        "Пункт «Open log» — открыть журнал.", true);
+    document.Key(6, "startWithWindows", settings.tray.menu.startWithWindows,
+        "Пункт-переключатель автозапуска.", true);
+    document.Key(6, "about", settings.tray.menu.about,
+        "Пункт «About REAL».", true);
+    document.Key(6, "exit", settings.tray.menu.exit,
+        "Пункт «Exit» — завершить программу.", false);
+    document.SectionClose(4, false);
+    document.SectionClose(2, true);
+    document.Blank();
+
+    document.SectionOpen(2, "audio", "Параметры работы с аудиодвижком.");
+    document.Key(4, "enabledOnStartup", settings.audio.enabledOnStartup,
+        "true — включать снижение задержки сразу при запуске.", true);
+    document.Key(4, "dataFlow", ToString(settings.audio.dataFlow),
+        "Какие устройства обрабатывать: \"render\" (воспроизведение), \"capture\" (запись), \"both\".", true);
+    document.Key(4, "role", ToString(settings.audio.role),
+        "Роль устройства по умолчанию: \"console\", \"multimedia\", \"communications\".", true);
+    document.Key(4, "periodSelection", ToString(settings.audio.periodSelection),
+        "Какой буфер запрашивать: \"min\" (минимальный), \"fundamental\" (базовый), \"fixed\" (см. ниже).", true);
+    document.Key(4, "requestedPeriodFrames", settings.audio.requestedPeriodFrames,
+        "Размер буфера в кадрах для periodSelection = \"fixed\" (0 — значение по умолчанию).", true);
+    document.Key(4, "allowPeriodSnap", settings.audio.allowPeriodSnap,
+        "true — если буфер уже зафиксирован другим приложением, принять его, а не сообщать об ошибке.", true);
+    document.Key(4, "releaseOnExit", settings.audio.releaseOnExit,
+        "true — освобождать аудиопоток при выходе (движок сам вернётся к 10 мс).", true);
+    document.SectionOpen(4, "reinit", "Когда переинициализировать потоки автоматически.");
+    document.Key(6, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged,
+        "Сменилось устройство по умолчанию (основной случай).", true);
+    document.Key(6, "deviceStateChanged", settings.audio.reinit.deviceStateChanged,
+        "Устройство стало активным или неактивным (выключение/включение наушников).", true);
+    document.Key(6, "deviceAdded", settings.audio.reinit.deviceAdded,
+        "Подключено новое устройство.", true);
+    document.Key(6, "deviceRemoved", settings.audio.reinit.deviceRemoved,
+        "Устройство удалено.", true);
+    document.Key(6, "resumeFromSleep", settings.audio.reinit.resumeFromSleep,
+        "Выход из сна / Modern Standby.", true);
+    document.Key(6, "sessionUnlock", settings.audio.reinit.sessionUnlock,
+        "Разблокировка сеанса (Win+L).", true);
+    document.Key(6, "debounceMs", settings.audio.reinit.debounceMs,
+        "Пауза перед переинициализацией: Windows присылает пачку событий подряд (мс).", false);
+    document.SectionClose(4, false);
+    document.SectionClose(2, true);
+    document.Blank();
+
+    document.SectionOpen(2, "performance", "Побочные эффекты низкой задержки.");
+    document.Key(4, "processPriority", ToString(settings.performance.processPriority),
+        "Приоритет процесса: \"normal\", \"belowNormal\" или \"idle\".", true);
+    document.Key(4, "disablePowerThrottling", settings.performance.disablePowerThrottling,
+        "true — снять троттлинг скорости исполнения (Windows 11), чтобы аудиопоток не «занимал» ядро CPU.", false);
+    document.SectionClose(2, true);
+    document.Blank();
+
+    document.SectionOpen(2, "updates", "Проверка обновлений. По умолчанию полностью выключена.");
+    document.Key(4, "mode", ToString(settings.updates.mode),
+        "\"off\" — ни одного сетевого запроса; \"manual\" — проверка только при запуске, если включён checkOnStartup.", true);
+    document.Key(4, "repository", settings.updates.repository,
+        "Репозиторий GitHub, из которого берутся релизы (owner/name).", true);
+    document.Key(4, "checkOnStartup", settings.updates.checkOnStartup,
+        "true — один раз проверить обновления при запуске (только при mode = \"manual\").", false);
+    document.SectionClose(2, true);
+    document.Blank();
+
+    document.SectionOpen(2, "hotkeys", "Глобальные горячие клавиши.");
+    document.Key(4, "enabled", settings.hotkeys.enabled,
+        "true — регистрировать горячие клавиши.", true);
+    document.Key(4, "toggleEnabled", settings.hotkeys.toggleEnabled,
+        "Включить/выключить режим. Клавиши: Ctrl, Alt, Shift, Win, A-Z, 0-9, F1-F24.", true);
+    document.Key(4, "reinitialize", settings.hotkeys.reinitialize,
+        "Переинициализировать аудиопотоки.", false);
+    document.SectionClose(2, true);
+    document.Blank();
+
+    document.SectionOpen(2, "logging", "Журнал работы программы.");
+    document.Key(4, "level", settings.logging.level,
+        "Подробность: \"trace\", \"debug\", \"info\", \"warn\", \"error\", \"off\".", true);
+    document.Key(4, "toConsole", settings.logging.toConsole,
+        "true — дублировать журнал в консоль (нужен showConsole или ключ --console).", true);
+    document.Key(4, "toFile", settings.logging.toFile,
+        "true — писать файл журнала.", true);
+    document.Key(4, "filePath", settings.logging.filePath,
+        "Путь к журналу: относительно каталога REAL.exe или абсолютный.", true);
+    document.Key(4, "maxFileSizeMb", settings.logging.maxFileSizeMb,
+        "Размер файла журнала до ротации (МБ).", true);
+    document.Key(4, "maxFiles", settings.logging.maxFiles,
+        "Сколько файлов журнала хранить.", false);
+    document.SectionClose(2, false);
+    document.Line(0, "}");
+
+    return document.Text();
+}
+
 bool miniant::Config::Write(const Settings& settings, const std::wstring& path) {
-    return Windows::Filesystem::WriteTextFileUtf8(path, ToJsonString(settings) + "\n");
+    std::string content = ToDocumentedJsonString(settings);
+
+    // A settings file that cannot be read back would be worse than an
+    // undocumented one, so fall back to plain JSON when anything is off.
+    try {
+        const json parsed = json::parse(Text::StripJsonComments(Text::StripUtf8Bom(content)));
+        if (!parsed.is_object()) {
+            content = ToJsonString(settings);
+        }
+    } catch (const json::exception&) {
+        content = ToJsonString(settings);
+    }
+
+    return Windows::Filesystem::WriteTextFileUtf8(path, content + "\n");
 }
 
 std::string miniant::Config::Describe(const Settings& settings) {

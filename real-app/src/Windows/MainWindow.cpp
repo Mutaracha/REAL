@@ -32,7 +32,7 @@ const struct {
     { 1, L"Reinitialize", miniant::Command::Reinitialize },
     { 2, L"Settings file...", miniant::Command::OpenSettings },
     { 3, L"Open log", miniant::Command::OpenLog },
-    { 4, L"Check for updates", miniant::Command::CheckForUpdates },
+    { 4, L"Diagnostics", miniant::Command::Diagnose },
     { 5, L"Hide to tray", miniant::Command::HideToTray },
     { 6, L"Exit", miniant::Command::Exit },
 };

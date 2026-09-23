@@ -13,10 +13,9 @@ enum MenuId : UINT {
     MENU_ID_REINITIALIZE = 1002,
     MENU_ID_SETTINGS = 1003,
     MENU_ID_LOG = 1004,
-    MENU_ID_UPDATES = 1005,
-    MENU_ID_START_WITH_WINDOWS = 1006,
-    MENU_ID_ABOUT = 1007,
-    MENU_ID_EXIT = 1008,
+    MENU_ID_START_WITH_WINDOWS = 1005,
+    MENU_ID_ABOUT = 1006,
+    MENU_ID_EXIT = 1007,
 };
 
 constexpr size_t TOOLTIP_MAX_LENGTH = 120;
@@ -185,10 +184,6 @@ void TrayIcon::ShowContextMenu() {
         ::AppendMenuW(menu, MF_STRING, MENU_ID_LOG, L"Open log");
     }
 
-    if (m_state.checkForUpdates) {
-        ::AppendMenuW(menu, MF_STRING, MENU_ID_UPDATES, L"Check for updates");
-    }
-
     if (m_state.startWithWindows) {
         ::AppendMenuW(
             menu,
@@ -240,9 +235,6 @@ void TrayIcon::ShowContextMenu() {
             break;
         case MENU_ID_LOG:
             m_handler(miniant::Command::OpenLog);
-            break;
-        case MENU_ID_UPDATES:
-            m_handler(miniant::Command::CheckForUpdates);
             break;
         case MENU_ID_START_WITH_WINDOWS:
             m_handler(miniant::Command::ToggleStartWithWindows);

@@ -29,6 +29,7 @@ private:
     enum class TimerId : UINT_PTR {
         Validate = 1,
         DeviceEvent = 2,
+        AudioRetry = 3,
     };
 
     bool LoadSettings();
@@ -55,6 +56,11 @@ private:
     void OnTimer(UINT_PTR timerId);
     void OnDeviceEvent(WPARAM wParam, LPARAM lParam);
     void OnSystemResume(const wchar_t* reason);
+    void ScheduleAudioRetry();
+    void CancelAudioRetry();
+    int RunDiagnostics();
+    void ShowDiagnostics();
+    std::wstring WriteDiagnosticsReport();
     bool IsStartWithWindowsEnabled() const;
     void SetStartWithWindows(bool enabled);
     bool NotifyRunningInstance(UINT message) const;
@@ -85,12 +91,16 @@ private:
     UINT m_signalEnable = 0;
     UINT m_signalDisable = 0;
     UINT m_signalExit = 0;
-    UINT m_signalCheckUpdates = 0;
 
     std::thread m_updateThread;
     std::mutex m_updateMutex;
     std::string m_updateMessage;
     std::string m_updateUrl;
+
+    // Backoff for re-applying the audio after a transient failure (device being
+    // enabled/disabled, audio service restarting).
+    unsigned int m_retryDelayMs = 0;
+    bool m_lastApplyFailed = false;
 };
 
 }

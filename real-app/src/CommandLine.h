@@ -12,7 +12,7 @@ enum class Action {
     Enable,
     Disable,
     Exit,
-    CheckForUpdates,
+    Diagnose,
     ShowHelp,
     ShowVersion,
 };

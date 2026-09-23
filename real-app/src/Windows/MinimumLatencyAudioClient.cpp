@@ -19,6 +19,44 @@ using namespace miniant::Windows::WasapiLatency;
 #define AUDCLNT_E_ENGINE_FORMAT_LOCKED _HRESULT_TYPEDEF_(0x88890029L)
 #endif
 
+#ifndef AUDCLNT_E_DEVICE_INVALIDATED
+#define AUDCLNT_E_DEVICE_INVALIDATED _HRESULT_TYPEDEF_(0x88890004L)
+#endif
+
+#ifndef AUDCLNT_E_SERVICE_NOT_RUNNING
+#define AUDCLNT_E_SERVICE_NOT_RUNNING _HRESULT_TYPEDEF_(0x88890010L)
+#endif
+
+#ifndef AUDCLNT_E_RESOURCES_INVALIDATED
+#define AUDCLNT_E_RESOURCES_INVALIDATED _HRESULT_TYPEDEF_(0x88890026L)
+#endif
+
+namespace {
+// The endpoint or the audio service was not ready when we asked: this happens
+// while a device is being enabled/disabled and is worth another attempt.
+bool IsTransientEndpointError(long code) {
+    if (code == static_cast<long>(HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) ||
+        code == static_cast<long>(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) ||
+        code == static_cast<long>(HRESULT_FROM_WIN32(ERROR_NO_MORE_ITEMS))) {
+        return true;
+    }
+
+    return code == static_cast<long>(AUDCLNT_E_DEVICE_INVALIDATED) ||
+        code == static_cast<long>(AUDCLNT_E_SERVICE_NOT_RUNNING) ||
+        code == static_cast<long>(AUDCLNT_E_RESOURCES_INVALIDATED);
+}
+
+std::string DescribeEndpointError(const char* what, long code) {
+    if (IsTransientEndpointError(code)) {
+        return std::string(what) +
+            ": the audio endpoint is not available at the moment (device change or audio service restart); "
+            "another attempt will be made automatically";
+    }
+
+    return std::string(what) + ": " + DescribeHResult(code);
+}
+}
+
 namespace {
 
 // {a45c254e-df1c-4efd-8020-67d146a850e0}, 14 == PKEY_Device_FriendlyName
@@ -159,7 +197,7 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
     HRESULT hr = enumerator.GetDefaultAudioEndpoint(dataFlow, role, device.GetAddressOf());
     if (FAILED(hr)) {
         return tl::make_unexpected(WindowsError(
-            std::string("Could not open the default audio endpoint: ") + DescribeHResult(static_cast<long>(hr))));
+            DescribeEndpointError("Could not open the default audio endpoint", static_cast<long>(hr))));
     }
 
     ComPtr<IAudioClient3> audioClient;
@@ -216,6 +254,19 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
 
     const uint32_t period = ChoosePeriod(selection, requestedPeriodFrames, info);
     info.requestedPeriod = period;
+
+    // Nothing to gain for this device: the smallest period its driver offers is
+    // the one the engine uses anyway. Holding a stream would not change the
+    // buffer size, but on Windows 11 it would keep audio resources (and a CPU
+    // thread) reserved, so no stream is created at all.
+    if (info.lowLatencyNotAvailable) {
+        info.currentPeriod = info.defaultPeriod;
+        ::CoTaskMemFree(format);
+
+        MinimumLatencyAudioClient result;
+        result.m_info = std::move(info);
+        return std::move(result);
+    }
 
     hr = audioClient->InitializeSharedAudioStream(0, period, format, nullptr);
     if (hr == AUDCLNT_E_ENGINE_PERIODICITY_LOCKED && allowPeriodSnap) {

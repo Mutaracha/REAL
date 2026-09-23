@@ -9,7 +9,7 @@ enum class Command {
     Reinitialize,
     OpenSettings,
     OpenLog,
-    CheckForUpdates,
+    Diagnose,
     ToggleStartWithWindows,
     ReloadSettings,
     ShowWindow,
