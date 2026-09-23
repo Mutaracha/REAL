@@ -17,7 +17,10 @@ std::string miniant::Text::ToUtf8(const std::wstring& text) {
     }
 
     std::string result(static_cast<size_t>(size), '\0');
-    ::WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), result.data(), size, nullptr, nullptr);
+    const int written = ::WideCharToMultiByte(
+        CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), &result[0], size, nullptr, nullptr);
+
+    result.resize(written > 0 ? static_cast<size_t>(written) : 0);
     return result;
 }
 
@@ -40,7 +43,10 @@ std::wstring miniant::Text::ToWide(const std::string& text) {
     }
 
     std::wstring result(static_cast<size_t>(size), L'\0');
-    ::MultiByteToWideChar(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), result.data(), size);
+    const int written = ::MultiByteToWideChar(
+        CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), &result[0], size);
+
+    result.resize(written > 0 ? static_cast<size_t>(written) : 0);
     return result;
 }
 

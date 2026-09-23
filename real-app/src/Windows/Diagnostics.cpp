@@ -435,8 +435,12 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
     }
 
     TraceStep("report: text built");
-    Log::Info("Diagnostics: the report text has been built.");
+    Log::Info("Diagnostics: the report text has been built ({} bytes).", text.size());
+    TraceStep("report: after Log::Info");
     Log::Flush();
+    TraceStep("report: after Log::Flush");
 
-    return Text::ToWide(text);
+    const std::wstring wide = Text::ToWide(text);
+    TraceStep("report: after Text::ToWide");
+    return wide;
 }
