@@ -140,14 +140,28 @@ void InspectEndpoint(IMMDevice& device, EndpointInfo& info) {
         ::CoTaskMemFree(format);
     }
 
-    if (SUCCEEDED(audioClient->GetDevicePeriod(&info.defaultPeriod, &info.minPeriod))) {
+    // IAudioClient::GetDevicePeriod() reports the periods in 100 ns units.
+    REFERENCE_TIME defaultDevicePeriod = 0;
+    REFERENCE_TIME minimumDevicePeriod = 0;
+
+    if (SUCCEEDED(audioClient->GetDevicePeriod(&defaultDevicePeriod, &minimumDevicePeriod))) {
+        info.defaultPeriod = ToFrames(defaultDevicePeriod, info.sampleRate);
+        info.minPeriod = ToFrames(minimumDevicePeriod, info.sampleRate);
         info.fundamentalPeriod = info.minPeriod;
         info.maxPeriod = info.defaultPeriod;
-        info.hasEnginePeriods = true;
+        info.hasEnginePeriods = info.defaultPeriod != 0;
     }
 
     info.error = "the driver does not expose IAudioClient3, so small buffers are not available for this device "
                  "(typical for Bluetooth, HDMI/DisplayPort receivers and some virtual drivers)";
+}
+
+uint32_t ToFrames(REFERENCE_TIME period, uint32_t sampleRate) {
+    if (period <= 0 || sampleRate == 0) {
+        return 0;
+    }
+
+    return static_cast<uint32_t>((period * static_cast<REFERENCE_TIME>(sampleRate)) / 10000000);
 }
 
 std::string FlowName(EDataFlow flow) {
