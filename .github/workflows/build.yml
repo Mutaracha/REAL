@@ -80,7 +80,7 @@ jobs:
 
           try {
             Add-Log "== first instance =="
-            (Get-Item $exe).VersionInfo | Out-String | Add-Log
+            (Get-Item $exe).VersionInfo | Out-String | Out-File -Append -Encoding utf8 $log
 
             $main = Start-Real "${{ env.BUILD_DIR }}/Release" @('--tray', '--no-config')
             Start-Sleep -Seconds 6
@@ -99,7 +99,7 @@ jobs:
             $appLog = Join-Path "${{ env.BUILD_DIR }}/Release" "REAL.log"
             Add-Log "== log file =="
             if (-not (Test-Path $appLog)) { throw "REAL.log was not written next to the executable" }
-            Get-Content $appLog | Add-Log
+            Get-Content $appLog | Out-File -Append -Encoding utf8 $log
 
             # The settings file is generated with comments; the application must
             # be able to read it back on the next start.
@@ -120,7 +120,7 @@ jobs:
 
             $settings = Join-Path $work "real.settings.json"
             if (-not (Test-Path $settings)) { throw "real.settings.json was not created next to the executable" }
-            Get-Content $settings -TotalCount 14 | Add-Log
+            Get-Content $settings -TotalCount 14 | Out-File -Append -Encoding utf8 $log
 
             # Second start: the generated file must load without any warning.
             $strict = Start-Real $work @('--tray')
@@ -131,7 +131,7 @@ jobs:
 
             $settingsLog = Join-Path $work "REAL.log"
             if (-not (Test-Path $settingsLog)) { throw "no log was written during the settings test" }
-            Get-Content $settingsLog | Add-Log
+            Get-Content $settingsLog | Out-File -Append -Encoding utf8 $log
 
             # The startup banner also contains "Settings: <path>", so only
             # warnings and errors about the settings file count as a problem.
@@ -150,13 +150,13 @@ jobs:
             Add-Log "log file exists: $(Test-Path $workLog); size: $(if (Test-Path $workLog) { (Get-Item $workLog).Length } else { -1 })"
             if (Test-Path $workLog) {
               Add-Log "== application log after the diagnostics run =="
-              Get-Content $workLog | Add-Log
+              Get-Content $workLog | Out-File -Append -Encoding utf8 $log
             }
 
             $trace = Join-Path $work "REAL-trace.txt"
             if (Test-Path $trace) {
               Add-Log "== trace =="
-              Get-Content $trace | Add-Log
+              Get-Content $trace | Out-File -Append -Encoding utf8 $log
             }
 
             Add-Log "== crash information =="
@@ -170,7 +170,7 @@ jobs:
             }
             $report = Join-Path $work "REAL-diagnostics.txt"
             if (-not (Test-Path $report)) { throw "REAL-diagnostics.txt was not written" }
-            Get-Content $report | Add-Log
+            Get-Content $report | Out-File -Append -Encoding utf8 $log
 
             Add-Log "smoke test passed"
           } catch {
