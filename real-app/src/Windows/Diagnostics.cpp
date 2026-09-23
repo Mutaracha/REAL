@@ -1,6 +1,7 @@
 #include "Diagnostics.h"
 
 #include "../AppVersion.h"
+#include "../Log.h"
 #include "../Text.h"
 #include "ComPtr.h"
 #include "Filesystem.h"
@@ -311,6 +312,8 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
     text += fmt::format("Config:     {}\n", Config::Describe(settings));
     text += "\n";
 
+    Log::Debug("Diagnostics: location and configuration collected.");
+
     HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool comInitialized = SUCCEEDED(hr);
     if (hr == RPC_E_CHANGED_MODE) {
@@ -328,6 +331,8 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
             reinterpret_cast<void**>(enumerator.GetAddressOf()));
     }
 
+    Log::Debug("Diagnostics: the device enumerator is {}.", enumerator ? "ready" : "not available");
+
     if (!enumerator) {
         text += fmt::format(
             "ERROR: the audio device enumerator could not be created ({}).\n",
@@ -339,6 +344,8 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
             text += fmt::format("--- {} devices ---\n\n", FlowName(flow));
 
             const std::vector<EndpointInfo> endpoints = EnumerateEndpoints(flow, *enumerator.Get());
+            Log::Debug("Diagnostics: {} endpoints for flow {}.", endpoints.size(), FlowName(flow));
+
             if (endpoints.empty()) {
                 text += "No active devices.\n\n";
                 continue;
@@ -400,6 +407,8 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
     if (comInitialized) {
         ::CoUninitialize();
     }
+
+    Log::Debug("Diagnostics: the report text has been built.");
 
     return Text::ToWide(text);
 }

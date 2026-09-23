@@ -1044,24 +1044,43 @@ std::wstring App::WriteDiagnosticsReport() {
 
 int App::RunDiagnostics() {
     LoadSettings();
+    InitializeLogging();
+
+    Log::Info("Diagnostics: collecting information about the audio devices...");
 
     const std::wstring report = Windows::Diagnostics::BuildReport(m_settings, m_settingsPath);
+    Log::Info("Diagnostics: the report is ready.");
     const std::string utf8 = Text::ToUtf8(report);
     const std::wstring path = WriteDiagnosticsReport();
+
+    if (!path.empty()) {
+        Log::Info("Diagnostics: report written to {}.", Text::ToUtf8(path));
+    } else {
+        Log::Error("Diagnostics: the report could not be written.");
+    }
+
+    Log::Shutdown();
 
     if (::AttachConsole(ATTACH_PARENT_PROCESS) != FALSE) {
         ::SetConsoleOutputCP(CP_UTF8);
 
         FILE* stream = nullptr;
-        ::freopen_s(&stream, "CONOUT$", "w", stdout);
-        std::cout << utf8;
-        if (!path.empty()) {
-            std::cout << "Report written to " << Text::ToUtf8(path) << std::endl;
+        const bool redirected = ::freopen_s(&stream, "CONOUT$", "w", stdout) == 0 && stream != nullptr;
+
+        if (redirected) {
+            std::cout << utf8;
+            if (!path.empty()) {
+                std::cout << "Report written to " << Text::ToUtf8(path) << std::endl;
+            }
+
+            std::cout.flush();
         }
 
-        std::cout.flush();
         ::FreeConsole();
-        return path.empty() ? 1 : 0;
+
+        if (redirected) {
+            return path.empty() ? 1 : 0;
+        }
     }
 
     if (path.empty()) {
