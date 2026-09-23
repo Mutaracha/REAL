@@ -146,9 +146,21 @@ jobs:
             $diag = Start-Real $work @('--no-config', '--diagnose')
             if (-not $diag.WaitForExit(60000)) { throw "the diagnostics command did not finish" }
             Add-Log "diagnostics exit code $($diag.ExitCode)"
-            if (Test-Path (Join-Path $work "REAL.log")) {
+            $workLog = Join-Path $work "REAL.log"
+            Add-Log "log file exists: $(Test-Path $workLog); size: $(if (Test-Path $workLog) { (Get-Item $workLog).Length } else { -1 })"
+            if (Test-Path $workLog) {
               Add-Log "== application log after the diagnostics run =="
-              Get-Content (Join-Path $work "REAL.log") | Add-Log
+              Get-Content $workLog | Add-Log
+            }
+
+            Add-Log "== crash information =="
+            try {
+              Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-5) } -ErrorAction Stop |
+                Where-Object { $_.Message -like '*REAL*' -or $_.ProviderName -like '*Error Reporting*' } |
+                Select-Object -First 5 |
+                ForEach-Object { Add-Log ($_.ProviderName + ": " + $_.Message) }
+            } catch {
+              Add-Log "the event log could not be read: $($_.Exception.Message)"
             }
             $report = Join-Path $work "REAL-diagnostics.txt"
             if (-not (Test-Path $report)) { throw "REAL-diagnostics.txt was not written" }
