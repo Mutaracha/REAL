@@ -1047,9 +1047,11 @@ int App::RunDiagnostics() {
     InitializeLogging();
 
     Log::Info("Diagnostics: collecting information about the audio devices...");
+    Log::Flush();
 
     const std::wstring report = Windows::Diagnostics::BuildReport(m_settings, m_settingsPath);
     Log::Info("Diagnostics: the report is ready.");
+    Log::Flush();
     const std::string utf8 = Text::ToUtf8(report);
     const std::wstring path = WriteDiagnosticsReport();
 

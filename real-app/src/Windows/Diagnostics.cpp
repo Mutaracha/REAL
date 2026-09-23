@@ -312,7 +312,8 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
     text += fmt::format("Config:     {}\n", Config::Describe(settings));
     text += "\n";
 
-    Log::Debug("Diagnostics: location and configuration collected.");
+    Log::Info("Diagnostics: location and configuration collected.");
+    Log::Flush();
 
     HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool comInitialized = SUCCEEDED(hr);
@@ -331,7 +332,8 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
             reinterpret_cast<void**>(enumerator.GetAddressOf()));
     }
 
-    Log::Debug("Diagnostics: the device enumerator is {}.", enumerator ? "ready" : "not available");
+    Log::Info("Diagnostics: the device enumerator is {}.", enumerator ? "ready" : "not available");
+    Log::Flush();
 
     if (!enumerator) {
         text += fmt::format(
@@ -344,7 +346,8 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
             text += fmt::format("--- {} devices ---\n\n", FlowName(flow));
 
             const std::vector<EndpointInfo> endpoints = EnumerateEndpoints(flow, *enumerator.Get());
-            Log::Debug("Diagnostics: {} endpoints for flow {}.", endpoints.size(), FlowName(flow));
+            Log::Info("Diagnostics: {} endpoints for flow {}.", endpoints.size(), FlowName(flow));
+            Log::Flush();
 
             if (endpoints.empty()) {
                 text += "No active devices.\n\n";
@@ -408,7 +411,8 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
         ::CoUninitialize();
     }
 
-    Log::Debug("Diagnostics: the report text has been built.");
+    Log::Info("Diagnostics: the report text has been built.");
+    Log::Flush();
 
     return Text::ToWide(text);
 }

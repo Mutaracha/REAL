@@ -51,6 +51,10 @@ void SetLevel(const std::string& level);
 
 void Write(Level level, const std::string& message);
 
+// Writes everything that is still buffered to the sinks. A log line that is
+// followed by a crash is otherwise lost (the file sinks cache the output).
+void Flush();
+
 bool WriteSnapshotToFile(const std::wstring& path);
 
 template <typename... Args>

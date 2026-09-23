@@ -232,6 +232,12 @@ void miniant::Log::Write(Level level, const std::string& message) {
     }
 }
 
+void miniant::Log::Flush() {
+    if (g_logger != nullptr) {
+        g_logger->flush();
+    }
+}
+
 bool miniant::Log::WriteSnapshotToFile(const std::wstring& path) {
     std::string content;
     for (const auto& line : Buffer().Snapshot()) {
