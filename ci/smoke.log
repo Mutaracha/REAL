@@ -1,7 +1,7 @@
 REAL smoke test
 == first instance ==
 
-main pid=5424 alive=True
+main pid=5576 alive=True
 == second instance (--exit) ==
 second instance exit code 0
 main instance exit code 0
@@ -16,5 +16,5 @@ diagnostics exit code -1073741819
 == application log after the diagnostics run ==
 
 FAILED: REAL-diagnostics.txt was not written
-at <ScriptBlock>, D:\a\_temp\9608cd13-82f2-4382-b3d1-2e05abe400a2.ps1: line 92
+at <ScriptBlock>, D:\a\_temp\74663c87-52fa-4332-a106-db3d5394e6de.ps1: line 92
 at <ScriptBlock>, <No file>: line 1
