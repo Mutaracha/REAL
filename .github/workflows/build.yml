@@ -258,7 +258,9 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: REAL-x64
-          path: ${{ env.BUILD_DIR }}/Release/REAL.exe
+          path: |
+            ${{ env.BUILD_DIR }}/Release/REAL.exe
+            ci/smoke.log
           if-no-files-found: error
 
       - name: Fail when a step failed

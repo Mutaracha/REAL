@@ -261,3 +261,5 @@ paket-files/
 # Python Tools for Visual Studio (PTVS)
 __pycache__/
 *.pyc
+# Diagnostics published by the build workflow when a run fails
+ci/

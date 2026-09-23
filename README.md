@@ -20,14 +20,17 @@ that is still maintained and adds quality-of-life features:
 ## Features
 
 * Audio latency reduction on the default playback device (and optionally on the
-  default capture device)
+  default capture device). Devices whose driver has nothing smaller than the
+  default buffer (Bluetooth, HDMI, some vendor drivers) are reported instead of
+  holding a stream that changes nothing
 * Automatic re-application when the default device changes, when a device is
   added/removed, after resume from sleep or after the audio service restarts
 * Minimises to the system tray; the tray icon survives an `explorer.exe` restart
 * Global hotkeys (default `Ctrl+Alt+L` — toggle, `Ctrl+Alt+R` — re-initialise)
 * Optional autostart with Windows
-* Optional manual update check (never installed silently, never blocks startup)
-* Settings in a plain JSON file with comments allowed
+* Optional update check at startup only (off by default, never installed
+  silently, no runtime requests)
+* Settings in a plain JSON file that documents every option with comments
 * Single instance: `REAL.exe --reinit` talks to the running instance
 
 ## Requirements
@@ -77,16 +80,17 @@ Commands for a running instance (forwarded to it, this process exits):
 |---|---|
 | `--reinit` | Re-initialise the audio streams (useful in scripts/shortcuts) |
 | `--enable` / `--disable` | Enable / disable the latency reduction |
-| `--check-updates` | Check for a newer release |
 | `--exit` | Close the running instance |
+| `--diagnose` | Write a report about the audio devices and drivers to `REAL-diagnostics.txt` |
 | `--help`, `-h`, `/?` | Show help |
 | `--version` | Show the version |
 
 ## Configuration
 
 `real.settings.json` is created next to `REAL.exe` on the first run. It is plain
-JSON (`//` and `/* */` comments are allowed) and is re-read when you use
-**Settings file…** in the tray menu or `--config`. Command-line options override
+JSON (`//` and `/* */` comments are allowed), every option is explained by a
+comment, and it is re-read when you use **Settings file…** in the tray menu or
+`--config`. Command-line options override
 the file. A step-by-step guide in Russian is available in
 [docs/usage.ru.md](docs/usage.ru.md). See [docs/CONFIG.md](docs/CONFIG.md) for the full reference and
 [docs/real.settings.example.json](docs/real.settings.example.json) for an
@@ -98,7 +102,7 @@ The most important options:
 {
   "application": { "minimizeToTray": true, "closeButtonAction": "minimize" },
   "audio":       { "dataFlow": "render", "role": "console", "allowPeriodSnap": true },
-  "updates":     { "mode": "off" },          // off | manual
+  "updates":     { "mode": "off" },          // off | manual (+ checkOnStartup)
   "logging":     { "toFile": true, "level": "info" }
 }
 ```
@@ -167,6 +171,14 @@ chance of audible cracks when the CPU is busy. Windows also keeps CPU resources
 ready for the audio subsystem while such a stream exists (some monitoring tools
 show one busy core). REAL mitigates the second effect by lowering its own priority
 and disabling power throttling (`performance.disablePowerThrottling`).
+
+### How do I report a problem?
+
+Press **Diagnostics** in the window (or run `REAL.exe --diagnose`). It writes
+`REAL-diagnostics.txt` next to the executable with your Windows version, every
+active audio endpoint, its driver version and the periods it supports, so the
+reason is visible without guesswork. The application log (`REAL.log`) is written
+next to the executable as well.
 
 ### It says "the driver does not offer a period smaller than the default one"
 
