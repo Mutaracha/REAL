@@ -153,11 +153,6 @@ jobs:
               Get-Content $workLog | Out-File -Append -Encoding utf8 $log
             }
 
-            $trace = Join-Path $work "REAL-trace.txt"
-            if (Test-Path $trace) {
-              Add-Log "== trace =="
-              Get-Content $trace | Out-File -Append -Encoding utf8 $log
-            }
 
             # Turn the fault offset from the Windows event log into a function
             # name with the help of the linker map file.
@@ -183,28 +178,6 @@ jobs:
               }
               Add-Log "the crash is inside: $best"
 
-              $vcvars = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-              if (Test-Path $vcvars) {
-                & cmd /c "`"$vcvars`" >nul && dumpbin /disasm `"$exe`" > ci\disasm.txt" | Out-Null
-                if (Test-Path "ci\disasm.txt") {
-                  $prefix = "  " + $target.ToString("X16") + ":"
-                  $lines = Get-Content "ci\disasm.txt"
-                  $hit = $null
-                  for ($i = 0; $i -lt $lines.Count; $i++) {
-                    if ($lines[$i].StartsWith($prefix)) { $hit = $i; break }
-                  }
-                  if ($null -ne $hit) {
-                    Add-Log "== disassembly around $prefix =="
-                    $from = [Math]::Max(0, $hit - 25)
-                    $to = [Math]::Min($lines.Count - 1, $hit + 25)
-                    $lines[$from..$to] | Out-File -Append -Encoding utf8 $log
-                  } else {
-                    Add-Log "no instruction found at $prefix"
-                  }
-                }
-              } else {
-                Add-Log "vcvars64.bat was not found; the disassembly is skipped"
-              }
             }
 
             Add-Log "== crash information =="

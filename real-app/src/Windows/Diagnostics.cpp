@@ -202,19 +202,6 @@ std::string Periods(const EndpointInfo& info) {
 
 }
 
-void miniant::Windows::Diagnostics::TraceStep(const char* step) {
-    const std::wstring path = Filesystem::JoinPath(Filesystem::GetExecutableDirectory(), L"REAL-trace.txt");
-
-    FILE* file = nullptr;
-    if (::_wfopen_s(&file, path.c_str(), L"ab") != 0 || file == nullptr) {
-        return;
-    }
-
-    std::fputs(step, file);
-    std::fputc('\n', file);
-    std::fclose(file);
-}
-
 std::string miniant::Windows::Diagnostics::GetWindowsVersion() {
     // RtlGetVersion reports the real version, unlike GetVersionEx which lies
     // unless the executable is manifested for the newest Windows.
@@ -326,11 +313,9 @@ std::string miniant::Windows::Diagnostics::BuildReport(
     text += fmt::format("Config:     {}\n", Config::Describe(settings));
     text += "\n";
 
-    TraceStep("report: header ready");
     Log::Info("Diagnostics: location and configuration collected.");
     Log::Flush();
 
-    TraceStep("report: before CoInitializeEx");
     HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool comInitialized = SUCCEEDED(hr);
     if (hr == RPC_E_CHANGED_MODE) {
@@ -338,106 +323,104 @@ std::string miniant::Windows::Diagnostics::BuildReport(
         hr = S_OK;
     }
 
-    ComPtr<IMMDeviceEnumerator> enumerator;
-    TraceStep("report: after CoInitializeEx");
+    // Every COM interface stays inside this scope: the interfaces must be
+    // released before CoUninitialize() is called, otherwise the last Release()
+    // would run on an object whose server has already been unloaded.
+    {
+        ComPtr<IMMDeviceEnumerator> enumerator;
 
-    if (SUCCEEDED(hr)) {
-        hr = ::CoCreateInstance(
-            __uuidof(MMDeviceEnumerator),
-            nullptr,
-            CLSCTX_ALL,
-            __uuidof(IMMDeviceEnumerator),
-            reinterpret_cast<void**>(enumerator.GetAddressOf()));
-    }
-
-    TraceStep("report: after CoCreateInstance");
-    Log::Info("Diagnostics: the device enumerator is {}.", enumerator ? "ready" : "not available");
-    Log::Flush();
-
-    if (!enumerator) {
-        text += fmt::format(
-            "ERROR: the audio device enumerator could not be created ({}).\n",
-            DescribeHResult(static_cast<long>(hr)));
-        text += "The Windows audio service (Audiosrv) is probably not running.\n";
-    } else {
-        const EDataFlow flows[] = { eRender, eCapture };
-        for (EDataFlow flow : flows) {
-            text += fmt::format("--- {} devices ---\n\n", FlowName(flow));
-
-            TraceStep("report: before EnumerateEndpoints");
-            const std::vector<EndpointInfo> endpoints = EnumerateEndpoints(flow, *enumerator.Get());
-            TraceStep("report: after EnumerateEndpoints");
-            Log::Info("Diagnostics: {} endpoints for flow {}.", endpoints.size(), FlowName(flow));
-            Log::Flush();
-
-            if (endpoints.empty()) {
-                text += "No active devices.\n\n";
-                continue;
-            }
-
-            TraceStep("report: before printing an endpoint");
-
-            for (const EndpointInfo& info : endpoints) {
-                text += fmt::format(
-                    "{}{}\n",
-                    Text::ToUtf8(info.deviceName.empty() ? std::wstring(L"<unknown device>") : info.deviceName),
-                    info.isDefault ? "   [default]" : "");
-                text += fmt::format("    id:       {}\n", Text::ToUtf8(info.deviceId));
-
-                if (!info.driverProvider.empty() || !info.driverVersion.empty()) {
-                    text += fmt::format(
-                        "    driver:   {} {}\n",
-                        Text::ToUtf8(info.driverProvider),
-                        Text::ToUtf8(info.driverVersion));
-                }
-
-                if (info.sampleRate != 0) {
-                    text += fmt::format(
-                        "    format:   {} Hz, {} channels, {} bit\n",
-                        info.sampleRate,
-                        info.channels,
-                        info.bitsPerSample);
-                }
-
-                text += fmt::format(
-                    "    periods:  {}\n",
-                    info.hasEnginePeriods ? Periods(info) : "unknown");
-
-                if (info.supportsAudioClient3) {
-                    text += fmt::format(
-                        "    result:   {} (IAudioClient3 is supported)\n",
-                        info.lowLatencyPossible
-                            ? fmt::format(
-                                  "small buffers are available, a buffer of {} can be requested",
-                                  Milliseconds(info.minPeriod, info.sampleRate))
-                            : "the driver offers nothing smaller than its default buffer, so REAL cannot lower the latency here");
-                } else {
-                    text += fmt::format("    result:   {}\n", info.error.empty() ? "IAudioClient3 is not available" : info.error);
-                }
-
-                text += "\n";
-            }
+        if (SUCCEEDED(hr)) {
+            hr = ::CoCreateInstance(
+                __uuidof(MMDeviceEnumerator),
+                nullptr,
+                CLSCTX_ALL,
+                __uuidof(IMMDeviceEnumerator),
+                reinterpret_cast<void**>(enumerator.GetAddressOf()));
         }
 
-        // What REAL itself is doing right now.
-        text += "--- summary ---\n\n";
-        text += "A device is suitable for the latency reduction when its minimum period is\n";
-        text += "smaller than its default period (see 'result' above). Typical exceptions:\n";
-        text += "Bluetooth endpoints (10 ms by design), HDMI/DisplayPort receivers and some\n";
-        text += "vendor drivers (Realtek, Nahimic, ACX) as well as virtual devices.\n";
-        text += "\nIf a suitable device is used by default right after the next start, the status\n";
-        text += "line of the window shows the buffer size the audio engine is running with,\n";
-        text += "for example '2.67 ms - Speakers (Realtek Audio)'.\n";
+        Log::Info("Diagnostics: the device enumerator is {}.", enumerator ? "ready" : "not available");
+        Log::Flush();
+
+        if (!enumerator) {
+            text += fmt::format(
+                "ERROR: the audio device enumerator could not be created ({}).\n",
+                DescribeHResult(static_cast<long>(hr)));
+            text += "The Windows audio service (Audiosrv) is probably not running.\n";
+        } else {
+            const EDataFlow flows[] = { eRender, eCapture };
+            for (EDataFlow flow : flows) {
+                text += fmt::format("--- {} devices ---\n\n", FlowName(flow));
+
+                const std::vector<EndpointInfo> endpoints = EnumerateEndpoints(flow, *enumerator.Get());
+                Log::Info("Diagnostics: {} endpoints for flow {}.", endpoints.size(), FlowName(flow));
+                Log::Flush();
+
+                if (endpoints.empty()) {
+                    text += "No active devices.\n\n";
+                    continue;
+                }
+
+                for (const EndpointInfo& info : endpoints) {
+                    text += fmt::format(
+                        "{}{}\n",
+                        Text::ToUtf8(info.deviceName.empty() ? std::wstring(L"<unknown device>") : info.deviceName),
+                        info.isDefault ? "   [default]" : "");
+                    text += fmt::format("    id:       {}\n", Text::ToUtf8(info.deviceId));
+
+                    if (!info.driverProvider.empty() || !info.driverVersion.empty()) {
+                        text += fmt::format(
+                            "    driver:   {} {}\n",
+                            Text::ToUtf8(info.driverProvider),
+                            Text::ToUtf8(info.driverVersion));
+                    }
+
+                    if (info.sampleRate != 0) {
+                        text += fmt::format(
+                            "    format:   {} Hz, {} channels, {} bit\n",
+                            info.sampleRate,
+                            info.channels,
+                            info.bitsPerSample);
+                    }
+
+                    text += fmt::format(
+                        "    periods:  {}\n",
+                        info.hasEnginePeriods ? Periods(info) : "unknown");
+
+                    if (info.supportsAudioClient3) {
+                        text += fmt::format(
+                            "    result:   {} (IAudioClient3 is supported)\n",
+                            info.lowLatencyPossible
+                                ? fmt::format(
+                                      "small buffers are available, a buffer of {} can be requested",
+                                      Milliseconds(info.minPeriod, info.sampleRate))
+                                : "the driver offers nothing smaller than its default buffer, so REAL cannot lower the latency here");
+                    } else {
+                        text += fmt::format("    result:   {}\n", info.error.empty() ? "IAudioClient3 is not available" : info.error);
+                    }
+
+                    text += "\n";
+                }
+            }
+
+            // What REAL itself is doing right now.
+            text += "--- summary ---\n\n";
+            text += "A device is suitable for the latency reduction when its minimum period is\n";
+            text += "smaller than its default period (see 'result' above). Typical exceptions:\n";
+            text += "Bluetooth endpoints (10 ms by design), HDMI/DisplayPort receivers and some\n";
+            text += "vendor drivers (Realtek, Nahimic, ACX) as well as virtual devices.\n";
+            text += "\nIf a suitable device is used by default right after the next start, the status\n";
+            text += "line of the window shows the buffer size the audio engine is running with,\n";
+            text += "for example '2.67 ms - Speakers (Realtek Audio)'.\n";
+        }
     }
 
+    // The COM interfaces have been released by now (see the scope above).
     if (comInitialized) {
         ::CoUninitialize();
     }
 
-    TraceStep("report: text built");
     Log::Info("Diagnostics: the report text has been built ({} bytes).", text.size());
     Log::Flush();
-    TraceStep("report: after Log::Flush");
 
     return text;
 }

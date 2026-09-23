@@ -1024,7 +1024,6 @@ void App::CancelAudioRetry() {
 }
 
 std::wstring App::WriteDiagnosticsReport(const std::string& report) {
-
     std::wstring path = Windows::Filesystem::JoinPath(
         Windows::Filesystem::GetExecutableDirectory(),
         DIAGNOSTICS_FILE_NAME);
@@ -1041,26 +1040,16 @@ std::wstring App::WriteDiagnosticsReport(const std::string& report) {
 }
 
 int App::RunDiagnostics() {
-    Windows::Diagnostics::TraceStep("RunDiagnostics: entered");
-
     LoadSettings();
-    Windows::Diagnostics::TraceStep("RunDiagnostics: settings loaded");
-
     InitializeLogging();
-    Windows::Diagnostics::TraceStep("RunDiagnostics: logging initialised");
 
     Log::Info("Diagnostics: collecting information about the audio devices...");
-    Log::Flush();
 
     const std::string report = Windows::Diagnostics::BuildReport(m_settings, m_settingsPath);
-    Windows::Diagnostics::TraceStep("RunDiagnostics: report built");
 
     Log::Info("Diagnostics: the report is ready.");
-    Log::Flush();
 
     const std::wstring path = WriteDiagnosticsReport(report);
-    Windows::Diagnostics::TraceStep("RunDiagnostics: report written");
-
     if (!path.empty()) {
         Log::Info("Diagnostics: report written to {}.", Text::ToUtf8(path));
     } else {
