@@ -37,7 +37,10 @@ target_compile_definitions(real-app PRIVATE
     _UNICODE
     WIN32_LEAN_AND_MEAN
     NOMINMAX
-    SPDLOG_WCHAR_FILENAMES)
+    SPDLOG_WCHAR_FILENAMES
+    # spdlog 1.1.0 converts between UTF-8 and UTF-16 with std::wstring_convert,
+    # which C++17 marks as deprecated.
+    _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING)
 
 target_compile_options(real-app PRIVATE /utf-8 /W3)
 

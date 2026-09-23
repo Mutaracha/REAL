@@ -12,6 +12,7 @@
 
 using json = nlohmann::json;
 using namespace miniant::Config;
+using namespace miniant::Text;
 
 namespace {
 

@@ -7,6 +7,7 @@
 #include <sstream>
 
 using namespace miniant::Windows;
+using namespace miniant::Text;
 
 namespace {
 

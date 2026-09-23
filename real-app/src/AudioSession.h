@@ -47,10 +47,10 @@ public:
     // restarted) or a default device that is not the one we are using anymore.
     tl::expected<void, Windows::WindowsError> Validate();
 
-    Windows::IMMDeviceEnumerator* GetEnumerator() const;
+    ::IMMDeviceEnumerator* GetEnumerator() const;
 
 private:
-    Windows::ComPtr<Windows::IMMDeviceEnumerator> m_enumerator;
+    Windows::ComPtr<::IMMDeviceEnumerator> m_enumerator;
     std::unique_ptr<Windows::DeviceNotificationClient> m_notification;
     std::vector<Windows::WasapiLatency::MinimumLatencyAudioClient> m_streams;
     std::vector<Windows::WasapiLatency::AudioStreamInfo> m_streamsInfo;

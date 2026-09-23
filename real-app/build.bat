@@ -40,6 +40,7 @@ if errorlevel 1 exit /b 1
 echo [build] Compiling sources...
 cl /nologo /O2 /MT /EHsc /std:c++17 /utf-8 /W3 ^
     /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DSPDLOG_WCHAR_FILENAMES ^
+    /D_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING ^
     /I"deps\expected\include" /I"deps\json" /I"deps\spdlog\include" ^
     /Fo:build\ /Fd:build\REAL.pdb /Fe:build\REAL.exe ^
     src\*.cpp src\Windows\*.cpp src\Http\*.cpp ^

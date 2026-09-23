@@ -597,7 +597,7 @@ void App::OpenLogFile() {
 void App::ShowAboutDialog() {
     const std::wstring text =
         std::wstring(AppInfo::NAME) + L" " + Text::ToWide(AppInfo::VERSION.ToString()) + L"\n" +
-        Text::ToWide(AppInfo::DESCRIPTION) + L"\n\n" +
+        std::wstring(AppInfo::DESCRIPTION) + L"\n\n" +
         L"While REAL is running, the Windows audio engine renders the default\n"
         L"playback device with the smallest buffer size supported by its driver.\n"
         L"The application can be closed to the system tray; use the tray menu or\n"

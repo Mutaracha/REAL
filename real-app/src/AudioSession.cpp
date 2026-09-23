@@ -20,32 +20,32 @@ namespace {
 const CLSID CLSID_MMDeviceEnumeratorLocal = __uuidof(MMDeviceEnumerator);
 const IID IID_IMMDeviceEnumeratorLocal = __uuidof(IMMDeviceEnumerator);
 
-EDataFlow ToDataFlow(Config::DataFlow flow) {
+EDataFlow ToDataFlow(miniant::Config::DataFlow flow) {
     switch (flow) {
-        case Config::DataFlow::Capture: return eCapture;
-        case Config::DataFlow::Both: return eRender;
+        case miniant::Config::DataFlow::Capture: return eCapture;
+        case miniant::Config::DataFlow::Both: return eRender;
         default: return eRender;
     }
 }
 
-ERole ToRole(Config::DeviceRole role) {
+ERole ToRole(miniant::Config::DeviceRole role) {
     switch (role) {
-        case Config::DeviceRole::Multimedia: return eMultimedia;
-        case Config::DeviceRole::Communications: return eCommunications;
+        case miniant::Config::DeviceRole::Multimedia: return eMultimedia;
+        case miniant::Config::DeviceRole::Communications: return eCommunications;
         default: return eConsole;
     }
 }
 
-PeriodSelection ToPeriodSelection(Config::PeriodSelection selection) {
+PeriodSelection ToPeriodSelection(miniant::Config::PeriodSelection selection) {
     switch (selection) {
-        case Config::PeriodSelection::Fundamental: return PeriodSelection::Fundamental;
-        case Config::PeriodSelection::Fixed: return PeriodSelection::Fixed;
+        case miniant::Config::PeriodSelection::Fundamental: return PeriodSelection::Fundamental;
+        case miniant::Config::PeriodSelection::Fixed: return PeriodSelection::Fixed;
         default: return PeriodSelection::Minimum;
     }
 }
 
-std::vector<EDataFlow> GetDataFlows(Config::DataFlow flow) {
-    if (flow == Config::DataFlow::Both) {
+std::vector<EDataFlow> GetDataFlows(miniant::Config::DataFlow flow) {
+    if (flow == miniant::Config::DataFlow::Both) {
         return { eRender, eCapture };
     }
 
@@ -151,7 +151,7 @@ IMMDeviceEnumerator* AudioSession::GetEnumerator() const {
     return m_enumerator.Get();
 }
 
-tl::expected<void, WindowsError> AudioSession::Apply(const Config::Settings& settings) {
+tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Settings& settings) {
     if (!m_enumerator) {
         return tl::make_unexpected(WindowsError("The audio session has not been initialised."));
     }
