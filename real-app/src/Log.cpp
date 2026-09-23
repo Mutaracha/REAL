@@ -14,9 +14,8 @@
 #include <memory>
 #include <system_error>
 
+using namespace miniant;
 using namespace miniant::Log;
-using namespace miniant::Text;
-using namespace miniant::Windows;
 
 namespace {
 
