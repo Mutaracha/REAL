@@ -40,43 +40,108 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          if (Test-Path ci/build.log) { Get-Content ci/build.log -Tail 300 }
+          if (Test-Path ci/build.log) { Get-Content ci/build.log -Tail 200 }
 
-      # Compiler diagnostics are published both as check annotations and as a
-      # file in the repository, so that the reason of a failure is visible even
-      # when the job log cannot be downloaded.
-      - name: Publish diagnostics
-        if: steps.build.outcome == 'failure'
+      # The runner has no audio endpoint, so the application is expected to log
+      # the failure and keep running. This checks that the executable starts,
+      # writes its log, answers a second instance and shuts down cleanly.
+      - name: Smoke test
+        id: smoke
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
         shell: pwsh
         run: |
-          $errors = Select-String -Path ci/build.log -Pattern 'error [A-Z]+[0-9]+' |
-            ForEach-Object { $_.Line.Trim() } | Select-Object -Unique -First 10
+          New-Item -ItemType Directory -Force -Path ci | Out-Null
+          $exe = (Resolve-Path "${{ env.BUILD_DIR }}/Release/REAL.exe").Path
+          $log = "ci/smoke.log"
+          "== first instance ==" | Out-File -Encoding utf8 $log
+          (Get-Item $exe).VersionInfo | Out-String | Out-File -Append -Encoding utf8 $log
+
+          $main = Start-Process -FilePath $exe -ArgumentList '--tray', '--no-config' -PassThru
+          Start-Sleep -Seconds 6
+          "main pid=$($main.Id) alive=$(-not $main.HasExited)" | Out-File -Append -Encoding utf8 $log
+          if ($main.HasExited) {
+            "the application exited immediately, code $($main.ExitCode)" | Out-File -Append -Encoding utf8 $log
+            exit 1
+          }
+
+          "== second instance (--exit) ==" | Out-File -Append -Encoding utf8 $log
+          $second = Start-Process -FilePath $exe -ArgumentList '--exit' -PassThru
+          if (-not $second.WaitForExit(20000)) {
+            $second.Kill()
+            "the second instance did not exit" | Out-File -Append -Encoding utf8 $log
+            $main.Kill()
+            exit 1
+          }
+          "second instance exit code $($second.ExitCode)" | Out-File -Append -Encoding utf8 $log
+
+          if (-not $main.WaitForExit(20000)) {
+            $main.Kill()
+            "the running instance did not shut down after --exit" | Out-File -Append -Encoding utf8 $log
+            exit 1
+          }
+          "main instance exit code $($main.ExitCode)" | Out-File -Append -Encoding utf8 $log
+
+          "== log file ==" | Out-File -Append -Encoding utf8 $log
+          if (-not (Test-Path "${{ env.BUILD_DIR }}/Release/REAL.log")) {
+            "REAL.log was not written next to the executable" | Out-File -Append -Encoding utf8 $log
+            exit 1
+          }
+          Get-Content "${{ env.BUILD_DIR }}/Release/REAL.log" | Out-File -Append -Encoding utf8 $log
+
+          if ($main.ExitCode -ne 0) {
+            "the application reported a failure, exit code $($main.ExitCode)" | Out-File -Append -Encoding utf8 $log
+            exit 1
+          }
+          "smoke test passed" | Out-File -Append -Encoding utf8 $log
+
+      - name: Show smoke test output
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path ci/smoke.log) { Get-Content ci/smoke.log }
+
+      # Compiler or runtime diagnostics are published both as check annotations
+      # and as files in the repository, so that the reason of a failure is
+      # visible even when the job log cannot be downloaded.
+      - name: Publish diagnostics
+        if: steps.build.outcome == 'failure' || steps.smoke.outcome == 'failure'
+        shell: pwsh
+        run: |
+          $errors = @()
+          if (Test-Path ci/build.log) {
+            $errors += Select-String -Path ci/build.log -Pattern 'error [A-Z]+[0-9]+' |
+              ForEach-Object { $_.Line.Trim() } | Select-Object -Unique -First 8
+          }
+          if (Test-Path ci/smoke.log) {
+            $errors += Get-Content ci/smoke.log | Select-Object -Last 12
+          }
           foreach ($line in $errors) { Write-Host "::error::$line" }
 
       - name: Commit diagnostics
-        if: steps.build.outcome == 'failure' && github.event_name == 'push'
+        if: (steps.build.outcome == 'failure' || steps.smoke.outcome == 'failure') && github.event_name == 'push'
         shell: pwsh
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f ci/build.log
+          Get-ChildItem ci -Filter *.log | ForEach-Object { git add -f $_.FullName }
           git diff --cached --quiet; if ($LASTEXITCODE -eq 0) { exit 0 }
           git commit -m "ci: build log [skip ci]"
           git push
 
       - name: Upload artifact
-        if: steps.build.outcome == 'success'
+        if: steps.build.outcome == 'success' && steps.smoke.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: REAL-x64
           path: ${{ env.BUILD_DIR }}/Release/REAL.exe
           if-no-files-found: error
 
-      - name: Fail when the build failed
-        if: steps.build.outcome == 'failure'
+      - name: Fail when a step failed
+        if: steps.build.outcome == 'failure' || steps.smoke.outcome == 'failure'
         shell: pwsh
         run: |
-          Write-Host "Build failed, see ci/build.log"
+          Write-Host "Build or smoke test failed, see ci/*.log"
           exit 1
 
   release:
