@@ -87,7 +87,8 @@ Commands for a running instance (forwarded to it, this process exits):
 `real.settings.json` is created next to `REAL.exe` on the first run. It is plain
 JSON (`//` and `/* */` comments are allowed) and is re-read when you use
 **Settings file…** in the tray menu or `--config`. Command-line options override
-the file. See [docs/CONFIG.md](docs/CONFIG.md) for the full reference and
+the file. A step-by-step guide in Russian is available in
+[docs/usage.ru.md](docs/usage.ru.md). See [docs/CONFIG.md](docs/CONFIG.md) for the full reference and
 [docs/real.settings.example.json](docs/real.settings.example.json) for an
 annotated example.
 
