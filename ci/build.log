@@ -17,11 +17,11 @@ MSBuild version 17.14.51+25f168cee for .NET Framework
   Diagnostics.cpp
   Filesystem.cpp
   MainWindow.cpp
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(148,30): error C3861: 'ToFrames': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(149,26): error C3861: 'ToFrames': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
   MinimumLatencyAudioClient.cpp
   TrayIcon.cpp
   WindowsError.cpp
   main.cpp
   Generating Code...
-cmake --build exit code: 1
+  real-app.vcxproj -> D:\a\REAL\REAL\build\Release\REAL.exe
+  Building Custom Rule D:/a/REAL/REAL/real-app/CMakeLists.txt
+cmake --build exit code: 0
