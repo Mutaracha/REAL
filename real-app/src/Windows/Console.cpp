@@ -40,8 +40,10 @@ bool Console::Attach() {
         return true;
     }
 
-    if (::AllocConsole() == FALSE) {
-        if (::AttachConsole(ATTACH_PARENT_PROCESS) == FALSE) {
+    // Share the console of the parent process when the application was started
+    // from one; only allocate a new console window when there is none.
+    if (::AttachConsole(ATTACH_PARENT_PROCESS) == FALSE) {
+        if (::AllocConsole() == FALSE) {
             return false;
         }
     }

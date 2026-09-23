@@ -391,6 +391,16 @@ void App::InitializeTray() {
     }
 
     m_window->EnableTray(true);
+
+    if (!m_window->IsTrayVisible()) {
+        // Without a tray icon a hidden window could not be brought back, so the
+        // window becomes the only way to control the application.
+        Log::Warn("The tray icon could not be created; the window stays visible.");
+        m_window->SetMinimizeToTray(false);
+        m_window->SetHideOnClose(false);
+        return;
+    }
+
     UpdateTrayMenuState();
     UpdateStatus();
 }
