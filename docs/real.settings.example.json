@@ -1,0 +1,117 @@
+// REAL — внешний файл настроек (пример с пояснениями).
+// Расположение: в том же каталоге, что REAL.exe (имя: real.settings.json).
+// Кодировка: UTF-8 (BOM допускается). Формат: JSON.
+//
+// Приоритет значений:  командная строка  >  <каталог exe>\real.settings.json
+//                      >  %LOCALAPPDATA%\REAL\settings.json  >  значения по умолчанию
+//
+// ВНИМАНИЕ: этот файл — документация. Шаблон, который приложение создаёт
+// автоматически при первом запуске, будет тем же JSON без комментариев.
+{
+  "configVersion": 1,
+
+  // ── Приложение и окно ────────────────────────────────────────────────────
+  "application": {
+    "startMinimizedToTray": false,   // стартовать свёрнутым в трей (замена флага --tray)
+    "minimizeToTray": true,          // «свернуть» прячет окно в трей, а не в панель задач
+    "closeButtonAction": "minimize", // minimize | exit  — что делает крестик
+    "showConsoleWindow": true,       // false — работаем без окна консоли
+    "singleInstance": true,          // второй запуск не создаёт второй аудиопоток
+    "startWithWindows": false,       // добавляет себя в HKCU\...\Run
+    "language": "ru"                 // ru | en (интерфейс/сообщения)
+  },
+
+  // ── Иконка в трее ────────────────────────────────────────────────────────
+  "tray": {
+    "enabled": true,
+    "showStatusInTooltip": true,     // подсказка вида «2.67 мс · Speakers (Realtek)»
+    "notifications": {
+      "onError": true,               // balloon при ошибке
+      "onDeviceChange": true,        // balloon при смене устройства по умолчанию
+      "onStateChange": false         // balloon при включении/выключении режима
+    },
+    "menu": {
+      "showStatus": true,
+      "toggleEnabled": true,
+      "reinitialize": true,          // ручной сброс — пункт 2 требований
+      "targetDevice": false,         // подменю выбора целевого устройства
+      "openSettings": true,
+      "openLog": true,
+      "checkForUpdates": false,      // показывать пункт только если updates.mode != "off"
+      "startWithWindows": true,
+      "about": true,
+      "exit": true
+    }
+  },
+
+  // ── Аудио (ядро утилиты) ─────────────────────────────────────────────────
+  "audio": {
+    "enabledOnStartup": true,
+
+    "dataFlow": "render",            // render | capture | both  (both = ещё и микрофоны)
+    "role": "console",               // console | multimedia | communications
+
+    "deviceSelection": "default",    // default | allActive | list
+    "deviceIds": [],                 // если deviceSelection = "list"
+    "deviceNameFilter": [],          // подстроки friendly name, напр. ["Speakers", "USB"]
+
+    "periodSelection": "min",        // min | fundamental | fixed
+    "requestedPeriodFrames": 0,      // для fixed: кратно fundamental и в [min, max]; 0 = «решай сам»
+    "allowPeriodSnap": true,         // принять период, уже залоченный другим приложением
+
+    "reinitOn": {
+      "defaultDeviceChanged": true,  // основное: смена устройства по умолчанию
+      "deviceStateChanged": true,    // устройство стало активным/неактивным
+      "deviceAdded": false,          // новое устройство (применять только если попало в цель)
+      "deviceRemoved": false,
+      "resumeFromSleep": true,       // Win11 Modern Standby пересоздаёт устройства
+      "sessionUnlock": true,
+      "audioServiceRestart": true    // перезапуск Audiosrv
+    },
+    "reinitDebounceMs": 1000,        // антидребезг: Windows шлёт пачку событий
+    "healthCheckSeconds": 30,        // периодическая проверка живости потока, 0 = выключить
+
+    "releaseStreamIfNoChangeNeeded": false, // не держать поток, если период уже минимален
+    "exitIfNoChangeNeeded": false,          // (для режима разового запуска) выйти, если нечего делать
+    "releaseOnExit": true
+  },
+
+  // ── Побочные эффекты низкой латентности ──────────────────────────────────
+  "performance": {
+    "processPriority": "normal",     // normal | belowNormal | idle
+    "disablePowerThrottling": true,  // Win11: PROCESS_POWER_THROTTLING_EXECUTION_SPEED
+                                     // (ослабляет эффект «занятого» ядра CPU)
+    "mmcssProAudioThread": false,    // только если появится свой поток рендера
+    "experimental": {
+      "restrictCpuSets": false       // по мотивам LowAudioLatency; требует прав, «на свой риск»
+    }
+  },
+
+  // ── Обновления ───────────────────────────────────────────────────────────
+  "updates": {
+    "mode": "off",                   // off | notify | check   (off — ни одного сетевого запроса)
+    "repository": "Mutaracha/REAL",  // если решите публиковать релизы своего форка
+    "assetName": "update",           // имя ассета в релизе GitHub
+    "allowPrerelease": false,
+    "timeoutSeconds": 15,
+    "checkOnStartup": false,
+    "showSupersededNotice": false    // проверка тега «superseded» апстрима
+  },
+
+  // ── Горячие клавиши (глобальные) ─────────────────────────────────────────
+  "hotkeys": {
+    "toggleEnabled": "Ctrl+Alt+L",
+    "reinitialize": "Ctrl+Alt+R",
+    "enabled": true
+  },
+
+  // ── Журнал ───────────────────────────────────────────────────────────────
+  "logging": {
+    "level": "info",                 // trace | debug | info | warn | error | off
+    "toConsole": true,
+    "toFile": true,                  // файловый лог критичен для диагностики на Windows 11
+    "filePath": "REAL.log",          // относительно каталога exe или абсолютный путь
+    "maxFileSizeMb": 1,
+    "maxFiles": 3
+  }
+}
