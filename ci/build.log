@@ -1,0 +1,214 @@
+MSBuild version 17.14.51+25f168cee for .NET Framework
+
+  Checking File Globs
+  1>Checking Build System
+  Building Custom Rule D:/a/REAL/REAL/real-app/CMakeLists.txt
+  App.cpp
+D:\a\REAL\REAL\real-app\src\AudioSession.h(50,14): error C2039: 'IMMDeviceEnumerator': is not a member of 'miniant::Windows' [D:\a\REAL\REAL\build\real-app.vcxproj]
+  (compiling source file '../real-app/src/App.cpp')
+      D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.h(15,11):
+      see declaration of 'miniant::Windows'
+  
+D:\a\REAL\REAL\real-app\src\AudioSession.h(53,30): error C2039: 'IMMDeviceEnumerator': is not a member of 'miniant::Windows' [D:\a\REAL\REAL\build\real-app.vcxproj]
+  (compiling source file '../real-app/src/App.cpp')
+      D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.h(15,11):
+      see declaration of 'miniant::Windows'
+  
+D:\a\REAL\REAL\real-app\src\App.cpp(600,15): error C2665: 'miniant::Text::ToWide': no overloaded function could convert all the argument types [D:\a\REAL\REAL\build\real-app.vcxproj]
+      D:\a\REAL\REAL\real-app\src\Text.h(10,14):
+      could be 'std::wstring miniant::Text::ToWide(const char *)'
+          D:\a\REAL\REAL\real-app\src\App.cpp(600,15):
+          'std::wstring miniant::Text::ToWide(const char *)': cannot convert argument 1 from 'const wchar_t *const ' to 'const char *'
+              D:\a\REAL\REAL\real-app\src\App.cpp(600,31):
+              Types pointed to are unrelated; conversion requires reinterpret_cast, C-style cast or parenthesized function-style cast
+      D:\a\REAL\REAL\real-app\src\Text.h(9,14):
+      or       'std::wstring miniant::Text::ToWide(const std::string &)'
+          D:\a\REAL\REAL\real-app\src\App.cpp(600,15):
+          'std::wstring miniant::Text::ToWide(const std::string &)': cannot convert argument 1 from 'const wchar_t *const ' to 'const std::string &'
+              D:\a\REAL\REAL\real-app\src\App.cpp(600,31):
+              Reason: cannot convert from 'const wchar_t *const ' to 'const std::string'
+              D:\a\REAL\REAL\real-app\src\App.cpp(600,31):
+              'std::basic_string<char,std::char_traits<char>,std::allocator<char>>::basic_string': no overloaded function could convert all the argument types
+                  C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(768,5):
+                  could be 'std::basic_string<char,std::char_traits<char>,std::allocator<char>>::basic_string(const _Elem *const )'
+          with
+          [
+              _Elem=char
+          ]
+                      D:\a\REAL\REAL\real-app\src\App.cpp(600,31):
+                      'std::basic_string<char,std::char_traits<char>,std::allocator<char>>::basic_string(const _Elem *const )': cannot convert argument 1 from 'const wchar_t *const ' to 'const _Elem *const '
+          with
+          [
+              _Elem=char
+          ]
+                          D:\a\REAL\REAL\real-app\src\App.cpp(600,31):
+                          Types pointed to are unrelated; conversion requires reinterpret_cast, C-style cast or parenthesized function-style cast
+                  C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(1340,5):
+                  or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>>::basic_string(std::initializer_list<_Elem>,const _Alloc &)'
+          with
+          [
+              _Elem=char,
+              _Alloc=std::allocator<char>
+          ]
+                      D:\a\REAL\REAL\real-app\src\App.cpp(600,31):
+                      'std::basic_string<char,std::char_traits<char>,std::allocator<char>>::basic_string(std::initializer_list<_Elem>,const _Alloc &)': cannot convert argument 1 from 'const wchar_t *const ' to 'std::initializer_list<_Elem>'
+          with
+          [
+              _Elem=char,
+              _Alloc=std::allocator<char>
+          ]
+          and
+          [
+              _Elem=char
+          ]
+                          D:\a\REAL\REAL\real-app\src\App.cpp(600,31):
+                          Conversion requires a second user-defined-conversion operator or constructor
+                  C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(1157,5):
+                  or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>>::basic_string(const _Ty &,const unsigned __int64,const unsigned __int64,const _Alloc &)'
+          with
+          [
+              _Alloc=std::allocator<char>
+          ]
+                  C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(798,5):
+                  or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>>::basic_string(_Iter,_Iter,const _Alloc &)'
+          with
+          [
+              _Alloc=std::allocator<char>
+          ]
+                  C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(792,5):
+                  or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>>::basic_string(const unsigned __int64,const _Elem,const _Alloc &)'
+          with
+          [
+              _Elem=char,
+              _Alloc=std::allocator<char>
+          ]
+                  C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(775,5):
+                  or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>>::basic_string(const _Elem *const ,const _Alloc &)'
+          with
+          [
+              _Elem=char,
+              _Alloc=std::allocator<char>
+          ]
+                  C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(762,5):
+                  or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>>::basic_string(const _Elem *const ,const unsigned __int64,const _Alloc &)'
+          with
+          [
+              _Elem=char,
+              _Alloc=std::allocator<char>
+          ]
+                  D:\a\REAL\REAL\real-app\src\App.cpp(600,31):
+                  while trying to match the argument list '(const wchar_t *const )'
+      D:\a\REAL\REAL\real-app\src\App.cpp(600,15):
+      while trying to match the argument list '(const wchar_t *const )'
+  
+D:\a\REAL\REAL\real-app\src\App.cpp(599,96): error C2088: built-in operator '+' cannot be applied to an operand of type 'std::basic_string<wchar_t,std::char_traits<wchar_t>,std::allocator<wchar_t>>' [D:\a\REAL\REAL\build\real-app.vcxproj]
+  AudioSession.cpp
+D:\a\REAL\REAL\real-app\src\AudioSession.h(50,14): error C2039: 'IMMDeviceEnumerator': is not a member of 'miniant::Windows' [D:\a\REAL\REAL\build\real-app.vcxproj]
+  (compiling source file '../real-app/src/AudioSession.cpp')
+      D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.h(15,11):
+      see declaration of 'miniant::Windows'
+  
+D:\a\REAL\REAL\real-app\src\AudioSession.h(53,30): error C2039: 'IMMDeviceEnumerator': is not a member of 'miniant::Windows' [D:\a\REAL\REAL\build\real-app.vcxproj]
+  (compiling source file '../real-app/src/AudioSession.cpp')
+      D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.h(15,11):
+      see declaration of 'miniant::Windows'
+  
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(23,22): error C2653: 'Config': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(23,30): error C2065: 'DataFlow': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(23,39): error C2146: syntax error: missing ')' before identifier 'flow' [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(23,45): error C2143: syntax error: missing ';' before '{' [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(23,45): error C2447: '{': missing function header (old-style formal list?) [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(31,14): error C2653: 'Config': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(31,22): error C2065: 'DeviceRole': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(31,33): error C2146: syntax error: missing ')' before identifier 'role' [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(31,39): error C2143: syntax error: missing ';' before '{' [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(31,39): error C2447: '{': missing function header (old-style formal list?) [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(39,35): error C2653: 'Config': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(41,14): error C2653: 'Config': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(42,14): error C2653: 'Config': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(47,37): error C2653: 'Config': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(47,45): error C2065: 'DataFlow': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(47,54): error C2146: syntax error: missing ')' before identifier 'flow' [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(47,60): error C2143: syntax error: missing ';' before '{' [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(47,60): error C2447: '{': missing function header (old-style formal list?) [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(162,42): error C3861: 'GetDataFlows': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(168,13): error C3861: 'ToRole': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(169,13): error C2664: 'miniant::Windows::WasapiLatency::PeriodSelection `anonymous-namespace'::ToPeriodSelection(miniant::Windows::WasapiLatency::PeriodSelection)': cannot convert argument 1 from 'const miniant::Config::PeriodSelection' to 'miniant::Windows::WasapiLatency::PeriodSelection' [D:\a\REAL\REAL\build\real-app.vcxproj]
+      D:\a\REAL\REAL\real-app\src\AudioSession.cpp(169,45):
+      Conversion to enumeration type requires an explicit cast (static_cast, C-style cast or parenthesized function-style cast)
+      D:\a\REAL\REAL\real-app\src\AudioSession.cpp(39,17):
+      see declaration of '`anonymous-namespace'::ToPeriodSelection'
+      D:\a\REAL\REAL\real-app\src\AudioSession.cpp(169,13):
+      while trying to match the argument list '(const miniant::Config::PeriodSelection)'
+  
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(173,14): error C3536: 'stream': cannot be used before it is initialized [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(180,37): error C2530: 'info': references must be initialized [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(198,39): error C2100: you cannot dereference an operand of type '<error type>' [D:\a\REAL\REAL\build\real-app.vcxproj]
+  AutoUpdater.cpp
+  CommandLine.cpp
+  HttpClient.cpp
+  Log.cpp
+D:\a\REAL\REAL\real-app\deps\spdlog\include\spdlog\details\os.h(376,31): warning C4996: 'std::codecvt_utf8<wchar_t,1114111,(std::codecvt_mode)0>': warning STL4017: std::wbuffer_convert, std::wstring_convert, and the <codecvt> header (containing std::codecvt_mode, std::codecvt_utf8, std::codecvt_utf16, and std::codecvt_utf8_utf16) are deprecated in C++17. (The std::codecvt class template is NOT deprecated.) The C++ Standard doesn't provide equivalent non-deprecated functionality; consider using MultiByteToWideChar() and WideCharToMultiByte() from <Windows.h> instead. You can define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING or _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS to suppress this warning. [D:\a\REAL\REAL\build\real-app.vcxproj]
+  (compiling source file '../real-app/src/Log.cpp')
+      C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\codecvt(34,39):
+      see declaration of 'std::codecvt_utf8'
+  
+D:\a\REAL\REAL\real-app\deps\spdlog\include\spdlog\details\os.h(376,10): warning C4996: 'std::wstring_convert<std::codecvt_utf8<wchar_t,1114111,(std::codecvt_mode)0>,wchar_t,std::allocator<wchar_t>,std::allocator<char>>': warning STL4017: std::wbuffer_convert, std::wstring_convert, and the <codecvt> header (containing std::codecvt_mode, std::codecvt_utf8, std::codecvt_utf16, and std::codecvt_utf8_utf16) are deprecated in C++17. (The std::codecvt class template is NOT deprecated.) The C++ Standard doesn't provide equivalent non-deprecated functionality; consider using MultiByteToWideChar() and WideCharToMultiByte() from <Windows.h> instead. You can define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING or _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS to suppress this warning. [D:\a\REAL\REAL\build\real-app.vcxproj]
+  (compiling source file '../real-app/src/Log.cpp')
+      C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xlocbuf(303,39):
+      see declaration of 'std::wstring_convert'
+  
+D:\a\REAL\REAL\real-app\deps\spdlog\include\spdlog\details\os.h(376,63): warning C4996: 'std::wstring_convert<std::codecvt_utf8<wchar_t,1114111,(std::codecvt_mode)0>,wchar_t,std::allocator<wchar_t>,std::allocator<char>>::wstring_convert': warning STL4017: std::wbuffer_convert, std::wstring_convert, and the <codecvt> header (containing std::codecvt_mode, std::codecvt_utf8, std::codecvt_utf16, and std::codecvt_utf8_utf16) are deprecated in C++17. (The std::codecvt class template is NOT deprecated.) The C++ Standard doesn't provide equivalent non-deprecated functionality; consider using MultiByteToWideChar() and WideCharToMultiByte() from <Windows.h> instead. You can define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING or _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS to suppress this warning. [D:\a\REAL\REAL\build\real-app.vcxproj]
+  (compiling source file '../real-app/src/Log.cpp')
+  
+D:\a\REAL\REAL\real-app\deps\spdlog\include\spdlog\details\os.h(377,14): warning C4996: 'std::wstring_convert<std::codecvt_utf8<wchar_t,1114111,(std::codecvt_mode)0>,wchar_t,std::allocator<wchar_t>,std::allocator<char>>::to_bytes': warning STL4017: std::wbuffer_convert, std::wstring_convert, and the <codecvt> header (containing std::codecvt_mode, std::codecvt_utf8, std::codecvt_utf16, and std::codecvt_utf8_utf16) are deprecated in C++17. (The std::codecvt class template is NOT deprecated.) The C++ Standard doesn't provide equivalent non-deprecated functionality; consider using MultiByteToWideChar() and WideCharToMultiByte() from <Windows.h> instead. You can define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING or _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS to suppress this warning. [D:\a\REAL\REAL\build\real-app.vcxproj]
+  (compiling source file '../real-app/src/Log.cpp')
+  
+D:\a\REAL\REAL\real-app\src\Log.cpp(44,31): error C2653: 'Text': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Log.cpp(44,50): error C2653: 'Text': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Log.cpp(44,56): error C3861: 'Trim': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Log.cpp(44,37): error C3861: 'ToLowerAscii': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Log.cpp(70,25): error C2653: 'Text': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Log.cpp(70,31): error C3861: 'ToWide': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Log.cpp(80,12): error C2653: 'Windows': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Log.cpp(80,42): error C2653: 'Windows': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Log.cpp(80,63): error C3861: 'GetExecutableDirectory': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Log.cpp(80,33): error C3861: 'JoinPath': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+  Settings.cpp
+D:\a\REAL\REAL\real-app\src\Settings.cpp(70,31): error C2653: 'Text': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+      D:\a\REAL\REAL\real-app\src\Settings.cpp(70,31):
+      the template instantiation context (the oldest one first) is
+          D:\a\REAL\REAL\real-app\src\Settings.cpp(271,9):
+          see reference to function template instantiation 'void `anonymous-namespace'::ReadEnum<miniant::Config::CloseAction,2>(const json &,const char *,const std::pair<const char *,miniant::Config::CloseAction> (&)[2],T &,std::vector<std::string,std::allocator<std::string>> &,const std::string &)' being compiled
+          with
+          [
+              T=miniant::Config::CloseAction
+          ]
+  
+D:\a\REAL\REAL\real-app\src\Settings.cpp(70,50): error C2653: 'Text': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Settings.cpp(70,56): error C3861: 'Trim': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Settings.cpp(70,37): error C3861: 'ToLowerAscii': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+  Text.cpp
+  Version.cpp
+  Console.cpp
+  DeviceNotification.cpp
+  Filesystem.cpp
+  MainWindow.cpp
+  MinimumLatencyAudioClient.cpp
+  TrayIcon.cpp
+  WindowsError.cpp
+D:\a\REAL\REAL\real-app\src\Windows\WindowsError.cpp(75,12): error C2653: 'Text': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\WindowsError.cpp(75,18): error C3861: 'ToUtf8': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+  main.cpp
+D:\a\REAL\REAL\real-app\src\AudioSession.h(50,14): error C2039: 'IMMDeviceEnumerator': is not a member of 'miniant::Windows' [D:\a\REAL\REAL\build\real-app.vcxproj]
+  (compiling source file '../real-app/src/main.cpp')
+      D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.h(15,11):
+      see declaration of 'miniant::Windows'
+  
+D:\a\REAL\REAL\real-app\src\AudioSession.h(53,30): error C2039: 'IMMDeviceEnumerator': is not a member of 'miniant::Windows' [D:\a\REAL\REAL\build\real-app.vcxproj]
+  (compiling source file '../real-app/src/main.cpp')
+      D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.h(15,11):
+      see declaration of 'miniant::Windows'
+  
+  Generating Code...
+cmake --build exit code: 1
