@@ -1,4 +1,0 @@
-// Embeds app.manifest into the executable.
-// Kept as ASCII-only on purpose: the resource compiler of every Windows SDK
-// reads this file without a code page guess.
-1 24 "app.manifest"

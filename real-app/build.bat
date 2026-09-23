@@ -34,9 +34,6 @@ echo [build] Compiling resources...
 rc /nologo /fo build\real-app.res res\real-app.rc
 if errorlevel 1 exit /b 1
 
-rc /nologo /fo build\manifest.res res\manifest.rc
-if errorlevel 1 exit /b 1
-
 echo [build] Compiling sources...
 cl /nologo /O2 /MT /EHsc /std:c++17 /utf-8 /W3 ^
     /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DSPDLOG_WCHAR_FILENAMES ^
@@ -45,7 +42,8 @@ cl /nologo /O2 /MT /EHsc /std:c++17 /utf-8 /W3 ^
     /Fo:build\ /Fd:build\REAL.pdb /Fe:build\REAL.exe ^
     src\*.cpp src\Windows\*.cpp src\Http\*.cpp ^
     /link /SUBSYSTEM:WINDOWS /NOLOGO ^
-    build\real-app.res build\manifest.res ^
+    /MANIFEST:EMBED /MANIFESTINPUT:res\app.manifest ^
+    build\real-app.res ^
     winhttp.lib ole32.lib oleaut32.lib uuid.lib shell32.lib advapi32.lib user32.lib gdi32.lib
 
 if errorlevel 1 (
