@@ -64,7 +64,10 @@ target_link_libraries(real-app PRIVATE
 # (CVTRES: duplicate resource type:MANIFEST).
 target_link_options(real-app PRIVATE
     "/MANIFEST:EMBED"
-    "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/res/app.manifest")
+    "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/res/app.manifest"
+    # A map file makes it possible to turn a crash address from a user report
+    # into a function name (see .github/workflows/build.yml).
+    "/MAP:${CMAKE_CURRENT_BINARY_DIR}/REAL.map")
 
 set_target_properties(real-app PROPERTIES OUTPUT_NAME "REAL")
 

@@ -159,6 +159,31 @@ jobs:
               Get-Content $trace | Out-File -Append -Encoding utf8 $log
             }
 
+            # Turn the fault offset from the Windows event log into a function
+            # name with the help of the linker map file.
+            $crashOffset = $null
+            try {
+              $event = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-5) } -ErrorAction Stop |
+                Where-Object { $_.Message -like '*REAL.exe*' -and $_.Message -like '*Fault offset*' } | Select-Object -First 1
+              if ($event) {
+                if ($event.Message -match 'Fault offset: 0x([0-9a-fA-F]+)') { $crashOffset = $matches[1] }
+              }
+            } catch {}
+
+            $map = "${{ env.BUILD_DIR }}/REAL.map"
+            if ($crashOffset -and (Test-Path $map)) {
+              Add-Log "== symbol lookup for the fault offset 0x$crashOffset =="
+              $target = 0x140000000 + [Convert]::ToInt64($crashOffset, 16)
+              $best = $null
+              foreach ($line in Get-Content $map) {
+                if ($line -match '^\s+[0-9a-f]{4}:[0-9a-f]{8}\s+(\S+)\s+([0-9a-f]{16})') {
+                  $address = [Convert]::ToInt64($matches[2], 16)
+                  if ($address -le $target) { $best = "$($matches[1]) at 0x$($matches[2])" } else { break }
+                }
+              }
+              Add-Log "the crash is inside: $best"
+            }
+
             Add-Log "== crash information =="
             try {
               Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-5) } -ErrorAction Stop |
