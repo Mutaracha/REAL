@@ -65,6 +65,10 @@ struct DeviceReport {
 
 std::string GetWindowsVersion();
 
+// TEMPORARY: appends a step to a trace file next to the executable. Used to
+// locate a crash in the diagnostics code on a machine without a debugger.
+void TraceStep(const char* step);
+
 // Text report about the system, the audio endpoints and the current settings.
 // Written to a file so that a user can send one file instead of screenshots.
 std::wstring BuildReport(const Config::Settings& settings, const std::wstring& settingsPath);

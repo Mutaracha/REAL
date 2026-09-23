@@ -153,6 +153,12 @@ jobs:
               Get-Content $workLog | Add-Log
             }
 
+            $trace = Join-Path $work "REAL-trace.txt"
+            if (Test-Path $trace) {
+              Add-Log "== trace =="
+              Get-Content $trace | Add-Log
+            }
+
             Add-Log "== crash information =="
             try {
               Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-5) } -ErrorAction Stop |

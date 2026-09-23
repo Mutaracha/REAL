@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdio>
 #include <ctime>
 
 using namespace miniant::Windows;
@@ -201,6 +202,19 @@ std::string Periods(const EndpointInfo& info) {
 
 }
 
+void miniant::Windows::Diagnostics::TraceStep(const char* step) {
+    const std::wstring path = Filesystem::JoinPath(Filesystem::GetExecutableDirectory(), L"REAL-trace.txt");
+
+    FILE* file = nullptr;
+    if (::_wfopen_s(&file, path.c_str(), L"ab") != 0 || file == nullptr) {
+        return;
+    }
+
+    std::fputs(step, file);
+    std::fputc('\n', file);
+    std::fclose(file);
+}
+
 std::string miniant::Windows::Diagnostics::GetWindowsVersion() {
     // RtlGetVersion reports the real version, unlike GetVersionEx which lies
     // unless the executable is manifested for the newest Windows.
@@ -312,9 +326,11 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
     text += fmt::format("Config:     {}\n", Config::Describe(settings));
     text += "\n";
 
+    TraceStep("report: header ready");
     Log::Info("Diagnostics: location and configuration collected.");
     Log::Flush();
 
+    TraceStep("report: before CoInitializeEx");
     HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool comInitialized = SUCCEEDED(hr);
     if (hr == RPC_E_CHANGED_MODE) {
@@ -323,6 +339,8 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
     }
 
     ComPtr<IMMDeviceEnumerator> enumerator;
+    TraceStep("report: after CoInitializeEx");
+
     if (SUCCEEDED(hr)) {
         hr = ::CoCreateInstance(
             __uuidof(MMDeviceEnumerator),
@@ -332,6 +350,7 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
             reinterpret_cast<void**>(enumerator.GetAddressOf()));
     }
 
+    TraceStep("report: after CoCreateInstance");
     Log::Info("Diagnostics: the device enumerator is {}.", enumerator ? "ready" : "not available");
     Log::Flush();
 
@@ -345,7 +364,9 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
         for (EDataFlow flow : flows) {
             text += fmt::format("--- {} devices ---\n\n", FlowName(flow));
 
+            TraceStep("report: before EnumerateEndpoints");
             const std::vector<EndpointInfo> endpoints = EnumerateEndpoints(flow, *enumerator.Get());
+            TraceStep("report: after EnumerateEndpoints");
             Log::Info("Diagnostics: {} endpoints for flow {}.", endpoints.size(), FlowName(flow));
             Log::Flush();
 
@@ -353,6 +374,8 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
                 text += "No active devices.\n\n";
                 continue;
             }
+
+            TraceStep("report: before printing an endpoint");
 
             for (const EndpointInfo& info : endpoints) {
                 text += fmt::format(
@@ -411,6 +434,7 @@ std::wstring miniant::Windows::Diagnostics::BuildReport(
         ::CoUninitialize();
     }
 
+    TraceStep("report: text built");
     Log::Info("Diagnostics: the report text has been built.");
     Log::Flush();
 
