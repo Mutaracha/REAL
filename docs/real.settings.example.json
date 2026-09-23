@@ -1,97 +1,144 @@
-// REAL — внешний файл настроек (пример со всеми ключами и пояснениями).
-//
-// Расположение: рядом с REAL.exe, имя файла — real.settings.json
-// Кодировка: UTF-8 (BOM допускается). Комментарии // и /* */ поддерживаются.
+// REAL — внешний файл настроек. Создаётся автоматически рядом с REAL.exe и
+// одновременно служит справкой: у каждого параметра есть комментарий.
 //
 // Приоритет: командная строка > этот файл > встроенные значения по умолчанию.
-// Полный справочник: docs/CONFIG.md
+// Справка по ключам командной строки: REAL.exe --help
+// Разбор всех устройств и периодов:  REAL.exe --diagnose
+// Полная справочная документация:    docs/CONFIG.md
+//
 {
+  // Версия формата настроек, служебное поле. Текущая версия: 1.
   "configVersion": 1,
 
-  // ── Приложение и окно ────────────────────────────────────────────────────
+  // Окно, запуск и автозапуск приложения.
   "application": {
-    "startMinimizedToTray": false,   // стартовать свёрнутым в трей (аналог --tray)
-    "minimizeToTray": true,          // «свернуть» прячет окно в трей
-    "closeButtonAction": "minimize", // minimize | exit — поведение крестика
-    "showConsole": false,            // true — дополнительно окно консоли с журналом
-    "singleInstance": true,          // одна копия; REAL.exe --reinit передаст команду ей
-    "startWithWindows": false        // автозапуск (HKCU\...\Run)
+    // true — стартовать сразу свёрнутым в трей (то же, что ключ запуска --tray).
+    "startMinimizedToTray": false,
+    // true — кнопка «Свернуть» прячет окно в трей, а не в панель задач.
+    "minimizeToTray": true,
+    // Что делает крестик окна: "minimize" (в трей) или "exit" (завершить программу).
+    "closeButtonAction": "minimize",
+    // true — дополнительно открыть окно консоли с журналом (то же, что --console).
+    "showConsole": false,
+    // true — одна копия: повторный запуск передаёт команду работающей (--reinit, --exit и т.д.).
+    "singleInstance": true,
+    // true — автозапуск при входе в систему (запись REAL в HKCU\...\Run).
+    "startWithWindows": false
   },
 
-  // ── Значок в трее ────────────────────────────────────────────────────────
+  // Значок в системном трее.
   "tray": {
+    // true — показывать значок в трее (левый клик — окно, правый — меню).
     "enabled": true,
-    "showStatusInTooltip": true,     // подсказка «REAL - 2.67 ms - Speakers (Realtek)»
+    // true — показывать текущий размер буфера в подсказке значка.
+    "showStatusInTooltip": true,
+    // Всплывающие уведомления.
     "notifications": {
-      "onError": true,               // уведомление об ошибке
-      "onDeviceChange": true,        // уведомление о смене устройства
-      "onStateChange": false         // уведомление о вкл/выкл
+      // true — уведомлять об ошибках включения низкой задержки.
+      "onError": true,
+      // true — уведомлять о смене аудиоустройства.
+      "onDeviceChange": true,
+      // true — уведомлять о включении/выключении режима.
+      "onStateChange": false
     },
+    // Состав меню значка (false — пункт скрыт).
     "menu": {
-      "showStatus": true,            // строка со статусом в меню
-      "toggleEnabled": true,         // пункт «включено»
-      "reinitialize": true,          // ручная переинициализация
-      "openSettings": true,          // открыть этот файл
-      "openLog": true,               // открыть журнал
-      "checkForUpdates": true,       // виден только если updates.mode != "off"
-      "startWithWindows": true,      // переключатель автозапуска
+      // Строка с текущим статусом первой строкой меню.
+      "showStatus": true,
+      // Пункт «Latency reduction enabled» (включить/выключить режим).
+      "toggleEnabled": true,
+      // Пункт «Reinitialize now» (переинициализация без перезапуска).
+      "reinitialize": true,
+      // Пункт «Settings file...» — открыть этот файл настроек.
+      "openSettings": true,
+      // Пункт «Open log» — открыть журнал.
+      "openLog": true,
+      // Пункт-переключатель автозапуска.
+      "startWithWindows": true,
+      // Пункт «About REAL».
       "about": true,
+      // Пункт «Exit» — завершить программу.
       "exit": true
     }
   },
 
-  // ── Аудио (ядро утилиты) ─────────────────────────────────────────────────
+  // Параметры работы с аудиодвижком.
   "audio": {
+    // true — включать снижение задержки сразу при запуске.
     "enabledOnStartup": true,
-
-    "dataFlow": "render",            // render | capture | both
-    "role": "console",               // console | multimedia | communications
-
-    "periodSelection": "min",        // min | fundamental | fixed
-    "requestedPeriodFrames": 0,      // для "fixed": период в кадрах (0 = решает приложение)
-    "allowPeriodSnap": true,         // принять период, уже зафиксированный другим приложением
-    "releaseOnExit": true,           // снять поток при выходе
-
-    // Когда переинициализировать потоки автоматически
+    // Какие устройства обрабатывать: "render" (воспроизведение), "capture" (запись), "both".
+    "dataFlow": "render",
+    // Роль устройства по умолчанию: "console", "multimedia", "communications".
+    "role": "console",
+    // Какой буфер запрашивать: "min" (минимальный), "fundamental" (базовый), "fixed" (см. ниже).
+    "periodSelection": "min",
+    // Размер буфера в кадрах для periodSelection = "fixed" (0 — значение по умолчанию).
+    "requestedPeriodFrames": 0,
+    // true — если буфер уже зафиксирован другим приложением, принять его, а не сообщать об ошибке.
+    "allowPeriodSnap": true,
+    // true — освобождать аудиопоток при выходе (движок сам вернётся к 10 мс).
+    "releaseOnExit": true,
+    // Когда переинициализировать потоки автоматически.
     "reinit": {
-      "defaultDeviceChanged": true,  // основное: смена устройства по умолчанию
-      "deviceStateChanged": true,    // устройство стало активным/неактивным
-      "deviceAdded": false,          // новое устройство
-      "deviceRemoved": false,        // устройство удалено
-      "resumeFromSleep": true,       // выход из сна / Modern Standby
-      "sessionUnlock": true,         // разблокировка сеанса
-      "debounceMs": 1000             // антидребезг (Windows шлёт пачку событий)
+      // Сменилось устройство по умолчанию (основной случай).
+      "defaultDeviceChanged": true,
+      // Устройство стало активным или неактивным (выключение/включение наушников).
+      "deviceStateChanged": true,
+      // Подключено новое устройство.
+      "deviceAdded": false,
+      // Устройство удалено.
+      "deviceRemoved": false,
+      // Выход из сна / Modern Standby.
+      "resumeFromSleep": true,
+      // Разблокировка сеанса (Win+L).
+      "sessionUnlock": true,
+      // Пауза перед переинициализацией: Windows присылает пачку событий подряд (мс).
+      "debounceMs": 1000
     }
   },
 
-  // ── Побочные эффекты низкой задержки ─────────────────────────────────────
+  // Побочные эффекты низкой задержки.
   "performance": {
-    "processPriority": "normal",     // normal | belowNormal | idle
-    "disablePowerThrottling": true   // Windows 11: снять троттлинг, чтобы не «занимать» ядро CPU
+    // Приоритет процесса: "normal", "belowNormal" или "idle".
+    "processPriority": "normal",
+    // true — снять троттлинг скорости исполнения (Windows 11), чтобы аудиопоток не «занимал» ядро CPU.
+    "disablePowerThrottling": true
   },
 
-  // ── Обновления ───────────────────────────────────────────────────────────
+  // Проверка обновлений. По умолчанию полностью выключена.
   "updates": {
-    "mode": "off",                   // off | manual   (off — ни одного сетевого запроса)
-    "repository": "Mutaracha/REAL",  // откуда смотреть релизы
-    "timeoutSeconds": 15,
-    "checkOnStartup": false          // проверять при запуске (только при mode = "manual")
+    // "off" — ни одного сетевого запроса; "manual" — проверка только при запуске, если включён checkOnStartup.
+    "mode": "off",
+    // Репозиторий GitHub, из которого берутся релизы (owner/name).
+    "repository": "Mutaracha/REAL",
+    // true — один раз проверить обновления при запуске (только при mode = "manual").
+    "checkOnStartup": false
   },
 
-  // ── Глобальные горячие клавиши ───────────────────────────────────────────
+  // Глобальные горячие клавиши.
   "hotkeys": {
+    // true — регистрировать горячие клавиши.
     "enabled": true,
-    "toggleEnabled": "Ctrl+Alt+L",   // вкл/выкл снижение задержки
-    "reinitialize": "Ctrl+Alt+R"     // переинициализация
+    // Включить/выключить режим. Клавиши: Ctrl, Alt, Shift, Win, A-Z, 0-9, F1-F24.
+    "toggleEnabled": "Ctrl+Alt+L",
+    // Переинициализировать аудиопотоки.
+    "reinitialize": "Ctrl+Alt+R"
   },
 
-  // ── Журнал ───────────────────────────────────────────────────────────────
+  // Журнал работы программы.
   "logging": {
-    "level": "info",                 // trace | debug | info | warn | error | off
+    // Подробность: "trace", "debug", "info", "warn", "error", "off".
+    "level": "info",
+    // true — дублировать журнал в консоль (нужен showConsole или ключ --console).
     "toConsole": false,
+    // true — писать файл журнала.
     "toFile": true,
-    "filePath": "REAL.log",          // относительно каталога exe или абсолютный путь
+    // Путь к журналу: относительно каталога REAL.exe или абсолютный.
+    "filePath": "REAL.log",
+    // Размер файла журнала до ротации (МБ).
     "maxFileSizeMb": 1,
+    // Сколько файлов журнала хранить.
     "maxFiles": 3
   }
 }
+
