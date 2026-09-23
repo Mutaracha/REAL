@@ -2,13 +2,16 @@ name: build
 
 on:
   push:
-    branches:
-      - master
-      - 'arena/**'
-    tags:
-      - 'v*'
+    branches: ["**"]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BUILD_DIR: build
 
 jobs:
   windows:
@@ -20,42 +23,86 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure
-        run: cmake -S real-app -B build -A x64
+        run: cmake -S real-app -B ${{ env.BUILD_DIR }} -A x64
 
       - name: Build
-        run: cmake --build build --config Release --parallel
-
-      - name: Show output
-        run: Get-ChildItem -Recurse build -Include *.exe,*.pdb | Select-Object FullName
+        id: build
+        continue-on-error: true
         shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ci | Out-Null
+          cmake --build ${{ env.BUILD_DIR }} --config Release --parallel 2>&1 | Tee-Object -FilePath ci/build.log
+          $code = $LASTEXITCODE
+          "cmake --build exit code: $code" | Out-File -Append -Encoding utf8 ci/build.log
+          exit $code
+
+      - name: Show compiler output
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path ci/build.log) { Get-Content ci/build.log -Tail 300 }
+
+      # Compiler diagnostics are published both as check annotations and as a
+      # file in the repository, so that the reason of a failure is visible even
+      # when the job log cannot be downloaded.
+      - name: Publish diagnostics
+        if: steps.build.outcome == 'failure'
+        shell: pwsh
+        run: |
+          $errors = Select-String -Path ci/build.log -Pattern 'error [A-Z]+[0-9]+' |
+            ForEach-Object { $_.Line.Trim() } | Select-Object -Unique -First 10
+          foreach ($line in $errors) { Write-Host "::error::$line" }
+
+      - name: Commit diagnostics
+        if: steps.build.outcome == 'failure' && github.event_name == 'push'
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f ci/build.log
+          git diff --cached --quiet; if ($LASTEXITCODE -eq 0) { exit 0 }
+          git commit -m "ci: build log [skip ci]"
+          git push
 
       - name: Upload artifact
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: REAL-x64
-          path: build/Release/REAL.exe
+          path: ${{ env.BUILD_DIR }}/Release/REAL.exe
           if-no-files-found: error
+
+      - name: Fail when the build failed
+        if: steps.build.outcome == 'failure'
+        shell: pwsh
+        run: |
+          Write-Host "Build failed, see ci/build.log"
+          exit 1
 
   release:
     name: Attach the executable to the release
     if: startsWith(github.ref, 'refs/tags/v')
     needs: windows
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    runs-on: windows-2022
 
     steps:
-      - name: Download the artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: REAL-x64
-          path: artifacts
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Create or update the release
+      - name: Configure
+        run: cmake -S real-app -B ${{ env.BUILD_DIR }} -A x64
+
+      - name: Build
+        run: cmake --build ${{ env.BUILD_DIR }} --config Release --parallel
+
+      - name: Create release
+        shell: pwsh
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            && gh release upload "$GITHUB_REF_NAME" artifacts/REAL.exe --repo "$GITHUB_REPOSITORY" --clobber \
-            || gh release create "$GITHUB_REF_NAME" artifacts/REAL.exe --repo "$GITHUB_REPOSITORY" \
-                 --title "REAL $GITHUB_REF_NAME" --generate-notes
+          $tag = "${{ github.ref_name }}"
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "REAL $tag" --generate-notes
+          }
+          gh release upload $tag "${{ env.BUILD_DIR }}/Release/REAL.exe#REAL.exe" --clobber
