@@ -6,29 +6,29 @@ ProductVersion   FileVersion      FileName
                                   D:\a\REAL\REAL\build\Release\REAL.exe
 
 
-main pid=6368 alive=True
+main pid=3820 alive=True
 == second instance (--exit) ==
 second instance exit code 0
 main instance exit code 0
 == log file ==
-[2026-09-23 21:07:31.900] [info] REAL v0.3.0 - REduce Audio Latency, mini)(ant 2018-2019, fork maintained by Mutaracha
-[2026-09-23 21:07:31.900] [info] Project: https://github.com/Mutaracha/REAL
-[2026-09-23 21:07:31.900] [info] Upstream: https://github.com/miniant-git/REAL
-[2026-09-23 21:07:31.900] [info] Settings: D:\a\REAL\REAL\build\Release\real.settings.json (tray=on, minimizeToTray=on, startMinimized=on, closeButton=minimize, dataFlow=render, role=console, period=min, updates=off, priority=normal)
-[2026-09-23 21:07:31.902] [info] Power throttling (execution speed) disabled for this process.
-[2026-09-23 21:07:31.967] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
-[2026-09-23 21:07:31.967] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
-[2026-09-23 21:07:31.967] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
-[2026-09-23 21:07:31.967] [info] Another attempt to enable the low latency mode will be made in 2000 ms.
-[2026-09-23 21:07:31.973] [info] Hotkey 'Ctrl+Alt+L' enables/disables the latency reduction.
-[2026-09-23 21:07:31.973] [info] Hotkey 'Ctrl+Alt+R' reinitialises the audio streams.
-[2026-09-23 21:07:33.969] [info] Retrying to enable the low latency mode...
-[2026-09-23 21:07:33.969] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
-[2026-09-23 21:07:33.969] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
-[2026-09-23 21:07:33.969] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
-[2026-09-23 21:07:33.988] [info] Another attempt to enable the low latency mode will be made in 4000 ms.
-[2026-09-23 21:07:37.934] [info] Exiting...
-[2026-09-23 21:07:37.936] [info] REAL stopped.
+[2026-09-23 21:10:05.316] [info] REAL v0.3.0 - REduce Audio Latency, mini)(ant 2018-2019, fork maintained by Mutaracha
+[2026-09-23 21:10:05.316] [info] Project: https://github.com/Mutaracha/REAL
+[2026-09-23 21:10:05.316] [info] Upstream: https://github.com/miniant-git/REAL
+[2026-09-23 21:10:05.316] [info] Settings: D:\a\REAL\REAL\build\Release\real.settings.json (tray=on, minimizeToTray=on, startMinimized=on, closeButton=minimize, dataFlow=render, role=console, period=min, updates=off, priority=normal)
+[2026-09-23 21:10:05.317] [info] Power throttling (execution speed) disabled for this process.
+[2026-09-23 21:10:05.374] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
+[2026-09-23 21:10:05.374] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
+[2026-09-23 21:10:05.374] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
+[2026-09-23 21:10:05.374] [info] Another attempt to enable the low latency mode will be made in 2000 ms.
+[2026-09-23 21:10:05.384] [info] Hotkey 'Ctrl+Alt+L' enables/disables the latency reduction.
+[2026-09-23 21:10:05.384] [info] Hotkey 'Ctrl+Alt+R' reinitialises the audio streams.
+[2026-09-23 21:10:07.370] [info] Retrying to enable the low latency mode...
+[2026-09-23 21:10:07.370] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
+[2026-09-23 21:10:07.370] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
+[2026-09-23 21:10:07.370] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
+[2026-09-23 21:10:07.387] [info] Another attempt to enable the low latency mode will be made in 4000 ms.
+[2026-09-23 21:10:11.329] [info] Exiting...
+[2026-09-23 21:10:11.330] [info] REAL stopped.
 == generated settings file ==
 first instance alive=True
 {
@@ -45,88 +45,88 @@ first instance alive=True
     "closeButtonAction": "minimize",
     // true — дополнительно открыть окно консоли с журналом (то же, что --console).
     "showConsole": false,
-[2026-09-23 21:07:37.999] [info] REAL v0.3.0 - REduce Audio Latency, mini)(ant 2018-2019, fork maintained by Mutaracha
-[2026-09-23 21:07:37.999] [info] Project: https://github.com/Mutaracha/REAL
-[2026-09-23 21:07:37.999] [info] Upstream: https://github.com/miniant-git/REAL
-[2026-09-23 21:07:38.000] [info] Settings: D:\a\_temp\real-settings-test\real.settings.json (tray=on, minimizeToTray=on, startMinimized=on, closeButton=minimize, dataFlow=render, role=console, period=min, updates=off, priority=normal)
-[2026-09-23 21:07:38.001] [info] Power throttling (execution speed) disabled for this process.
-[2026-09-23 21:07:38.012] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
-[2026-09-23 21:07:38.012] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
-[2026-09-23 21:07:38.012] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
-[2026-09-23 21:07:38.012] [info] Another attempt to enable the low latency mode will be made in 2000 ms.
-[2026-09-23 21:07:38.018] [info] Hotkey 'Ctrl+Alt+L' enables/disables the latency reduction.
-[2026-09-23 21:07:38.018] [info] Hotkey 'Ctrl+Alt+R' reinitialises the audio streams.
-[2026-09-23 21:07:40.018] [info] Retrying to enable the low latency mode...
-[2026-09-23 21:07:40.018] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
-[2026-09-23 21:07:40.018] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
-[2026-09-23 21:07:40.018] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
-[2026-09-23 21:07:40.026] [info] Another attempt to enable the low latency mode will be made in 4000 ms.
-[2026-09-23 21:07:44.010] [info] Exiting...
-[2026-09-23 21:07:44.011] [info] REAL stopped.
-[2026-09-23 21:07:44.061] [info] REAL v0.3.0 - REduce Audio Latency, mini)(ant 2018-2019, fork maintained by Mutaracha
-[2026-09-23 21:07:44.061] [info] Project: https://github.com/Mutaracha/REAL
-[2026-09-23 21:07:44.061] [info] Upstream: https://github.com/miniant-git/REAL
-[2026-09-23 21:07:44.061] [info] Settings: D:\a\_temp\real-settings-test\real.settings.json (tray=on, minimizeToTray=on, startMinimized=on, closeButton=minimize, dataFlow=render, role=console, period=min, updates=off, priority=normal)
-[2026-09-23 21:07:44.063] [info] Power throttling (execution speed) disabled for this process.
-[2026-09-23 21:07:44.076] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
-[2026-09-23 21:07:44.076] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
-[2026-09-23 21:07:44.076] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
-[2026-09-23 21:07:44.076] [info] Another attempt to enable the low latency mode will be made in 2000 ms.
-[2026-09-23 21:07:44.082] [info] Hotkey 'Ctrl+Alt+L' enables/disables the latency reduction.
-[2026-09-23 21:07:44.082] [info] Hotkey 'Ctrl+Alt+R' reinitialises the audio streams.
-[2026-09-23 21:07:46.094] [info] Retrying to enable the low latency mode...
-[2026-09-23 21:07:46.094] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
-[2026-09-23 21:07:46.094] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
-[2026-09-23 21:07:46.094] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
-[2026-09-23 21:07:46.102] [info] Another attempt to enable the low latency mode will be made in 4000 ms.
-[2026-09-23 21:07:50.076] [info] Exiting...
-[2026-09-23 21:07:50.078] [info] REAL stopped.
+[2026-09-23 21:10:11.374] [info] REAL v0.3.0 - REduce Audio Latency, mini)(ant 2018-2019, fork maintained by Mutaracha
+[2026-09-23 21:10:11.374] [info] Project: https://github.com/Mutaracha/REAL
+[2026-09-23 21:10:11.374] [info] Upstream: https://github.com/miniant-git/REAL
+[2026-09-23 21:10:11.374] [info] Settings: D:\a\_temp\real-settings-test\real.settings.json (tray=on, minimizeToTray=on, startMinimized=on, closeButton=minimize, dataFlow=render, role=console, period=min, updates=off, priority=normal)
+[2026-09-23 21:10:11.375] [info] Power throttling (execution speed) disabled for this process.
+[2026-09-23 21:10:11.384] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
+[2026-09-23 21:10:11.384] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
+[2026-09-23 21:10:11.384] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
+[2026-09-23 21:10:11.384] [info] Another attempt to enable the low latency mode will be made in 2000 ms.
+[2026-09-23 21:10:11.389] [info] Hotkey 'Ctrl+Alt+L' enables/disables the latency reduction.
+[2026-09-23 21:10:11.389] [info] Hotkey 'Ctrl+Alt+R' reinitialises the audio streams.
+[2026-09-23 21:10:13.386] [info] Retrying to enable the low latency mode...
+[2026-09-23 21:10:13.386] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
+[2026-09-23 21:10:13.386] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
+[2026-09-23 21:10:13.386] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
+[2026-09-23 21:10:13.393] [info] Another attempt to enable the low latency mode will be made in 4000 ms.
+[2026-09-23 21:10:17.376] [info] Exiting...
+[2026-09-23 21:10:17.377] [info] REAL stopped.
+[2026-09-23 21:10:17.411] [info] REAL v0.3.0 - REduce Audio Latency, mini)(ant 2018-2019, fork maintained by Mutaracha
+[2026-09-23 21:10:17.411] [info] Project: https://github.com/Mutaracha/REAL
+[2026-09-23 21:10:17.411] [info] Upstream: https://github.com/miniant-git/REAL
+[2026-09-23 21:10:17.411] [info] Settings: D:\a\_temp\real-settings-test\real.settings.json (tray=on, minimizeToTray=on, startMinimized=on, closeButton=minimize, dataFlow=render, role=console, period=min, updates=off, priority=normal)
+[2026-09-23 21:10:17.412] [info] Power throttling (execution speed) disabled for this process.
+[2026-09-23 21:10:17.421] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
+[2026-09-23 21:10:17.421] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
+[2026-09-23 21:10:17.421] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
+[2026-09-23 21:10:17.421] [info] Another attempt to enable the low latency mode will be made in 2000 ms.
+[2026-09-23 21:10:17.426] [info] Hotkey 'Ctrl+Alt+L' enables/disables the latency reduction.
+[2026-09-23 21:10:17.426] [info] Hotkey 'Ctrl+Alt+R' reinitialises the audio streams.
+[2026-09-23 21:10:19.437] [info] Retrying to enable the low latency mode...
+[2026-09-23 21:10:19.437] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
+[2026-09-23 21:10:19.437] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
+[2026-09-23 21:10:19.437] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
+[2026-09-23 21:10:19.443] [info] Another attempt to enable the low latency mode will be made in 4000 ms.
+[2026-09-23 21:10:23.428] [info] Exiting...
+[2026-09-23 21:10:23.429] [info] REAL stopped.
 == diagnostics report ==
 diagnostics exit code -1073741819
 log file exists: True; size: 5385
 == application log after the diagnostics run ==
-[2026-09-23 21:07:37.999] [info] REAL v0.3.0 - REduce Audio Latency, mini)(ant 2018-2019, fork maintained by Mutaracha
-[2026-09-23 21:07:37.999] [info] Project: https://github.com/Mutaracha/REAL
-[2026-09-23 21:07:37.999] [info] Upstream: https://github.com/miniant-git/REAL
-[2026-09-23 21:07:38.000] [info] Settings: D:\a\_temp\real-settings-test\real.settings.json (tray=on, minimizeToTray=on, startMinimized=on, closeButton=minimize, dataFlow=render, role=console, period=min, updates=off, priority=normal)
-[2026-09-23 21:07:38.001] [info] Power throttling (execution speed) disabled for this process.
-[2026-09-23 21:07:38.012] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
-[2026-09-23 21:07:38.012] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
-[2026-09-23 21:07:38.012] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
-[2026-09-23 21:07:38.012] [info] Another attempt to enable the low latency mode will be made in 2000 ms.
-[2026-09-23 21:07:38.018] [info] Hotkey 'Ctrl+Alt+L' enables/disables the latency reduction.
-[2026-09-23 21:07:38.018] [info] Hotkey 'Ctrl+Alt+R' reinitialises the audio streams.
-[2026-09-23 21:07:40.018] [info] Retrying to enable the low latency mode...
-[2026-09-23 21:07:40.018] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
-[2026-09-23 21:07:40.018] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
-[2026-09-23 21:07:40.018] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
-[2026-09-23 21:07:40.026] [info] Another attempt to enable the low latency mode will be made in 4000 ms.
-[2026-09-23 21:07:44.010] [info] Exiting...
-[2026-09-23 21:07:44.011] [info] REAL stopped.
-[2026-09-23 21:07:44.061] [info] REAL v0.3.0 - REduce Audio Latency, mini)(ant 2018-2019, fork maintained by Mutaracha
-[2026-09-23 21:07:44.061] [info] Project: https://github.com/Mutaracha/REAL
-[2026-09-23 21:07:44.061] [info] Upstream: https://github.com/miniant-git/REAL
-[2026-09-23 21:07:44.061] [info] Settings: D:\a\_temp\real-settings-test\real.settings.json (tray=on, minimizeToTray=on, startMinimized=on, closeButton=minimize, dataFlow=render, role=console, period=min, updates=off, priority=normal)
-[2026-09-23 21:07:44.063] [info] Power throttling (execution speed) disabled for this process.
-[2026-09-23 21:07:44.076] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
-[2026-09-23 21:07:44.076] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
-[2026-09-23 21:07:44.076] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
-[2026-09-23 21:07:44.076] [info] Another attempt to enable the low latency mode will be made in 2000 ms.
-[2026-09-23 21:07:44.082] [info] Hotkey 'Ctrl+Alt+L' enables/disables the latency reduction.
-[2026-09-23 21:07:44.082] [info] Hotkey 'Ctrl+Alt+R' reinitialises the audio streams.
-[2026-09-23 21:07:46.094] [info] Retrying to enable the low latency mode...
-[2026-09-23 21:07:46.094] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
-[2026-09-23 21:07:46.094] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
-[2026-09-23 21:07:46.094] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
-[2026-09-23 21:07:46.102] [info] Another attempt to enable the low latency mode will be made in 4000 ms.
-[2026-09-23 21:07:50.076] [info] Exiting...
-[2026-09-23 21:07:50.078] [info] REAL stopped.
-[2026-09-23 21:07:50.134] [info] Diagnostics: collecting information about the audio devices...
-[2026-09-23 21:07:50.134] [info] Diagnostics: location and configuration collected.
-[2026-09-23 21:07:50.138] [info] Diagnostics: the device enumerator is ready.
-[2026-09-23 21:07:50.139] [info] Diagnostics: 0 endpoints for flow playback (render).
-[2026-09-23 21:07:50.139] [info] Diagnostics: 0 endpoints for flow recording (capture).
-[2026-09-23 21:07:50.139] [info] Diagnostics: the report text has been built (1034 bytes).
+[2026-09-23 21:10:11.374] [info] REAL v0.3.0 - REduce Audio Latency, mini)(ant 2018-2019, fork maintained by Mutaracha
+[2026-09-23 21:10:11.374] [info] Project: https://github.com/Mutaracha/REAL
+[2026-09-23 21:10:11.374] [info] Upstream: https://github.com/miniant-git/REAL
+[2026-09-23 21:10:11.374] [info] Settings: D:\a\_temp\real-settings-test\real.settings.json (tray=on, minimizeToTray=on, startMinimized=on, closeButton=minimize, dataFlow=render, role=console, period=min, updates=off, priority=normal)
+[2026-09-23 21:10:11.375] [info] Power throttling (execution speed) disabled for this process.
+[2026-09-23 21:10:11.384] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
+[2026-09-23 21:10:11.384] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
+[2026-09-23 21:10:11.384] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
+[2026-09-23 21:10:11.384] [info] Another attempt to enable the low latency mode will be made in 2000 ms.
+[2026-09-23 21:10:11.389] [info] Hotkey 'Ctrl+Alt+L' enables/disables the latency reduction.
+[2026-09-23 21:10:11.389] [info] Hotkey 'Ctrl+Alt+R' reinitialises the audio streams.
+[2026-09-23 21:10:13.386] [info] Retrying to enable the low latency mode...
+[2026-09-23 21:10:13.386] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
+[2026-09-23 21:10:13.386] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
+[2026-09-23 21:10:13.386] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
+[2026-09-23 21:10:13.393] [info] Another attempt to enable the low latency mode will be made in 4000 ms.
+[2026-09-23 21:10:17.376] [info] Exiting...
+[2026-09-23 21:10:17.377] [info] REAL stopped.
+[2026-09-23 21:10:17.411] [info] REAL v0.3.0 - REduce Audio Latency, mini)(ant 2018-2019, fork maintained by Mutaracha
+[2026-09-23 21:10:17.411] [info] Project: https://github.com/Mutaracha/REAL
+[2026-09-23 21:10:17.411] [info] Upstream: https://github.com/miniant-git/REAL
+[2026-09-23 21:10:17.411] [info] Settings: D:\a\_temp\real-settings-test\real.settings.json (tray=on, minimizeToTray=on, startMinimized=on, closeButton=minimize, dataFlow=render, role=console, period=min, updates=off, priority=normal)
+[2026-09-23 21:10:17.412] [info] Power throttling (execution speed) disabled for this process.
+[2026-09-23 21:10:17.421] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
+[2026-09-23 21:10:17.421] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
+[2026-09-23 21:10:17.421] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
+[2026-09-23 21:10:17.421] [info] Another attempt to enable the low latency mode will be made in 2000 ms.
+[2026-09-23 21:10:17.426] [info] Hotkey 'Ctrl+Alt+L' enables/disables the latency reduction.
+[2026-09-23 21:10:17.426] [info] Hotkey 'Ctrl+Alt+R' reinitialises the audio streams.
+[2026-09-23 21:10:19.437] [info] Retrying to enable the low latency mode...
+[2026-09-23 21:10:19.437] [error] Could not enable low latency mode (render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically)
+[2026-09-23 21:10:19.437] [error] Could not enable low latency mode. render: Could not open the default audio endpoint: the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically
+[2026-09-23 21:10:19.437] [info] Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.
+[2026-09-23 21:10:19.443] [info] Another attempt to enable the low latency mode will be made in 4000 ms.
+[2026-09-23 21:10:23.428] [info] Exiting...
+[2026-09-23 21:10:23.429] [info] REAL stopped.
+[2026-09-23 21:10:23.470] [info] Diagnostics: collecting information about the audio devices...
+[2026-09-23 21:10:23.470] [info] Diagnostics: location and configuration collected.
+[2026-09-23 21:10:23.472] [info] Diagnostics: the device enumerator is ready.
+[2026-09-23 21:10:23.473] [info] Diagnostics: 0 endpoints for flow playback (render).
+[2026-09-23 21:10:23.473] [info] Diagnostics: 0 endpoints for flow recording (capture).
+[2026-09-23 21:10:23.473] [info] Diagnostics: the report text has been built (1034 bytes).
 == trace ==
 RunDiagnostics: entered
 RunDiagnostics: settings loaded
@@ -141,18 +141,20 @@ report: before EnumerateEndpoints
 report: after EnumerateEndpoints
 report: text built
 report: after Log::Flush
+== symbol lookup for the fault offset 0x0000000000057917 ==
+the crash is inside: ?BuildReport@Diagnostics@Windows@miniant@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBUSettings@Config@3@AEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@5@@Z at 0x0000000140055cd0
 == crash information ==
-Application Error: Faulting application name: REAL.exe, version: 0.0.0.0, time stamp: 0x6ab43f72
-Faulting module name: REAL.exe, version: 0.0.0.0, time stamp: 0x6ab43f72
+Application Error: Faulting application name: REAL.exe, version: 0.0.0.0, time stamp: 0x6ab44014
+Faulting module name: REAL.exe, version: 0.0.0.0, time stamp: 0x6ab44014
 Exception code: 0xc0000005
 Fault offset: 0x0000000000057917
-Faulting process id: 0x19ac
-Faulting application start time: 0x01dd4b9f974cda7f
+Faulting process id: 0x1a9c
+Faulting application start time: 0x01dd4b9ff2b258ae
 Faulting application path: D:\a\_temp\real-settings-test\REAL.exe
 Faulting module path: D:\a\_temp\real-settings-test\REAL.exe
-Report Id: 84a02525-6ec6-4937-9188-27ff7abab856
+Report Id: 5e22442d-bc2a-4f2a-a73b-ea0f368dc787
 Faulting package full name: 
 Faulting package-relative application ID: 
 FAILED: REAL-diagnostics.txt was not written
-at <ScriptBlock>, D:\a\_temp\60e445f7-f67c-488a-80b2-7a532a24f58a.ps1: line 110
+at <ScriptBlock>, D:\a\_temp\52db7103-d36c-4489-8680-bed639d44c7d.ps1: line 135
 at <ScriptBlock>, <No file>: line 1
