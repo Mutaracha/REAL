@@ -16,15 +16,9 @@ MSBuild version 17.14.51+25f168cee for .NET Framework
   DeviceNotification.cpp
   Diagnostics.cpp
   Filesystem.cpp
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(143,9): error C2664: 'HRESULT IAudioClient::GetDevicePeriod(REFERENCE_TIME *,REFERENCE_TIME *)': cannot convert argument 1 from 'uint32_t *' to 'REFERENCE_TIME *' [D:\a\REAL\REAL\build\real-app.vcxproj]
-      D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(143,9):
-      Types pointed to are unrelated; conversion requires reinterpret_cast, C-style cast or parenthesized function-style cast
-      C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um\Audioclient.h(289,43):
-      see declaration of 'IAudioClient::GetDevicePeriod'
-      D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(143,9):
-      while trying to match the argument list '(uint32_t *, uint32_t *)'
-  
   MainWindow.cpp
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(148,30): error C3861: 'ToFrames': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(149,26): error C3861: 'ToFrames': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
   MinimumLatencyAudioClient.cpp
   TrayIcon.cpp
   WindowsError.cpp
