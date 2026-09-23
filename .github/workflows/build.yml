@@ -133,7 +133,9 @@ jobs:
             if (-not (Test-Path $settingsLog)) { throw "no log was written during the settings test" }
             Get-Content $settingsLog | Add-Log
 
-            $bad = Select-String -Path $settingsLog -Pattern "Could not parse the settings file|Settings: "
+            # The startup banner also contains "Settings: <path>", so only
+            # warnings and errors about the settings file count as a problem.
+            $bad = Select-String -Path $settingsLog -Pattern "\[(warn|error)\].*[Ss]ettings|Could not parse the settings file"
             if ($bad) {
               $bad | ForEach-Object { Add-Log "unexpected settings message: $($_.Line)" }
               throw "the generated settings file does not load cleanly"
