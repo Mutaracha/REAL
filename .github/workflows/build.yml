@@ -146,6 +146,10 @@ jobs:
             $diag = Start-Real $work @('--no-config', '--diagnose')
             if (-not $diag.WaitForExit(60000)) { throw "the diagnostics command did not finish" }
             Add-Log "diagnostics exit code $($diag.ExitCode)"
+            if (Test-Path (Join-Path $work "REAL.log")) {
+              Add-Log "== application log after the diagnostics run =="
+              Get-Content (Join-Path $work "REAL.log") | Add-Log
+            }
             $report = Join-Path $work "REAL-diagnostics.txt"
             if (-not (Test-Path $report)) { throw "REAL-diagnostics.txt was not written" }
             Get-Content $report | Add-Log
