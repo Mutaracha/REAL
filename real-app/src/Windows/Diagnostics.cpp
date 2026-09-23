@@ -69,6 +69,14 @@ void ReadFormat(const WAVEFORMATEX& format, uint16_t& channels, uint32_t& sample
     bitsPerSample = format.wBitsPerSample;
 }
 
+uint32_t ToFrames(REFERENCE_TIME period, uint32_t sampleRate) {
+    if (period <= 0 || sampleRate == 0) {
+        return 0;
+    }
+
+    return static_cast<uint32_t>((period * static_cast<REFERENCE_TIME>(sampleRate)) / 10000000);
+}
+
 void ReadDeviceProperties(IMMDevice& device, EndpointInfo& info) {
     ComPtr<IPropertyStore> store;
     if (FAILED(device.OpenPropertyStore(STGM_READ, store.GetAddressOf()))) {
@@ -154,14 +162,6 @@ void InspectEndpoint(IMMDevice& device, EndpointInfo& info) {
 
     info.error = "the driver does not expose IAudioClient3, so small buffers are not available for this device "
                  "(typical for Bluetooth, HDMI/DisplayPort receivers and some virtual drivers)";
-}
-
-uint32_t ToFrames(REFERENCE_TIME period, uint32_t sampleRate) {
-    if (period <= 0 || sampleRate == 0) {
-        return 0;
-    }
-
-    return static_cast<uint32_t>((period * static_cast<REFERENCE_TIME>(sampleRate)) / 10000000);
 }
 
 std::string FlowName(EDataFlow flow) {
