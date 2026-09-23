@@ -1,4 +1,4 @@
-MSBuild version 17.14.51+25f168cee for .NET Framework
+MSBuild version 17.14.60+43b635718 for .NET Framework
 
   Checking File Globs
   1>Checking Build System
@@ -13,29 +13,14 @@ MSBuild version 17.14.51+25f168cee for .NET Framework
   Text.cpp
   Version.cpp
   Console.cpp
-D:\a\REAL\REAL\real-app\src\Log.cpp(46,31): error C2653: 'Text': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Log.cpp(46,50): error C2653: 'Text': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Log.cpp(72,25): error C2653: 'Text': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Log.cpp(82,12): error C2653: 'Windows': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Log.cpp(82,42): error C2653: 'Windows': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Settings.cpp(71,31): error C2653: 'Text': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-      D:\a\REAL\REAL\real-app\src\Settings.cpp(71,31):
-      the template instantiation context (the oldest one first) is
-          D:\a\REAL\REAL\real-app\src\Settings.cpp(272,9):
-          see reference to function template instantiation 'void `anonymous-namespace'::ReadEnum<miniant::Config::CloseAction,2>(const json &,const char *,const std::pair<const char *,miniant::Config::CloseAction> (&)[2],T &,std::vector<std::string,std::allocator<std::string>> &,const std::string &)' being compiled
-          with
-          [
-              T=miniant::Config::CloseAction
-          ]
-  
-D:\a\REAL\REAL\real-app\src\Settings.cpp(71,50): error C2653: 'Text': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
   DeviceNotification.cpp
   Filesystem.cpp
   MainWindow.cpp
   MinimumLatencyAudioClient.cpp
   TrayIcon.cpp
   WindowsError.cpp
-D:\a\REAL\REAL\real-app\src\Windows\WindowsError.cpp(76,12): error C2653: 'Text': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
   main.cpp
   Generating Code...
+CVTRES : fatal error CVT1100: duplicate resource.  type:MANIFEST, name:1, language:0x0409 [D:\a\REAL\REAL\build\real-app.vcxproj]
+LINK : fatal error LNK1123: failure during conversion to COFF: file invalid or corrupt [D:\a\REAL\REAL\build\real-app.vcxproj]
 cmake --build exit code: 1
