@@ -64,7 +64,11 @@ private:
     TrayMenuState m_state;
     CommandHandler m_handler;
     bool m_visible = false;
+    // One action per click: a version 4 notification delivers the semantic
+    // event next to the legacy mouse message, and a double click arrives as two
+    // selections. Both actions have their own guard.
     ULONGLONG m_lastToggleTick = 0;
+    ULONGLONG m_lastMenuTick = 0;
 };
 
 }
