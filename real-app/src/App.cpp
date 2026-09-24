@@ -1236,7 +1236,7 @@ void App::ShowDiagnostics() {
     ::ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-void App::OnSystemResume(const wchar_t* reason) {
+void App::OnSystemResume(const std::wstring& reason) {
     const bool relevant =
         std::wcscmp(reason, L"session unlock") == 0
             ? m_settings.audio.reinit.sessionUnlock

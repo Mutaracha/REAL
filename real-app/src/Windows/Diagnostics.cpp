@@ -2,6 +2,7 @@
 
 #include "../AppVersion.h"
 #include "../Lang.h"
+#include "../Log.h"
 #include "../Text.h"
 #include "ComPtr.h"
 #include "Filesystem.h"
@@ -19,6 +20,7 @@
 
 using namespace miniant::Windows;
 using namespace miniant::Windows::Diagnostics;
+using namespace miniant::Lang;
 
 namespace {
 

@@ -10,6 +10,7 @@
 #include <cstddef>
 
 using namespace miniant::Windows;
+using namespace miniant::Lang;
 using namespace miniant::Windows::WasapiLatency;
 
 #ifndef AUDCLNT_E_ENGINE_PERIODICITY_LOCKED

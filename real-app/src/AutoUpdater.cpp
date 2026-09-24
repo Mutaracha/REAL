@@ -2,6 +2,7 @@
 
 #include "AppVersion.h"
 #include "Lang.h"
+#include "Http/HttpClient.h"
 #include "Text.h"
 #include "Windows/Filesystem.h"
 

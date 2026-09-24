@@ -24,13 +24,20 @@ that is still maintained and adds quality-of-life features:
   default buffer (Bluetooth, HDMI, some vendor drivers) are reported instead of
   holding a stream that changes nothing
 * Automatic re-application when the default device changes, when a device is
-  added/removed, after resume from sleep or after the audio service restarts
+  added/removed, after resume from sleep or after the audio service restarts;
+  the mode is switched back on when it was off (`reinit.enableWhenDisabled`)
 * Minimises to the system tray; the tray icon survives an `explorer.exe` restart
 * Global hotkeys (default `Ctrl+Alt+L` — toggle, `Ctrl+Alt+R` — re-initialise)
 * Optional autostart with Windows
 * Optional update check at startup only (off by default, never installed
   silently, no runtime requests)
+* Interface and log in English or Russian, picked from the Windows UI language
+  on the first run (`application.language`: `auto`, `en`, `ru`)
 * Settings in a plain JSON file that documents every option with comments
+  (written in the language the file was created with)
+* One notification per device outage instead of one per retry; if the device
+  stays silent for `audio.reinit.failureTimeoutMs` (60 s), the mode is switched
+  off and the device is not polled anymore
 * Single instance: `REAL.exe --reinit` talks to the running instance
 
 ## Requirements
@@ -191,9 +198,12 @@ audio (10 ms by design), HDMI/DisplayPort receivers, vendor drivers
 
 REAL re-applies the low latency mode automatically (default device changes,
 device add/remove, resume from sleep, session unlock, audio service restart, plus
-a check every 30 seconds). The limits are configurable in `audio.reinit`. To force
-it manually: tray menu → **Reinitialize now**, or press `Ctrl+Alt+R`, or run
-`REAL.exe --reinit`.
+a check every 30 seconds). The limits are configurable in `audio.reinit`. If the
+device does not answer, the retries back off and a single balloon is shown; after
+`reinit.failureTimeoutMs` the mode is switched off and the device is not polled
+until it appears again. To force it manually: tray menu → **Reinitialize now**,
+press `Ctrl+Alt+R`, or run `REAL.exe --reinit` — this also switches the mode back
+on when it was off.
 
 ### Where are the logs?
 

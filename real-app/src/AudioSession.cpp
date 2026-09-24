@@ -169,7 +169,8 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
             settings.audio.allowPeriodSnap);
 
         if (!stream) {
-            const std::string message = Lang::Utf8(flow == EDataFlow::eRender ? Lang::Str::FlowRender : Lang::Str::FlowCapture)
+            const std::string message =
+                std::string(Lang::Utf8(flow == EDataFlow::eRender ? Lang::Str::FlowRender : Lang::Str::FlowCapture))
                 + ": " + stream.error().GetMessage();
             errors.push_back(message);
             Log::Error(Lang::Utf8(Lang::Str::LogLowLatencyFailed), message);
