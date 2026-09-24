@@ -515,6 +515,8 @@ const Entry TABLE[] = {
     { Str::OpRetry, "Retrying", "Повторяю" },
     { Str::OpGaveUp, "The device did not respond within {} s, latency reduction is off",
                      "Устройство не ответило за {} с, снижение задержки выключено" },
+    { Str::OpDiagnosticsStart, "Diagnostics: collecting information about the audio devices",
+                               "Диагностика: собираю сведения об аудиоустройствах" },
     { Str::OpDiagnostics, "Diagnostics report: {}", "Отчёт диагностики: {}" },
     { Str::OpDiagnosticsFailed, "Could not write the diagnostics report", "Не удалось записать отчёт диагностики" },
     { Str::OpHotkeys, "Hotkeys: toggle {}, reinitialise {}", "Горячие клавиши: переключение {}, переинициализация {}" },

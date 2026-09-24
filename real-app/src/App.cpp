@@ -1173,7 +1173,8 @@ int App::RunDiagnostics() {
     LoadSettings();
     InitializeLogging();
 
-    Log::Operation(Lang::Utf8(Str::OpDiagnostics));
+    // OpDiagnostics carries the report path and therefore needs an argument.
+    Log::Operation(Lang::Utf8(Str::OpDiagnosticsStart));
 
     const std::string report = Windows::Diagnostics::BuildReport(m_settings, m_settingsPath);
 

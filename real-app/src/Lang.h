@@ -204,6 +204,7 @@ enum class Str {
     OpDeviceNotReady,
     OpRetry,
     OpGaveUp,
+    OpDiagnosticsStart,
     OpDiagnostics,
     OpDiagnosticsFailed,
     OpHotkeys,
