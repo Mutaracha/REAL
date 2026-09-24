@@ -34,7 +34,8 @@ that is still maintained and adds quality-of-life features:
 * Interface and log in English or Russian, picked from the Windows UI language
   on the first run (`application.language`: `auto`, `en`, `ru`)
 * Settings in a plain JSON file that documents every option with comments
-  (written in the language the file was created with)
+  (in the same language as the interface: a change of `application.language`
+  rewrites the comments on the next start and keeps every value)
 * One notification per device outage instead of one per retry; if the device
   stays silent for `audio.reinit.failureTimeoutMs` (60 s), the mode is switched
   off and the device is not polled anymore

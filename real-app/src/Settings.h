@@ -134,6 +134,11 @@ struct LoggingSettings {
 
 struct Settings {
     int configVersion = 1;
+
+    // Language of the comments in the file. A service field: it only tells the
+    // application whether the comments have to be rewritten after a language
+    // change (values are never touched by that).
+    std::string commentLanguage;
     ApplicationSettings application;
     TraySettings tray;
     AudioSettings audio;

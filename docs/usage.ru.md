@@ -21,7 +21,7 @@
 - Старт сразу в трее: `--tray` или `application.startMinimizedToTray: true`.
 
 ### 1.2. Переинициализация без перезапуска
-- Вручную: **меню трея → «Reinitialize now»**, кнопка «Reinitialize» в окне,
+- Вручную: **меню трея → «Инициализация»**, кнопка «Инициализация» в окне,
   горячая клавиша **Ctrl+Alt+R**, командная строка `REAL.exe --reinit`
   (вторая копия не запускается, а передаёт команду уже работающей).
 - Если перед этим режим был выключен («Latency reduction enabled» снят), ручная
@@ -144,8 +144,15 @@
 
 ## 3. Полезные настройки (файл `real.settings.json`)
 
+Комментарии в файле бывают на том же языке, что интерфейс: служебное поле
+`commentLanguage` помнит язык оформления, и после смены языка приложения файл
+автоматически перезаписывается с новыми комментариями — значения не теряются.
+
 ```jsonc
 {
+  // служебные поля
+  "configVersion": 1,
+  "commentLanguage": "ru",
   "application": {
     "minimizeToTray": true,           // «свернуть» → в трей
     "closeButtonAction": "minimize",  // крестик: minimize (в трей) | exit (выход)
@@ -156,7 +163,8 @@
   "tray": {
     "enabled": true,
     "showStatusInTooltip": true,
-    "notifications": { "onError": true, "onDeviceChange": true, "onStateChange": false }
+    "notifications": { "onError": true, "onDeviceChange": true, "onStateChange": false },
+    "menu": { "reinitialize": true, "diagnostics": true }
   },
   "audio": {
     "enabledOnStartup": true,

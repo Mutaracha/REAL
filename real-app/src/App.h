@@ -60,6 +60,13 @@ private:
     void CancelAudioRetry();
     void GiveUpOnDevice();
 
+    // Rewrites the settings file when the comments are written in another
+    // language (the values are kept).
+    void RefreshCommentsLanguage();
+
+    // Language of the comments after the settings file was rewritten.
+    std::string m_commentsRewritten;
+
     // Text shown while the latency reduction is not applied.
     std::wstring CurrentOffStatusText() const;
     int RunDiagnostics();

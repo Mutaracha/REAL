@@ -1,6 +1,7 @@
 #include "TrayIcon.h"
 
 #include "../Lang.h"
+#include "../Log.h"
 #include "../Text.h"
 
 #include <cwchar>
@@ -31,6 +32,7 @@ constexpr size_t NOTIFICATION_TEXT_MAX_LENGTH = 120;
 // Two clicks arrive as two messages (a legacy one and NIN_SELECT), and a double
 // click arrives as two selections: ignore everything that follows too quickly.
 constexpr ULONGLONG TOGGLE_DEBOUNCE_MS = 350;
+constexpr ULONGLONG MENU_DEBOUNCE_MS = 350;
 
 std::wstring Truncate(const std::wstring& text, size_t limit) {
     if (text.size() <= limit) {
@@ -132,24 +134,33 @@ void TrayIcon::Recreate() {
 }
 
 void TrayIcon::HandleMessage(WPARAM wParam, LPARAM lParam) {
-    // The icon is registered with NOTIFYICON_VERSION_4, so the callback receives
-    // the icon id and the event in the low words of wParam and lParam. The high
-    // words carry the mouse message and the cursor position, which must not be
-    // mistaken for an id or an event: doing so made single clicks work only
-    // every other time.
+    // NOTIFYICON_VERSION_4 (see NOTIFYICONDATA, uCallbackMessage): the event is
+    // in LOWORD(lParam), the icon id in HIWORD(lParam) and wParam carries the
+    // anchor coordinates. Reading the id from wParam instead silently drops
+    // every click, because wParam holds the cursor position.
     const UINT event = LOWORD(lParam);
-    const UINT iconId = LOWORD(wParam);
+    const UINT iconId = HIWORD(lParam);
+
+    // The anchor of the event (the icon corner for keyboard actions), packed
+    // into the two halves of wParam with a sign for monitors left of the main
+    // one. It positions the context menu.
+    const POINT anchor = { static_cast<short>(LOWORD(wParam)), static_cast<short>(HIWORD(wParam)) };
 
     if (iconId != 0 && iconId != m_data.uID) {
+        miniant::Log::Debug("Tray event 0x{:04X} for icon {}, this icon is {}.", event, iconId, m_data.uID);
         return;
     }
 
     switch (event) {
+        // Version 4 sends the semantic notification together with the legacy
+        // mouse message (WM_LBUTTONUP for a left click), so only the semantic
+        // one is acted upon - otherwise every click toggles the window twice.
+        // The debounce additionally absorbs a double click, which arrives as two
+        // NIN_SELECT messages.
         case NIN_SELECT:
         case NIN_KEYSELECT: {
             const ULONGLONG now = ::GetTickCount64();
             if (now - m_lastToggleTick < TOGGLE_DEBOUNCE_MS) {
-                // A double click or a duplicated message: ignore.
                 break;
             }
 
@@ -162,9 +173,18 @@ void TrayIcon::HandleMessage(WPARAM wParam, LPARAM lParam) {
             break;
         }
 
-        case WM_CONTEXTMENU:
-            ShowContextMenu();
+        // A right click (and the menu key) arrives as WM_CONTEXTMENU, again
+        // next to the legacy WM_RBUTTONUP which is deliberately ignored.
+        case WM_CONTEXTMENU: {
+            const ULONGLONG now = ::GetTickCount64();
+            if (now - m_lastMenuTick < MENU_DEBOUNCE_MS) {
+                break;
+            }
+
+            m_lastMenuTick = now;
+            ShowContextMenu(anchor);
             break;
+        }
 
         case NIN_BALLOONUSERCLICK:
             if (m_handler) {
@@ -174,13 +194,13 @@ void TrayIcon::HandleMessage(WPARAM wParam, LPARAM lParam) {
             break;
 
         default:
-            // NIN_BALLOONSHOW/HIDE/TIMEOUT and the legacy mouse messages that
-            // accompany a version 4 notification carry no action.
+            // Raw mouse messages, NIN_BALLOONSHOW/HIDE/TIMEOUT, NIN_POPUPOPEN
+            // and NIN_POPUPCLOSE carry no action.
             break;
     }
 }
 
-void TrayIcon::ShowContextMenu() {
+void TrayIcon::ShowContextMenu(const POINT& anchor) {
     HMENU menu = ::CreatePopupMenu();
     if (menu == nullptr) {
         return;
@@ -231,16 +251,13 @@ void TrayIcon::ShowContextMenu() {
         ::AppendMenuW(menu, MF_STRING, MENU_ID_EXIT, Wide(Str::TrayExit).c_str());
     }
 
-    POINT cursor = {};
-    ::GetCursorPos(&cursor);
-
     ::SetForegroundWindow(m_owner);
 
     const UINT selected = static_cast<UINT>(::TrackPopupMenuEx(
         menu,
         TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
-        cursor.x,
-        cursor.y,
+        anchor.x,
+        anchor.y,
         m_owner,
         nullptr));
 

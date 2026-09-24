@@ -193,6 +193,7 @@ enum class Str {
     OpSettingsFile,
     OpSettingsCreated,
     OpSettingsReloaded,
+    OpCommentsRewritten,
     OpAlreadyRunning,
     OpApplying,
     OpApplied,
@@ -220,6 +221,7 @@ enum class Str {
     // Settings file comments
     CfgFileHeader,
     CfgConfigVersion,
+    CfgCommentLanguage,
     CfgApplicationSection,
     CfgStartMinimizedToTray,
     CfgMinimizeToTray,

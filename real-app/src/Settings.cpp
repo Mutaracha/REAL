@@ -266,7 +266,10 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
     Settings& settings = result.settings;
 
     ReadInt(root, "configVersion", settings.configVersion, 1, 1000, result.warnings, "configVersion");
-    WarnUnknownKeys(root, "root", { "configVersion", "application", "tray", "audio", "performance", "updates", "hotkeys", "logging" }, result.warnings);
+    ReadString(root, "commentLanguage", settings.commentLanguage, result.warnings, "commentLanguage");
+    WarnUnknownKeys(root, "root",
+        { "configVersion", "commentLanguage", "application", "tray", "audio", "performance", "updates", "hotkeys", "logging" },
+        result.warnings);
 
     if (const json* section = FindSection(root, "application")) {
         ReadString(*section, "language", settings.application.language, result.warnings, "application");
@@ -441,6 +444,7 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     json root;
 
     root["configVersion"] = settings.configVersion;
+    root["commentLanguage"] = settings.commentLanguage;
 
     json& application = root["application"];
     application["language"] = settings.application.language;
@@ -524,6 +528,7 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.Comment(0, text(Str::CfgFileHeader));
     document.Line(0, "{");
     document.Key(2, "configVersion", settings.configVersion, text(Str::CfgConfigVersion), true);
+    document.Key(2, "commentLanguage", settings.commentLanguage, text(Str::CfgCommentLanguage), true);
     document.Blank();
 
     document.SectionOpen(2, "application", text(Str::CfgApplicationSection));
@@ -615,17 +620,24 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
 }
 
 bool miniant::Config::Write(const Settings& settings, const std::wstring& path) {
-    std::string content = ToDocumentedJsonString(settings);
+    // The file remembers the language its comments are written in; when the
+    // caller did not set it (first run, example file), the current one is used.
+    Settings copy = settings;
+    if (copy.commentLanguage.empty()) {
+        copy.commentLanguage = Lang::Code(Lang::Current());
+    }
+
+    std::string content = ToDocumentedJsonString(copy);
 
     // A settings file that cannot be read back would be worse than an
     // undocumented one, so fall back to plain JSON when anything is off.
     try {
         const json parsed = json::parse(Text::StripJsonComments(Text::StripUtf8Bom(content)));
         if (!parsed.is_object()) {
-            content = ToJsonString(settings);
+            content = ToJsonString(copy);
         }
     } catch (const json::exception&) {
-        content = ToJsonString(settings);
+        content = ToJsonString(copy);
     }
 
     return Windows::Filesystem::WriteTextFileUtf8(path, content + "\n");

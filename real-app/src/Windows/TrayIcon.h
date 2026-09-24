@@ -57,7 +57,7 @@ public:
     void Recreate();
 
 private:
-    void ShowContextMenu();
+    void ShowContextMenu(const POINT& anchor);
 
     HWND m_owner;
     NOTIFYICONDATAW m_data = {};

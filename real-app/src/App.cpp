@@ -273,6 +273,13 @@ bool App::LoadSettings() {
         // the settings file itself is created with comments in that language.
         Lang::Set(Lang::FromCode(m_settings.application.language));
 
+        // The comments of the file belong to the language it was written in.
+        // When the language changes (application.language or the language of
+        // Windows for "auto"), the file is rewritten in the new language on the
+        // next start; every value is taken from the loaded settings, so nothing
+        // is lost but the comments.
+        const std::string commentLanguage = Lang::Code(Lang::Current());
+
         for (const auto& warning : result.warnings) {
             std::cout << Lang::Utf8(Str::SettingsPrefix) << " " << warning << std::endl;
         }
@@ -281,11 +288,26 @@ bool App::LoadSettings() {
             std::cout << Lang::Utf8(Str::SettingsPrefix) << " " << result.error << std::endl;
         }
 
-        if (!result.fileExists) {
-            if (Config::Write(m_settings, m_settingsPath)) {
-                std::cout << Lang::Utf8(Str::OpSettingsCreated) << ": " << Text::ToUtf8(m_settingsPath) << std::endl;
-            } else {
-                std::cout << Lang::Utf8(Str::OpDiagnosticsFailed) << ": " << Text::ToUtf8(m_settingsPath) << std::endl;
+        if (!result.parseFailed) {
+            if (!result.fileExists) {
+                m_settings.commentLanguage = commentLanguage;
+
+                if (Config::Write(m_settings, m_settingsPath)) {
+                    std::cout << Lang::Utf8(Str::OpSettingsCreated) << ": " << Text::ToUtf8(m_settingsPath) << std::endl;
+                } else {
+                    std::cout << fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath))
+                              << std::endl;
+                }
+            } else if (m_settings.commentLanguage != commentLanguage) {
+                m_settings.commentLanguage = commentLanguage;
+
+                if (Config::Write(m_settings, m_settingsPath)) {
+                    // Logging is not available yet, the line is written below.
+                    m_commentsRewritten = commentLanguage;
+                } else {
+                    std::cout << fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath))
+                              << std::endl;
+                }
             }
         }
 
@@ -331,6 +353,12 @@ bool App::InitializeLogging() {
 
 void App::LogBanner() {
     Log::Operation(Lang::Utf8(Str::OpStarted), AppInfo::VERSION.ToString());
+
+    if (!m_commentsRewritten.empty()) {
+        Log::Operation(Lang::Utf8(Str::OpCommentsRewritten), m_commentsRewritten);
+        m_commentsRewritten.clear();
+    }
+
     Log::Operation(Lang::Utf8(Str::OpSettingsFile), Text::ToUtf8(m_settingsPath));
 
     Log::Info(
@@ -612,6 +640,22 @@ void App::SaveSettings() {
     }
 }
 
+void App::RefreshCommentsLanguage() {
+    const std::string language = Lang::Code(Lang::Current());
+    if (m_settings.commentLanguage == language) {
+        return;
+    }
+
+    // Only the comments change: the settings themselves are written as loaded.
+    m_settings.commentLanguage = language;
+
+    if (Config::Write(m_settings, m_settingsPath)) {
+        Log::Operation(Lang::Utf8(Str::OpCommentsRewritten), language);
+    } else {
+        Log::Error(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath));
+    }
+}
+
 void App::ReloadSettings() {
     const Config::LoadResult result = Config::Load(m_settingsPath);
     if (result.parseFailed) {
@@ -633,6 +677,7 @@ void App::ReloadSettings() {
     if (previous.application.language != m_settings.application.language) {
         Lang::Set(Lang::FromCode(m_settings.application.language));
         Log::Info(Lang::Utf8(Str::LogLanguageChanged), Lang::Code(Lang::Current()));
+        RefreshCommentsLanguage();
     }
 
     if (m_window) {
@@ -1175,6 +1220,11 @@ std::wstring App::WriteDiagnosticsReport(const std::string& report) {
 int App::RunDiagnostics() {
     LoadSettings();
     InitializeLogging();
+
+    if (!m_commentsRewritten.empty()) {
+        Log::Operation(Lang::Utf8(Str::OpCommentsRewritten), m_commentsRewritten);
+        m_commentsRewritten.clear();
+    }
 
     // OpDiagnostics carries the report path and therefore needs an argument.
     Log::Operation(Lang::Utf8(Str::OpDiagnosticsStart));
