@@ -515,13 +515,15 @@ void App::ApplyAudio() {
 
     auto result = m_audio.Apply(m_settings);
     if (!result) {
-        // The details go to the file log; the user sees one short notification
-        // per outage, not one per retry.
-        Log::Error("{}", result.error().GetMessage());
-        Log::Info(Lang::Utf8(Str::OpReportHint));
+        const bool firstFailure = m_failureSince == 0;
 
-        if (m_failureSince == 0) {
+        if (firstFailure) {
+            // One message and one balloon per outage; the retries only go to
+            // the file log, otherwise the console becomes unreadable.
             m_failureSince = ::GetTickCount64();
+
+            Log::Error("{}", result.error().GetMessage());
+            Log::Info(Lang::Utf8(Str::OpReportHint));
 
             if (m_settings.tray.notifications.onError) {
                 m_window->Notify(
@@ -529,6 +531,8 @@ void App::ApplyAudio() {
                     Lang::Wide(Str::NotifyDeviceNotReady),
                     true);
             }
+        } else {
+            Log::Debug("{}", result.error().GetMessage());
         }
 
         m_lastApplyFailed = true;
@@ -546,10 +550,15 @@ void App::ApplyAudio() {
 
     Log::Operation(Lang::Utf8(Str::OpApplied), Text::ToUtf8(m_audio.GetStatusText()));
 
-    if (m_deviceChangePending && m_settings.tray.notifications.onDeviceChange) {
-        m_window->Notify(Lang::Wide(Str::NotifyDeviceTitle), m_audio.GetStatusText(), false);
-    } else if (m_settings.tray.notifications.onStateChange || recovered) {
-        m_window->Notify(Lang::Wide(Str::NotifyTitle), m_audio.GetStatusText(), false);
+    // One balloon per action, and only about what the settings allow: a device
+    // change, a recovery from an outage, or a plain switch on/off.
+    const bool deviceChange = m_deviceChangePending && m_settings.tray.notifications.onDeviceChange;
+    const bool recovery = recovered &&
+        (m_settings.tray.notifications.onError || m_settings.tray.notifications.onDeviceChange);
+
+    if (deviceChange || recovery || m_settings.tray.notifications.onStateChange) {
+        const std::wstring title = Lang::Wide(deviceChange ? Str::NotifyDeviceTitle : Str::NotifyTitle);
+        m_window->Notify(title, m_audio.GetStatusText(), false);
     }
 
     m_deviceChangePending = false;
@@ -810,16 +819,10 @@ void App::OnCommand(Command command) {
             m_lastApplyFailed = false;
 
             // Switching the mode off is reported by ApplyAudio(); switching it
-            // on produces two lines there (applying + applied).
+            // on produces two lines there (applying + applied). ApplyAudio()
+            // also shows the notification, so one balloon per action.
             if (m_audioEnabled) {
                 Log::Operation(Lang::Utf8(Str::OpEnabled));
-            }
-
-            if (m_settings.tray.notifications.onStateChange) {
-                m_window->Notify(
-                    Lang::Wide(Str::NotifyTitle),
-                    Lang::Wide(m_audioEnabled ? Str::NotifyEnabled : Str::NotifyDisabled),
-                    false);
             }
 
             CancelAudioRetry();
