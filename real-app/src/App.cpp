@@ -938,7 +938,7 @@ void App::OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         // The audio engine is reset when the machine leaves a sleep state; the
         // streams have to be re-created or the buffer size stays at its default.
         if (wParam == PBT_APMRESUMEAUTOMATIC || wParam == PBT_APMRESUMESUSPEND) {
-            OnSystemResume(Lang::Wide(Str::ReasonResume));
+            OnSystemResume(false, Lang::Wide(Str::ReasonResume));
         }
 
         return;
@@ -946,7 +946,7 @@ void App::OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 
     if (message == WM_WTSSESSION_CHANGE) {
         if (wParam == WTS_SESSION_UNLOCK) {
-            OnSystemResume(Lang::Wide(Str::ReasonUnlock));
+            OnSystemResume(true, Lang::Wide(Str::ReasonUnlock));
         }
 
         return;
@@ -1236,11 +1236,10 @@ void App::ShowDiagnostics() {
     ::ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-void App::OnSystemResume(const std::wstring& reason) {
-    const bool relevant =
-        std::wcscmp(reason, L"session unlock") == 0
-            ? m_settings.audio.reinit.sessionUnlock
-            : m_settings.audio.reinit.resumeFromSleep;
+void App::OnSystemResume(bool sessionUnlock, const std::wstring& reason) {
+    const bool relevant = sessionUnlock
+        ? m_settings.audio.reinit.sessionUnlock
+        : m_settings.audio.reinit.resumeFromSleep;
 
     if (!relevant || !m_audioEnabled) {
         return;

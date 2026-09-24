@@ -208,10 +208,12 @@ void MainWindow::AppendLogLines(const std::vector<std::string>& lines) {
     ::SendMessageW(m_log, EM_SETSEL, static_cast<WPARAM>(length), static_cast<LPARAM>(length));
     ::SendMessageW(m_log, EM_REPLACESEL, FALSE, reinterpret_cast<LPARAM>(wide.c_str()));
 
-    // Always show the newest line, no matter where the caret was.
-    ::SendMessageW(m_log, EM_SETSEL, static_cast<WPARAM>(-1), static_cast<LPARAM>(-1));
+    // Always show the newest line, no matter where the caret was: put the caret
+    // at the very end (without selecting anything) and scroll to the bottom.
+    const int updatedLength = ::GetWindowTextLengthW(m_log);
+    ::SendMessageW(m_log, EM_SETSEL, static_cast<WPARAM>(updatedLength), static_cast<LPARAM>(updatedLength));
     ::SendMessageW(m_log, EM_SCROLLCARET, 0, 0);
-    ::SendMessageW(m_log, EM_LINESCROLL, 0, 0x7FFFFFFF);
+    ::SendMessageW(m_log, WM_VSCROLL, SB_BOTTOM, 0);
 }
 
 void MainWindow::Notify(const std::wstring& title, const std::wstring& text, bool error) {

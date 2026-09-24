@@ -20,7 +20,6 @@
 
 using namespace miniant::Windows;
 using namespace miniant::Windows::Diagnostics;
-using namespace miniant::Lang;
 
 namespace {
 
@@ -109,7 +108,7 @@ void InspectEndpoint(IMMDevice& device, EndpointInfo& info) {
 
     if (info.supportsAudioClient3) {
         if (FAILED(audioClient3->GetMixFormat(&format)) || format == nullptr) {
-            info.error = Lang::Utf8(Lang::Str::DiagMixFormatFailed);
+            info.error = miniant::Lang::Utf8(miniant::Lang::Str::DiagMixFormatFailed);
             return;
         }
 
@@ -125,7 +124,7 @@ void InspectEndpoint(IMMDevice& device, EndpointInfo& info) {
         ::CoTaskMemFree(format);
 
         if (FAILED(hr)) {
-            info.error = fmt::format(Lang::Utf8(Lang::Str::DiagEnginePeriodsFailed), DescribeHResult(static_cast<long>(hr)));
+            info.error = fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagEnginePeriodsFailed), DescribeHResult(static_cast<long>(hr)));
             return;
         }
 
@@ -143,7 +142,7 @@ void InspectEndpoint(IMMDevice& device, EndpointInfo& info) {
         reinterpret_cast<void**>(audioClient.GetAddressOf()));
 
     if (FAILED(v1Result)) {
-        info.error = fmt::format(Lang::Utf8(Lang::Str::DiagActivateFailed), DescribeHResult(static_cast<long>(v1Result)));
+        info.error = fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagActivateFailed), DescribeHResult(static_cast<long>(v1Result)));
         return;
     }
 
@@ -164,11 +163,11 @@ void InspectEndpoint(IMMDevice& device, EndpointInfo& info) {
         info.hasEnginePeriods = info.defaultPeriod != 0;
     }
 
-    info.error = Lang::Utf8(Lang::Str::DiagNoAudioClient3Detail);
+    info.error = miniant::Lang::Utf8(miniant::Lang::Str::DiagNoAudioClient3Detail);
 }
 
 std::string FlowName(EDataFlow flow) {
-    return Lang::Utf8(flow == eRender ? Lang::Str::DiagFlowRender : Lang::Str::DiagFlowCapture);
+    return miniant::Lang::Utf8(flow == eRender ? miniant::Lang::Str::DiagFlowRender : miniant::Lang::Str::DiagFlowCapture);
 }
 
 std::string Milliseconds(uint32_t frames, uint32_t sampleRate) {
@@ -181,18 +180,18 @@ std::string Milliseconds(uint32_t frames, uint32_t sampleRate) {
 
 std::string Periods(const EndpointInfo& info) {
     if (!info.hasEnginePeriods) {
-        return Lang::Utf8(Lang::Str::DiagUnknown);
+        return miniant::Lang::Utf8(miniant::Lang::Str::DiagUnknown);
     }
 
     if (!info.supportsAudioClient3) {
         return fmt::format(
-            Lang::Utf8(Lang::Str::DiagPeriodsNoClient3),
+            miniant::Lang::Utf8(miniant::Lang::Str::DiagPeriodsNoClient3),
             info.defaultPeriod,
             Milliseconds(info.defaultPeriod, info.sampleRate));
     }
 
     return fmt::format(
-        Lang::Utf8(Lang::Str::DiagPeriodsDetail),
+        miniant::Lang::Utf8(miniant::Lang::Str::DiagPeriodsDetail),
         info.defaultPeriod,
         Milliseconds(info.defaultPeriod, info.sampleRate),
         info.minPeriod,
@@ -304,20 +303,20 @@ std::string miniant::Windows::Diagnostics::BuildReport(
     char timestamp[64] = {};
     std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &local);
 
-    text += Lang::Utf8(Lang::Str::DiagTitle);
+    text += miniant::Lang::Utf8(miniant::Lang::Str::DiagTitle);
     text += "\n";
-    text += Lang::Utf8(Lang::Str::DiagRule);
+    text += miniant::Lang::Utf8(miniant::Lang::Str::DiagRule);
     text += "\n\n";
     text += fmt::format(
-        Lang::Utf8(Lang::Str::DiagVersion), AppInfo::VERSION.ToString(), Text::ToUtf8(AppInfo::DESCRIPTION));
-    text += fmt::format(Lang::Utf8(Lang::Str::DiagGenerated), timestamp);
-    text += fmt::format(Lang::Utf8(Lang::Str::DiagWindows), GetWindowsVersion());
-    text += fmt::format(Lang::Utf8(Lang::Str::DiagExecutable), Text::ToUtf8(Filesystem::GetExecutablePath()));
-    text += fmt::format(Lang::Utf8(Lang::Str::DiagSettings), Text::ToUtf8(settingsPath));
-    text += fmt::format(Lang::Utf8(Lang::Str::DiagConfig), Config::Describe(settings));
+        miniant::Lang::Utf8(miniant::Lang::Str::DiagVersion), AppInfo::VERSION.ToString(), Text::ToUtf8(AppInfo::DESCRIPTION));
+    text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagGenerated), timestamp);
+    text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagWindows), GetWindowsVersion());
+    text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagExecutable), Text::ToUtf8(Filesystem::GetExecutablePath()));
+    text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagSettings), Text::ToUtf8(settingsPath));
+    text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagConfig), Config::Describe(settings));
     text += "\n";
 
-    Log::Info(Lang::Utf8(Lang::Str::LogDiagCollected));
+    Log::Info(miniant::Lang::Utf8(miniant::Lang::Str::LogDiagCollected));
     Log::Flush();
 
     HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -342,68 +341,68 @@ std::string miniant::Windows::Diagnostics::BuildReport(
                 reinterpret_cast<void**>(enumerator.GetAddressOf()));
         }
 
-        Log::Info(Lang::Utf8(enumerator ? Lang::Str::LogDiagEnumeratorReady : Lang::Str::LogDiagEnumeratorMissing));
+        Log::Info(miniant::Lang::Utf8(enumerator ? miniant::Lang::Str::LogDiagEnumeratorReady : miniant::Lang::Str::LogDiagEnumeratorMissing));
         Log::Flush();
 
         if (!enumerator) {
             text += fmt::format(
-                Lang::Utf8(Lang::Str::DiagEnumeratorError), DescribeHResult(static_cast<long>(hr)));
-            text += Lang::Utf8(Lang::Str::DiagAudiosrvHint);
+                miniant::Lang::Utf8(miniant::Lang::Str::DiagEnumeratorError), DescribeHResult(static_cast<long>(hr)));
+            text += miniant::Lang::Utf8(miniant::Lang::Str::DiagAudiosrvHint);
         } else {
             const EDataFlow flows[] = { eRender, eCapture };
             for (EDataFlow flow : flows) {
-                text += fmt::format(Lang::Utf8(Lang::Str::DiagFlowHeader), FlowName(flow));
+                text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagFlowHeader), FlowName(flow));
 
                 const std::vector<EndpointInfo> endpoints = EnumerateEndpoints(flow, *enumerator.Get());
                 Log::Info(
-                    Lang::Utf8(Lang::Str::LogDiagEndpoints),
+                    miniant::Lang::Utf8(miniant::Lang::Str::LogDiagEndpoints),
                     endpoints.size(),
-                    Lang::Utf8(flow == EDataFlow::eRender ? Lang::Str::FlowRender : Lang::Str::FlowCapture));
+                    miniant::Lang::Utf8(flow == EDataFlow::eRender ? miniant::Lang::Str::FlowRender : miniant::Lang::Str::FlowCapture));
                 Log::Flush();
 
                 if (endpoints.empty()) {
-                    text += Lang::Utf8(Lang::Str::DiagNoDevices);
+                    text += miniant::Lang::Utf8(miniant::Lang::Str::DiagNoDevices);
                     continue;
                 }
 
                 for (const EndpointInfo& info : endpoints) {
                     text += fmt::format(
                         "{}{}\n",
-                        Text::ToUtf8(info.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : info.deviceName),
-                        info.isDefault ? Lang::Utf8(Lang::Str::DiagDefaultMark) : "");
-                    text += fmt::format(Lang::Utf8(Lang::Str::DiagDeviceId), Text::ToUtf8(info.deviceId));
+                        Text::ToUtf8(info.deviceName.empty() ? miniant::Lang::Wide(miniant::Lang::Str::UnknownDevice) : info.deviceName),
+                        info.isDefault ? miniant::Lang::Utf8(miniant::Lang::Str::DiagDefaultMark) : "");
+                    text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagDeviceId), Text::ToUtf8(info.deviceId));
 
                     if (!info.driverProvider.empty() || !info.driverVersion.empty()) {
                         text += fmt::format(
-                            Lang::Utf8(Lang::Str::DiagDriver),
+                            miniant::Lang::Utf8(miniant::Lang::Str::DiagDriver),
                             Text::ToUtf8(info.driverProvider),
                             Text::ToUtf8(info.driverVersion));
                     }
 
                     if (info.sampleRate != 0) {
                         text += fmt::format(
-                            Lang::Utf8(Lang::Str::DiagFormat),
+                            miniant::Lang::Utf8(miniant::Lang::Str::DiagFormat),
                             info.sampleRate,
                             info.channels,
                             info.bitsPerSample);
                     }
 
                     text += fmt::format(
-                        Lang::Utf8(Lang::Str::DiagPeriods),
-                        info.hasEnginePeriods ? Periods(info) : Lang::Utf8(Lang::Str::DiagUnknown));
+                        miniant::Lang::Utf8(miniant::Lang::Str::DiagPeriods),
+                        info.hasEnginePeriods ? Periods(info) : miniant::Lang::Utf8(miniant::Lang::Str::DiagUnknown));
 
                     if (info.supportsAudioClient3) {
                         text += fmt::format(
-                            Lang::Utf8(Lang::Str::DiagResult),
+                            miniant::Lang::Utf8(miniant::Lang::Str::DiagResult),
                             info.lowLatencyPossible
                                 ? fmt::format(
-                                      Lang::Utf8(Lang::Str::DiagSmallBuffer),
+                                      miniant::Lang::Utf8(miniant::Lang::Str::DiagSmallBuffer),
                                       Milliseconds(info.minPeriod, info.sampleRate))
-                                : std::string(Lang::Utf8(Lang::Str::DiagNoGain)));
+                                : std::string(miniant::Lang::Utf8(miniant::Lang::Str::DiagNoGain)));
                     } else {
                         text += fmt::format(
-                            Lang::Utf8(Lang::Str::DiagResult),
-                            info.error.empty() ? Lang::Utf8(Lang::Str::DiagNoAudioClient3) : info.error);
+                            miniant::Lang::Utf8(miniant::Lang::Str::DiagResult),
+                            info.error.empty() ? miniant::Lang::Utf8(miniant::Lang::Str::DiagNoAudioClient3) : info.error);
                     }
 
                     text += "\n";
@@ -411,8 +410,8 @@ std::string miniant::Windows::Diagnostics::BuildReport(
             }
 
             // What REAL itself is doing right now.
-            text += Lang::Utf8(Lang::Str::DiagSummaryHeader);
-            text += Lang::Utf8(Lang::Str::DiagSummary);
+            text += miniant::Lang::Utf8(miniant::Lang::Str::DiagSummaryHeader);
+            text += miniant::Lang::Utf8(miniant::Lang::Str::DiagSummary);
         }
     }
 
@@ -421,7 +420,7 @@ std::string miniant::Windows::Diagnostics::BuildReport(
         ::CoUninitialize();
     }
 
-    Log::Info(Lang::Utf8(Lang::Str::LogDiagReportBuilt), text.size());
+    Log::Info(miniant::Lang::Utf8(miniant::Lang::Str::LogDiagReportBuilt), text.size());
     Log::Flush();
 
     return text;

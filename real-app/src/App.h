@@ -55,7 +55,7 @@ private:
     void OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam);
     void OnTimer(UINT_PTR timerId);
     void OnDeviceEvent(WPARAM wParam, LPARAM lParam);
-    void OnSystemResume(const std::wstring& reason);
+    void OnSystemResume(bool sessionUnlock, const std::wstring& reason);
     void ScheduleAudioRetry();
     void CancelAudioRetry();
     void GiveUpOnDevice();

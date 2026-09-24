@@ -10,7 +10,6 @@
 #include <cstddef>
 
 using namespace miniant::Windows;
-using namespace miniant::Lang;
 using namespace miniant::Windows::WasapiLatency;
 
 #ifndef AUDCLNT_E_ENGINE_PERIODICITY_LOCKED
@@ -48,11 +47,11 @@ bool IsTransientEndpointError(long code) {
         code == static_cast<long>(AUDCLNT_E_RESOURCES_INVALIDATED);
 }
 
-std::string DescribeEndpointError(Lang::Str what, long code) {
-    const std::string prefix = Lang::Utf8(what);
+std::string DescribeEndpointError(miniant::Lang::Str what, long code) {
+    const std::string prefix = miniant::Lang::Utf8(what);
 
     if (IsTransientEndpointError(code)) {
-        return prefix + Lang::Utf8(Lang::Str::ErrEndpointTransient);
+        return prefix + miniant::Lang::Utf8(miniant::Lang::Str::ErrEndpointTransient);
     }
 
     return prefix + ": " + DescribeHResult(code);
@@ -169,7 +168,7 @@ const AudioStreamInfo& MinimumLatencyAudioClient::GetInfo() const {
 
 tl::expected<uint32_t, WindowsError> MinimumLatencyAudioClient::GetCurrentPeriod() {
     if (m_audioClient == nullptr) {
-        return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::ErrStreamNotRunning)));
+        return tl::make_unexpected(WindowsError(miniant::Lang::Utf8(miniant::Lang::Str::ErrStreamNotRunning)));
     }
 
     WAVEFORMATEX* currentFormat = nullptr;
@@ -199,7 +198,7 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
     HRESULT hr = enumerator.GetDefaultAudioEndpoint(dataFlow, role, device.GetAddressOf());
     if (FAILED(hr)) {
         return tl::make_unexpected(WindowsError(
-            DescribeEndpointError(Lang::Str::ErrOpenEndpoint, static_cast<long>(hr))));
+            DescribeEndpointError(miniant::Lang::Str::ErrOpenEndpoint, static_cast<long>(hr))));
     }
 
     ComPtr<IAudioClient3> audioClient;
@@ -209,19 +208,19 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
         nullptr,
         reinterpret_cast<void**>(audioClient.GetAddressOf()));
     if (hr == E_NOINTERFACE) {
-        return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::ErrNoAudioClient3)));
+        return tl::make_unexpected(WindowsError(miniant::Lang::Utf8(miniant::Lang::Str::ErrNoAudioClient3)));
     }
 
     if (FAILED(hr)) {
         return tl::make_unexpected(WindowsError(
-            fmt::format(Lang::Utf8(Lang::Str::ErrActivateClient), DescribeHResult(static_cast<long>(hr)))));
+            fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::ErrActivateClient), DescribeHResult(static_cast<long>(hr)))));
     }
 
     WAVEFORMATEX* format = nullptr;
     hr = audioClient->GetMixFormat(&format);
     if (FAILED(hr) || format == nullptr) {
         return tl::make_unexpected(WindowsError(
-            fmt::format(Lang::Utf8(Lang::Str::ErrMixFormat), DescribeHResult(static_cast<long>(hr)))));
+            fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::ErrMixFormat), DescribeHResult(static_cast<long>(hr)))));
     }
 
     AudioStreamInfo info;
@@ -247,7 +246,7 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
     if (FAILED(hr)) {
         ::CoTaskMemFree(format);
         return tl::make_unexpected(WindowsError(
-            fmt::format(Lang::Utf8(Lang::Str::ErrEnginePeriods), DescribeHResult(static_cast<long>(hr)))));
+            fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::ErrEnginePeriods), DescribeHResult(static_cast<long>(hr)))));
     }
 
     info.lowLatencyNotAvailable = info.minPeriod >= info.defaultPeriod;
@@ -290,18 +289,18 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
 
         if (hr == AUDCLNT_E_ENGINE_FORMAT_LOCKED || hr == AUDCLNT_E_ENGINE_PERIODICITY_LOCKED) {
             return tl::make_unexpected(WindowsError(
-                fmt::format(Lang::Utf8(Lang::Str::ErrEngineLocked), DescribeHResult(static_cast<long>(hr)))));
+                fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::ErrEngineLocked), DescribeHResult(static_cast<long>(hr)))));
         }
 
         return tl::make_unexpected(WindowsError(
-            fmt::format(Lang::Utf8(Lang::Str::ErrInitStream), DescribeHResult(static_cast<long>(hr)))));
+            fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::ErrInitStream), DescribeHResult(static_cast<long>(hr)))));
     }
 
     hr = audioClient->Start();
     if (FAILED(hr)) {
         ::CoTaskMemFree(format);
         return tl::make_unexpected(WindowsError(
-            fmt::format(Lang::Utf8(Lang::Str::ErrStartStream), DescribeHResult(static_cast<long>(hr)))));
+            fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::ErrStartStream), DescribeHResult(static_cast<long>(hr)))));
     }
 
     WAVEFORMATEX* currentFormat = nullptr;
