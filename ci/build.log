@@ -5,14 +5,6 @@ MSBuild version 17.14.60+43b635718 for .NET Framework
   Building Custom Rule D:/a/REAL/REAL/real-app/CMakeLists.txt
   App.cpp
   AudioSession.cpp
-D:\a\REAL\REAL\real-app\src\App.cpp(1241,14): error C2664: 'int wcscmp(const wchar_t *,const wchar_t *)': cannot convert argument 1 from 'const std::wstring' to 'const wchar_t *' [D:\a\REAL\REAL\build\real-app.vcxproj]
-      D:\a\REAL\REAL\real-app\src\App.cpp(1241,21):
-      No user-defined-conversion operator available that can perform this conversion, or the operator cannot be called
-      C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\corecrt_wstring.h(108,22):
-      see declaration of 'wcscmp'
-      D:\a\REAL\REAL\real-app\src\App.cpp(1241,14):
-      while trying to match the argument list '(const std::wstring, const wchar_t [15])'
-  
   AutoUpdater.cpp
   CommandLine.cpp
   HttpClient.cpp
@@ -24,32 +16,13 @@ D:\a\REAL\REAL\real-app\src\App.cpp(1241,14): error C2664: 'int wcscmp(const wch
   Console.cpp
   DeviceNotification.cpp
   Diagnostics.cpp
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(112,26): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(112,37): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(128,38): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(128,49): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(146,34): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(146,45): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(167,18): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(167,29): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(171,12): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(171,41): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(171,69): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(184,16): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(184,27): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(189,13): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(189,24): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(195,9): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(195,20): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
   Filesystem.cpp
   MainWindow.cpp
   MinimumLatencyAudioClient.cpp
-D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.cpp(51,35): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.cpp(52,32): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.cpp(55,25): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
-D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.cpp(55,36): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
   TrayIcon.cpp
   WindowsError.cpp
   main.cpp
   Generating Code...
-cmake --build exit code: 1
+  real-app.vcxproj -> D:\a\REAL\REAL\build\Release\REAL.exe
+  Building Custom Rule D:/a/REAL/REAL/real-app/CMakeLists.txt
+cmake --build exit code: 0
