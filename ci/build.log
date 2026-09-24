@@ -1,4 +1,4 @@
-MSBuild version 17.14.60+43b635718 for .NET Framework
+MSBuild version 17.14.51+25f168cee for .NET Framework
 
   Checking File Globs
   1>Checking Build System
@@ -22,7 +22,7 @@ MSBuild version 17.14.60+43b635718 for .NET Framework
   TrayIcon.cpp
   WindowsError.cpp
   main.cpp
+D:\a\REAL\REAL\real-app\src\Windows\TrayIcon.cpp(180,23): error C2065: 'm_lastMenuTick': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\TrayIcon.cpp(184,13): error C2065: 'm_lastMenuTick': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
   Generating Code...
-  real-app.vcxproj -> D:\a\REAL\REAL\build\Release\REAL.exe
-  Building Custom Rule D:/a/REAL/REAL/real-app/CMakeLists.txt
-cmake --build exit code: 0
+cmake --build exit code: 1
