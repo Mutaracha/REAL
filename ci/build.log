@@ -1,0 +1,198 @@
+MSBuild version 17.14.51+25f168cee for .NET Framework
+
+  Checking File Globs
+  1>Checking Build System
+  Building Custom Rule D:/a/REAL/REAL/real-app/CMakeLists.txt
+  App.cpp
+  AudioSession.cpp
+  AutoUpdater.cpp
+D:\a\REAL\REAL\real-app\src\App.cpp(941,13): error C2664: 'void miniant::App::OnSystemResume(const wchar_t *)': cannot convert argument 1 from 'std::wstring' to 'const wchar_t *' [D:\a\REAL\REAL\build\real-app.vcxproj]
+      D:\a\REAL\REAL\real-app\src\App.cpp(941,38):
+      No user-defined-conversion operator available that can perform this conversion, or the operator cannot be called
+      D:\a\REAL\REAL\real-app\src\App.h(58,10):
+      see declaration of 'miniant::App::OnSystemResume'
+      D:\a\REAL\REAL\real-app\src\App.cpp(941,13):
+      while trying to match the argument list '(std::wstring)'
+  
+D:\a\REAL\REAL\real-app\src\App.cpp(949,13): error C2664: 'void miniant::App::OnSystemResume(const wchar_t *)': cannot convert argument 1 from 'std::wstring' to 'const wchar_t *' [D:\a\REAL\REAL\build\real-app.vcxproj]
+      D:\a\REAL\REAL\real-app\src\App.cpp(949,38):
+      No user-defined-conversion operator available that can perform this conversion, or the operator cannot be called
+      D:\a\REAL\REAL\real-app\src\App.h(58,10):
+      see declaration of 'miniant::App::OnSystemResume'
+      D:\a\REAL\REAL\real-app\src\App.cpp(949,13):
+      while trying to match the argument list '(std::wstring)'
+  
+D:\a\REAL\REAL\real-app\src\AudioSession.cpp(173,17): error C2110: '+': cannot add two pointers [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(44,11): error C2653: 'Http': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(44,5): error C4430: missing type specifier - int assumed. Note: C++ does not support default-int [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(44,26): error C2146: syntax error: missing ';' before identifier 'response' [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(44,26): error C2065: 'response': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(44,37): error C2653: 'Http': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(44,43): error C3861: 'Get': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(45,10): error C2065: 'response': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(46,93): error C2065: 'response': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(49,9): error C2065: 'response': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(53,9): error C2065: 'response': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(53,39): error C2065: 'response': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(54,85): error C2065: 'response': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(57,9): error C2065: 'response': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(58,86): error C2065: 'response': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\AutoUpdater.cpp(63,31): error C2065: 'response': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+  CommandLine.cpp
+  HttpClient.cpp
+  Lang.cpp
+  Log.cpp
+  Settings.cpp
+  Text.cpp
+  Version.cpp
+  Console.cpp
+  DeviceNotification.cpp
+  Diagnostics.cpp
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(110,26): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(110,37): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(110,48): error C2065: 'DiagMixFormatFailed': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(110,32): error C3861: 'Utf8': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(110,17): error C2593: 'operator =' is ambiguous [D:\a\REAL\REAL\build\real-app.vcxproj]
+      C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(1453,32):
+      could be 'std::basic_string<char,std::char_traits<char>,std::allocator<char>> &std::basic_string<char,std::char_traits<char>,std::allocator<char>>::operator =(const _Elem)'
+          with
+          [
+              _Elem=char
+          ]
+      C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(1445,32):
+      or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>> &std::basic_string<char,std::char_traits<char>,std::allocator<char>>::operator =(const _Elem *const )'
+          with
+          [
+              _Elem=char
+          ]
+      C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(1394,32):
+      or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>> &std::basic_string<char,std::char_traits<char>,std::allocator<char>>::operator =(const std::basic_string<char,std::char_traits<char>,std::allocator<char>> &)'
+      C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(1345,32):
+      or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>> &std::basic_string<char,std::char_traits<char>,std::allocator<char>>::operator =(std::initializer_list<_Elem>)'
+          with
+          [
+              _Elem=char
+          ]
+      C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(1224,32):
+      or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>> &std::basic_string<char,std::char_traits<char>,std::allocator<char>>::operator =(std::basic_string<char,std::char_traits<char>,std::allocator<char>> &&) noexcept(<expr>)'
+      D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(110,17):
+      while trying to match the argument list '(std::string, <error type>)'
+  
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(126,38): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(126,49): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(126,60): error C2065: 'DiagEnginePeriodsFailed': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(126,44): error C3861: 'Utf8': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(126,31): error C2668: 'fmt::v5::format': ambiguous call to overloaded function [D:\a\REAL\REAL\build\real-app.vcxproj]
+      D:\a\REAL\REAL\real-app\deps\spdlog\include\spdlog\fmt\bundled\core.h(1515,21):
+      could be 'std::wstring fmt::v5::format<std::string>(fmt::v5::wstring_view,const std::string &)'
+      D:\a\REAL\REAL\real-app\deps\spdlog\include\spdlog\fmt\bundled\core.h(1506,20):
+      or       'std::string fmt::v5::format<std::string>(fmt::v5::string_view,const std::string &)'
+      D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(126,31):
+      while trying to match the argument list '(<error type>, std::string)'
+  
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(144,34): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(144,45): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(144,56): error C2065: 'DiagActivateFailed': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(144,40): error C3861: 'Utf8': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(144,27): error C2668: 'fmt::v5::format': ambiguous call to overloaded function [D:\a\REAL\REAL\build\real-app.vcxproj]
+      D:\a\REAL\REAL\real-app\deps\spdlog\include\spdlog\fmt\bundled\core.h(1515,21):
+      could be 'std::wstring fmt::v5::format<std::string>(fmt::v5::wstring_view,const std::string &)'
+      D:\a\REAL\REAL\real-app\deps\spdlog\include\spdlog\fmt\bundled\core.h(1506,20):
+      or       'std::string fmt::v5::format<std::string>(fmt::v5::string_view,const std::string &)'
+      D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(144,27):
+      while trying to match the argument list '(<error type>, std::string)'
+  
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(165,18): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(165,29): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(165,40): error C2065: 'DiagNoAudioClient3Detail': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(165,24): error C3861: 'Utf8': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(165,9): error C2593: 'operator =' is ambiguous [D:\a\REAL\REAL\build\real-app.vcxproj]
+      C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(1453,32):
+      could be 'std::basic_string<char,std::char_traits<char>,std::allocator<char>> &std::basic_string<char,std::char_traits<char>,std::allocator<char>>::operator =(const _Elem)'
+          with
+          [
+              _Elem=char
+          ]
+      C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(1445,32):
+      or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>> &std::basic_string<char,std::char_traits<char>,std::allocator<char>>::operator =(const _Elem *const )'
+          with
+          [
+              _Elem=char
+          ]
+      C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(1394,32):
+      or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>> &std::basic_string<char,std::char_traits<char>,std::allocator<char>>::operator =(const std::basic_string<char,std::char_traits<char>,std::allocator<char>> &)'
+      C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(1345,32):
+      or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>> &std::basic_string<char,std::char_traits<char>,std::allocator<char>>::operator =(std::initializer_list<_Elem>)'
+          with
+          [
+              _Elem=char
+          ]
+      C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\xstring(1224,32):
+      or       'std::basic_string<char,std::char_traits<char>,std::allocator<char>> &std::basic_string<char,std::char_traits<char>,std::allocator<char>>::operator =(std::basic_string<char,std::char_traits<char>,std::allocator<char>> &&) noexcept(<expr>)'
+      D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(165,9):
+      while trying to match the argument list '(std::string, <error type>)'
+  
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(169,12): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(169,41): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(169,52): error C2065: 'DiagFlowRender': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(169,69): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(169,80): error C2065: 'DiagFlowCapture': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(169,18): error C3861: 'Utf8': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(182,16): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(182,27): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(182,38): error C2065: 'DiagUnknown': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(182,22): error C3861: 'Utf8': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(187,13): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(187,24): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(187,35): error C2065: 'DiagPeriodsNoClient3': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(187,19): error C3861: 'Utf8': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(186,21): error C2668: 'fmt::v5::format': ambiguous call to overloaded function [D:\a\REAL\REAL\build\real-app.vcxproj]
+      D:\a\REAL\REAL\real-app\deps\spdlog\include\spdlog\fmt\bundled\core.h(1515,21):
+      could be 'std::wstring fmt::v5::format<uint32_t,std::string>(fmt::v5::wstring_view,const uint32_t &,const std::string &)'
+      D:\a\REAL\REAL\real-app\deps\spdlog\include\spdlog\fmt\bundled\core.h(1506,20):
+      or       'std::string fmt::v5::format<uint32_t,std::string>(fmt::v5::string_view,const uint32_t &,const std::string &)'
+      D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(186,21):
+      while trying to match the argument list '(<error type>, const uint32_t, std::string)'
+  
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(193,9): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(193,20): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(193,31): error C2065: 'DiagPeriodsDetail': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(193,15): error C3861: 'Utf8': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(192,17): error C2668: 'fmt::v5::format': ambiguous call to overloaded function [D:\a\REAL\REAL\build\real-app.vcxproj]
+      D:\a\REAL\REAL\real-app\deps\spdlog\include\spdlog\fmt\bundled\core.h(1515,21):
+      could be 'std::wstring fmt::v5::format<uint32_t,std::string,uint32_t,std::string,uint32_t,uint32_t>(fmt::v5::wstring_view,const uint32_t &,const std::string &,const uint32_t &,const std::string &,const uint32_t &,const uint32_t &)'
+      D:\a\REAL\REAL\real-app\deps\spdlog\include\spdlog\fmt\bundled\core.h(1506,20):
+      or       'std::string fmt::v5::format<uint32_t,std::string,uint32_t,std::string,uint32_t,uint32_t>(fmt::v5::string_view,const uint32_t &,const std::string &,const uint32_t &,const std::string &,const uint32_t &,const uint32_t &)'
+      D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(192,17):
+      while trying to match the argument list '(<error type>, const uint32_t, std::string, const uint32_t, std::string, const uint32_t, const uint32_t)'
+  
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(318,5): error C2653: 'Log': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(318,10): error C3861: 'Info': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(319,5): error C2653: 'Log': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(319,10): error C3861: 'Flush': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(343,9): error C2653: 'Log': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(343,14): error C3861: 'Info': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(344,9): error C2653: 'Log': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(344,14): error C3861: 'Flush': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(356,17): error C2653: 'Log': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(356,22): error C3861: 'Info': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(360,17): error C2653: 'Log': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(360,22): error C3861: 'Flush': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(422,5): error C2653: 'Log': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(422,10): error C3861: 'Info': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(423,5): error C2653: 'Log': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\Diagnostics.cpp(423,10): error C3861: 'Flush': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+  Filesystem.cpp
+  MainWindow.cpp
+  MinimumLatencyAudioClient.cpp
+D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.cpp(50,35): error C2653: 'Lang': is not a class or namespace name [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.cpp(50,41): error C2065: 'Str': undeclared identifier [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.cpp(50,45): error C2146: syntax error: missing ')' before identifier 'what' [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.cpp(50,62): error C2143: syntax error: missing ';' before '{' [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.cpp(50,62): error C2447: '{': missing function header (old-style formal list?) [D:\a\REAL\REAL\build\real-app.vcxproj]
+D:\a\REAL\REAL\real-app\src\Windows\MinimumLatencyAudioClient.cpp(201,13): error C3861: 'DescribeEndpointError': identifier not found [D:\a\REAL\REAL\build\real-app.vcxproj]
+  TrayIcon.cpp
+  WindowsError.cpp
+  main.cpp
+  Generating Code...
+cmake --build exit code: 1
