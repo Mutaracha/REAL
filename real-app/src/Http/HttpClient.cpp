@@ -2,7 +2,10 @@
 
 #include "../AppVersion.h"
 #include "../Text.h"
+#include "../Lang.h"
 #include "../Windows/WindowsError.h"
+
+#include <spdlog/fmt/fmt.h>
 
 #include <Windows.h>
 #include <winhttp.h>
@@ -40,7 +43,7 @@ Response miniant::Http::Get(
     Response response;
 
     if (url.empty()) {
-        response.error = "Empty URL.";
+        response.error = Lang::Utf8(Lang::Str::ErrEmptyUrl);
         return response;
     }
 
@@ -74,7 +77,7 @@ Response miniant::Http::Get(
     components.dwExtraInfoLength = static_cast<DWORD>(-1);
 
     if (::WinHttpCrackUrl(url.c_str(), static_cast<DWORD>(url.size()), 0, &components) == FALSE) {
-        response.error = std::string("Could not parse the URL: ") + Windows::DescribeLastError();
+        response.error = fmt::format(Lang::Utf8(Lang::Str::ErrUrlParse), Windows::DescribeLastError());
         return response;
     }
 
@@ -172,7 +175,7 @@ Response miniant::Http::Get(
         }
 
         if (response.body.size() + bytesRead > MAX_RESPONSE_BYTES) {
-            response.error = "The response is too large.";
+            response.error = Lang::Utf8(Lang::Str::ErrResponseTooLarge);
             response.networkOk = false;
             return response;
         }

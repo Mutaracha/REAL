@@ -2,6 +2,7 @@
 
 #include "../../res/resource.h"
 #include "../AppMessages.h"
+#include "../Lang.h"
 #include "../Log.h"
 #include "../Text.h"
 
@@ -13,7 +14,6 @@ using namespace miniant::Windows;
 namespace {
 
 const wchar_t WINDOW_CLASS_NAME[] = L"REAL.MainWindow";
-const wchar_t WINDOW_TITLE[] = L"REAL - REduce Audio Latency";
 
 const int WINDOW_WIDTH = 780;
 const int WINDOW_HEIGHT = 480;
@@ -26,15 +26,15 @@ const size_t MAX_LOG_LENGTH = 200000;
 
 const struct {
     UINT id;
-    const wchar_t* text;
+    miniant::Lang::Str text;
     miniant::Command command;
 } BUTTONS[] = {
-    { 1, L"Reinitialize", miniant::Command::Reinitialize },
-    { 2, L"Settings file...", miniant::Command::OpenSettings },
-    { 3, L"Open log", miniant::Command::OpenLog },
-    { 4, L"Diagnostics", miniant::Command::Diagnose },
-    { 5, L"Hide to tray", miniant::Command::HideToTray },
-    { 6, L"Exit", miniant::Command::Exit },
+    { 1, miniant::Lang::Str::ButtonReinitialize, miniant::Command::Reinitialize },
+    { 2, miniant::Lang::Str::ButtonSettings, miniant::Command::OpenSettings },
+    { 3, miniant::Lang::Str::ButtonLog, miniant::Command::OpenLog },
+    { 4, miniant::Lang::Str::ButtonDiagnostics, miniant::Command::Diagnose },
+    { 5, miniant::Lang::Str::ButtonHideToTray, miniant::Command::HideToTray },
+    { 6, miniant::Lang::Str::ButtonExit, miniant::Command::Exit },
 };
 
 constexpr size_t BUTTON_COUNT = sizeof(BUTTONS) / sizeof(BUTTONS[0]);
@@ -75,16 +75,18 @@ tl::expected<std::unique_ptr<MainWindow>, WindowsError> MainWindow::Create(HINST
     windowClass.lpszClassName = WINDOW_CLASS_NAME;
 
     if (::RegisterClassExW(&windowClass) == 0) {
-        return tl::make_unexpected(WindowsError("Could not register the main window class."));
+        return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::LogWindowClassFailed)));
     }
 
     RECT desired = { 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT };
     ::AdjustWindowRectEx(&desired, WS_OVERLAPPEDWINDOW, FALSE, 0);
 
+    const std::wstring title = miniant::Lang::Wide(miniant::Lang::Str::WindowTitle);
+
     const HWND window = ::CreateWindowExW(
         0,
         WINDOW_CLASS_NAME,
-        WINDOW_TITLE,
+        title.c_str(),
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
@@ -95,7 +97,7 @@ tl::expected<std::unique_ptr<MainWindow>, WindowsError> MainWindow::Create(HINST
         instance,
         result.get());
     if (window == nullptr) {
-        return tl::make_unexpected(WindowsError("Could not create the main window."));
+        return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::LogWindowCreateFailed)));
     }
 
     result->m_window = window;
@@ -158,9 +160,30 @@ void MainWindow::SetHideOnClose(bool value) {
     m_hideOnClose = value;
 }
 
+void MainWindow::ApplyLanguage() {
+    const std::wstring title = miniant::Lang::Wide(miniant::Lang::Str::WindowTitle);
+    ::SetWindowTextW(m_window, title.c_str());
+
+    for (const auto& button : m_buttons) {
+        for (size_t i = 0; i < BUTTON_COUNT; ++i) {
+            if (static_cast<UINT>(::GetDlgCtrlID(button.first)) == BUTTONS[i].id) {
+                ::SetWindowTextW(button.first, miniant::Lang::Wide(BUTTONS[i].text).c_str());
+                break;
+            }
+        }
+    }
+
+    if (!m_statusTextSet && m_status != nullptr) {
+        ::SetWindowTextW(m_status, miniant::Lang::Wide(miniant::Lang::Str::StatusStarting).c_str());
+    }
+
+    LayoutControls();
+}
+
 void MainWindow::SetStatusText(const std::wstring& text) {
     if (m_status != nullptr) {
         ::SetWindowTextW(m_status, text.c_str());
+        m_statusTextSet = true;
     }
 }
 
@@ -184,7 +207,11 @@ void MainWindow::AppendLogLines(const std::vector<std::string>& lines) {
     const int length = ::GetWindowTextLengthW(m_log);
     ::SendMessageW(m_log, EM_SETSEL, static_cast<WPARAM>(length), static_cast<LPARAM>(length));
     ::SendMessageW(m_log, EM_REPLACESEL, FALSE, reinterpret_cast<LPARAM>(wide.c_str()));
+
+    // Always show the newest line, no matter where the caret was.
+    ::SendMessageW(m_log, EM_SETSEL, static_cast<WPARAM>(-1), static_cast<LPARAM>(-1));
     ::SendMessageW(m_log, EM_SCROLLCARET, 0, 0);
+    ::SendMessageW(m_log, EM_LINESCROLL, 0, 0x7FFFFFFF);
 }
 
 void MainWindow::Notify(const std::wstring& title, const std::wstring& text, bool error) {
@@ -254,7 +281,7 @@ void MainWindow::CreateControls() {
     m_status = ::CreateWindowExW(
         0,
         L"STATIC",
-        L"Starting...",
+        miniant::Lang::Wide(miniant::Lang::Str::StatusStarting).c_str(),
         WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS,
         0, 0, 0, 0,
         m_window,
@@ -277,7 +304,7 @@ void MainWindow::CreateControls() {
         const HWND button = ::CreateWindowExW(
             0,
             L"BUTTON",
-            BUTTONS[i].text,
+            miniant::Lang::Wide(BUTTONS[i].text).c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
             0, 0, 0, 0,
             m_window,

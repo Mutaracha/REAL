@@ -38,6 +38,8 @@ private:
 };
 
 std::shared_ptr<spdlog::logger> g_logger;
+// Console output is a separate logger: it carries the operations only.
+std::shared_ptr<spdlog::logger> g_consoleLogger;
 std::unique_ptr<LogBuffer> g_buffer;
 std::wstring g_logFilePath;
 
@@ -167,7 +169,8 @@ void miniant::Log::Initialize(const Config::Settings& settings, bool consoleAtta
     if (settings.logging.toConsole && consoleAttached) {
         auto consoleSink = std::make_shared<spdlog::sinks::stdout_sink_mt>();
         consoleSink->set_pattern("%v");
-        sinks.push_back(consoleSink);
+        g_consoleLogger = std::make_shared<spdlog::logger>("console", consoleSink);
+        g_consoleLogger->set_level(spdlog::level::info);
     }
 
     if (settings.logging.toFile) {
@@ -194,6 +197,7 @@ void miniant::Log::Initialize(const Config::Settings& settings, bool consoleAtta
 }
 
 void miniant::Log::Shutdown() {
+    g_consoleLogger.reset();
     if (g_logger) {
         g_logger->flush();
         g_logger.reset();
@@ -208,9 +212,23 @@ void miniant::Log::SetLevel(const std::string& level) {
     }
 }
 
+void miniant::Log::WriteOperation(const std::string& message) {
+    Write(Level::Info, message);
+
+    if (g_consoleLogger != nullptr) {
+        g_consoleLogger->info(message);
+    }
+}
+
 void miniant::Log::Write(Level level, const std::string& message) {
     if (!g_logger) {
         return;
+    }
+
+    // Failures are worth seeing in the console as well, everything else is
+    // written to the file and shown in the window only.
+    if (level == Level::Error && g_consoleLogger != nullptr) {
+        g_consoleLogger->error(message);
     }
 
     switch (level) {

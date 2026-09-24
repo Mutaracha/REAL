@@ -42,14 +42,22 @@ enum class UpdatesMode {
 struct ReinitSettings {
     bool defaultDeviceChanged = true;
     bool deviceStateChanged = true;
-    bool deviceAdded = false;
+    // A device that is plugged back in appears as a new endpoint, so this flag
+    // matters for the "device was switched off, then on again" case.
+    bool deviceAdded = true;
     bool deviceRemoved = false;
     bool resumeFromSleep = true;
     bool sessionUnlock = true;
+    // A device change switches the latency reduction back on when it was off.
+    bool enableWhenDisabled = true;
+    // How long the application keeps trying before it gives up (and stops
+    // polling) when the device does not answer at all.
+    int failureTimeoutMs = 60000;
     int debounceMs = 1000;
 };
 
 struct ApplicationSettings {
+    std::string language = "auto";
     bool startMinimizedToTray = false;
     bool minimizeToTray = true;
     CloseAction closeButtonAction = CloseAction::Minimize;
@@ -70,6 +78,7 @@ struct TrayMenuSettings {
     bool reinitialize = true;
     bool openSettings = true;
     bool openLog = true;
+    bool diagnostics = true;
     bool startWithWindows = true;
     bool about = true;
     bool exit = true;

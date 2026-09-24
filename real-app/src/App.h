@@ -58,6 +58,10 @@ private:
     void OnSystemResume(const wchar_t* reason);
     void ScheduleAudioRetry();
     void CancelAudioRetry();
+    void GiveUpOnDevice();
+
+    // Text shown while the latency reduction is not applied.
+    std::wstring CurrentOffStatusText() const;
     int RunDiagnostics();
     void ShowDiagnostics();
     std::wstring WriteDiagnosticsReport(const std::string& report);
@@ -95,12 +99,20 @@ private:
     std::thread m_updateThread;
     std::mutex m_updateMutex;
     std::string m_updateMessage;
+    std::string m_updateDetails;
     std::string m_updateUrl;
 
     // Backoff for re-applying the audio after a transient failure (device being
     // enabled/disabled, audio service restarting).
     unsigned int m_retryDelayMs = 0;
     bool m_lastApplyFailed = false;
+    // Tick count when the current outage started (0 = everything is fine).
+    ULONGLONG m_failureSince = 0;
+    // Set when the application gave up after audio.reinit.failureTimeoutMs and
+    // stopped polling until a device event arrives.
+    bool m_audioSuspended = false;
+    // The next apply is caused by a device change (affects the notification).
+    bool m_deviceChangePending = false;
 };
 
 }

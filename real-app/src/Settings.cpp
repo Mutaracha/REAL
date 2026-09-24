@@ -1,5 +1,6 @@
 #include "Settings.h"
 
+#include "Lang.h"
 #include "Text.h"
 #include "Windows/Filesystem.h"
 
@@ -13,6 +14,7 @@
 using json = nlohmann::json;
 using namespace miniant;
 using namespace miniant::Config;
+using namespace miniant::Lang;
 
 namespace {
 
@@ -267,6 +269,7 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
     WarnUnknownKeys(root, "root", { "configVersion", "application", "tray", "audio", "performance", "updates", "hotkeys", "logging" }, result.warnings);
 
     if (const json* section = FindSection(root, "application")) {
+        ReadString(*section, "language", settings.application.language, result.warnings, "application");
         ReadBool(*section, "startMinimizedToTray", settings.application.startMinimizedToTray, result.warnings, "application");
         ReadBool(*section, "minimizeToTray", settings.application.minimizeToTray, result.warnings, "application");
         ReadEnum(*section, "closeButtonAction", CLOSE_ACTION_MAP, settings.application.closeButtonAction, result.warnings, "application");
@@ -274,7 +277,7 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
         ReadBool(*section, "singleInstance", settings.application.singleInstance, result.warnings, "application");
         ReadBool(*section, "startWithWindows", settings.application.startWithWindows, result.warnings, "application");
         WarnUnknownKeys(*section, "application",
-            { "startMinimizedToTray", "minimizeToTray", "closeButtonAction", "showConsole", "singleInstance", "startWithWindows" },
+            { "language", "startMinimizedToTray", "minimizeToTray", "closeButtonAction", "showConsole", "singleInstance", "startWithWindows" },
             result.warnings);
     }
 
@@ -295,11 +298,12 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
             ReadBool(*menu, "reinitialize", settings.tray.menu.reinitialize, result.warnings, "tray.menu");
             ReadBool(*menu, "openSettings", settings.tray.menu.openSettings, result.warnings, "tray.menu");
             ReadBool(*menu, "openLog", settings.tray.menu.openLog, result.warnings, "tray.menu");
+            ReadBool(*menu, "diagnostics", settings.tray.menu.diagnostics, result.warnings, "tray.menu");
             ReadBool(*menu, "startWithWindows", settings.tray.menu.startWithWindows, result.warnings, "tray.menu");
             ReadBool(*menu, "about", settings.tray.menu.about, result.warnings, "tray.menu");
             ReadBool(*menu, "exit", settings.tray.menu.exit, result.warnings, "tray.menu");
             WarnUnknownKeys(*menu, "tray.menu",
-                { "showStatus", "toggleEnabled", "reinitialize", "openSettings", "openLog", "startWithWindows", "about", "exit" },
+                { "showStatus", "toggleEnabled", "reinitialize", "openSettings", "openLog", "diagnostics", "startWithWindows", "about", "exit" },
                 result.warnings);
         }
 
@@ -322,9 +326,11 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
             ReadBool(*reinit, "deviceRemoved", settings.audio.reinit.deviceRemoved, result.warnings, "audio.reinit");
             ReadBool(*reinit, "resumeFromSleep", settings.audio.reinit.resumeFromSleep, result.warnings, "audio.reinit");
             ReadBool(*reinit, "sessionUnlock", settings.audio.reinit.sessionUnlock, result.warnings, "audio.reinit");
+            ReadBool(*reinit, "enableWhenDisabled", settings.audio.reinit.enableWhenDisabled, result.warnings, "audio.reinit");
+            ReadInt(*reinit, "failureTimeoutMs", settings.audio.reinit.failureTimeoutMs, 5000, 3600000, result.warnings, "audio.reinit");
             ReadInt(*reinit, "debounceMs", settings.audio.reinit.debounceMs, 0, 60000, result.warnings, "audio.reinit");
             WarnUnknownKeys(*reinit, "audio.reinit",
-                { "defaultDeviceChanged", "deviceStateChanged", "deviceAdded", "deviceRemoved", "resumeFromSleep", "sessionUnlock", "debounceMs" },
+                { "defaultDeviceChanged", "deviceStateChanged", "deviceAdded", "deviceRemoved", "resumeFromSleep", "sessionUnlock", "enableWhenDisabled", "failureTimeoutMs", "debounceMs" },
                 result.warnings);
         }
 
@@ -437,6 +443,7 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     root["configVersion"] = settings.configVersion;
 
     json& application = root["application"];
+    application["language"] = settings.application.language;
     application["startMinimizedToTray"] = settings.application.startMinimizedToTray;
     application["minimizeToTray"] = settings.application.minimizeToTray;
     application["closeButtonAction"] = ToString(settings.application.closeButtonAction);
@@ -455,6 +462,7 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     menu["reinitialize"] = settings.tray.menu.reinitialize;
     menu["openSettings"] = settings.tray.menu.openSettings;
     menu["openLog"] = settings.tray.menu.openLog;
+    menu["diagnostics"] = settings.tray.menu.diagnostics;
     menu["startWithWindows"] = settings.tray.menu.startWithWindows;
     menu["about"] = settings.tray.menu.about;
     menu["exit"] = settings.tray.menu.exit;
@@ -479,6 +487,8 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     reinit["deviceRemoved"] = settings.audio.reinit.deviceRemoved;
     reinit["resumeFromSleep"] = settings.audio.reinit.resumeFromSleep;
     reinit["sessionUnlock"] = settings.audio.reinit.sessionUnlock;
+    reinit["enableWhenDisabled"] = settings.audio.reinit.enableWhenDisabled;
+    reinit["failureTimeoutMs"] = settings.audio.reinit.failureTimeoutMs;
     reinit["debounceMs"] = settings.audio.reinit.debounceMs;
 
     json& performance = root["performance"];
@@ -509,136 +519,95 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
 std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     SettingsDocument document;
 
+    auto text = [](Str id) { return std::string(Lang::Utf8(id)); };
+
+    document.Comment(0, text(Str::CfgFileHeader));
     document.Line(0, "{");
-    document.Key(2, "configVersion", settings.configVersion,
-        "Версия формата настроек, служебное поле. Текущая версия: 1.", true);
+    document.Key(2, "configVersion", settings.configVersion, text(Str::CfgConfigVersion), true);
     document.Blank();
 
-    document.SectionOpen(2, "application", "Окно, запуск и автозапуск приложения.");
-    document.Key(4, "startMinimizedToTray", settings.application.startMinimizedToTray,
-        "true — стартовать сразу свёрнутым в трей (то же, что ключ запуска --tray).", true);
-    document.Key(4, "minimizeToTray", settings.application.minimizeToTray,
-        "true — кнопка «Свернуть» прячет окно в трей, а не в панель задач.", true);
-    document.Key(4, "closeButtonAction", ToString(settings.application.closeButtonAction),
-        "Что делает крестик окна: \"minimize\" (в трей) или \"exit\" (завершить программу).", true);
-    document.Key(4, "showConsole", settings.application.showConsole,
-        "true — дополнительно открыть окно консоли с журналом (то же, что --console).", true);
-    document.Key(4, "singleInstance", settings.application.singleInstance,
-        "true — одна копия: повторный запуск передаёт команду работающей (--reinit, --exit и т.д.).", true);
-    document.Key(4, "startWithWindows", settings.application.startWithWindows,
-        "true — автозапуск при входе в систему (запись REAL в HKCU\\...\\Run).", false);
+    document.SectionOpen(2, "application", text(Str::CfgApplicationSection));
+    document.Key(4, "language", settings.application.language, text(Str::CfgLanguage), true);
+    document.Key(4, "startMinimizedToTray", settings.application.startMinimizedToTray, text(Str::CfgStartMinimizedToTray), true);
+    document.Key(4, "minimizeToTray", settings.application.minimizeToTray, text(Str::CfgMinimizeToTray), true);
+    document.Key(4, "closeButtonAction", ToString(settings.application.closeButtonAction), text(Str::CfgCloseButtonAction), true);
+    document.Key(4, "showConsole", settings.application.showConsole, text(Str::CfgShowConsole), true);
+    document.Key(4, "singleInstance", settings.application.singleInstance, text(Str::CfgSingleInstance), true);
+    document.Key(4, "startWithWindows", settings.application.startWithWindows, text(Str::CfgStartWithWindows), false);
     document.SectionClose(2, true);
     document.Blank();
 
-    document.SectionOpen(2, "tray", "Значок в системном трее.");
-    document.Key(4, "enabled", settings.tray.enabled,
-        "true — показывать значок в трее (левый клик — окно, правый — меню).", true);
-    document.Key(4, "showStatusInTooltip", settings.tray.showStatusInTooltip,
-        "true — показывать текущий размер буфера в подсказке значка.", true);
-    document.SectionOpen(4, "notifications", "Всплывающие уведомления.");
-    document.Key(6, "onError", settings.tray.notifications.onError,
-        "true — уведомлять об ошибках включения низкой задержки.", true);
-    document.Key(6, "onDeviceChange", settings.tray.notifications.onDeviceChange,
-        "true — уведомлять о смене аудиоустройства.", true);
-    document.Key(6, "onStateChange", settings.tray.notifications.onStateChange,
-        "true — уведомлять о включении/выключении режима.", false);
+    document.SectionOpen(2, "tray", text(Str::CfgTraySection));
+    document.Key(4, "enabled", settings.tray.enabled, text(Str::CfgTrayEnabled), true);
+    document.Key(4, "showStatusInTooltip", settings.tray.showStatusInTooltip, text(Str::CfgTrayTooltip), true);
+    document.SectionOpen(4, "notifications", text(Str::CfgNotificationsSection));
+    document.Key(6, "onError", settings.tray.notifications.onError, text(Str::CfgNotifyOnError), true);
+    document.Key(6, "onDeviceChange", settings.tray.notifications.onDeviceChange, text(Str::CfgNotifyOnDeviceChange), true);
+    document.Key(6, "onStateChange", settings.tray.notifications.onStateChange, text(Str::CfgNotifyOnStateChange), false);
     document.SectionClose(4, true);
-    document.SectionOpen(4, "menu", "Состав меню значка (false — пункт скрыт).");
-    document.Key(6, "showStatus", settings.tray.menu.showStatus,
-        "Строка с текущим статусом первой строкой меню.", true);
-    document.Key(6, "toggleEnabled", settings.tray.menu.toggleEnabled,
-        "Пункт «Latency reduction enabled» (включить/выключить режим).", true);
-    document.Key(6, "reinitialize", settings.tray.menu.reinitialize,
-        "Пункт «Reinitialize now» (переинициализация без перезапуска).", true);
-    document.Key(6, "openSettings", settings.tray.menu.openSettings,
-        "Пункт «Settings file...» — открыть этот файл настроек.", true);
-    document.Key(6, "openLog", settings.tray.menu.openLog,
-        "Пункт «Open log» — открыть журнал.", true);
-    document.Key(6, "startWithWindows", settings.tray.menu.startWithWindows,
-        "Пункт-переключатель автозапуска.", true);
-    document.Key(6, "about", settings.tray.menu.about,
-        "Пункт «About REAL».", true);
-    document.Key(6, "exit", settings.tray.menu.exit,
-        "Пункт «Exit» — завершить программу.", false);
+    document.SectionOpen(4, "menu", text(Str::CfgMenuSection));
+    document.Key(6, "showStatus", settings.tray.menu.showStatus, text(Str::CfgMenuShowStatus), true);
+    document.Key(6, "toggleEnabled", settings.tray.menu.toggleEnabled, text(Str::CfgMenuToggle), true);
+    document.Key(6, "reinitialize", settings.tray.menu.reinitialize, text(Str::CfgMenuReinitialize), true);
+    document.Key(6, "openSettings", settings.tray.menu.openSettings, text(Str::CfgMenuSettings), true);
+    document.Key(6, "openLog", settings.tray.menu.openLog, text(Str::CfgMenuLog), true);
+    document.Key(6, "diagnostics", settings.tray.menu.diagnostics, text(Str::CfgMenuDiagnostics), true);
+    document.Key(6, "startWithWindows", settings.tray.menu.startWithWindows, text(Str::CfgMenuStartWithWindows), true);
+    document.Key(6, "about", settings.tray.menu.about, text(Str::CfgMenuAbout), true);
+    document.Key(6, "exit", settings.tray.menu.exit, text(Str::CfgMenuExit), false);
     document.SectionClose(4, false);
     document.SectionClose(2, true);
     document.Blank();
 
-    document.SectionOpen(2, "audio", "Параметры работы с аудиодвижком.");
-    document.Key(4, "enabledOnStartup", settings.audio.enabledOnStartup,
-        "true — включать снижение задержки сразу при запуске.", true);
-    document.Key(4, "dataFlow", ToString(settings.audio.dataFlow),
-        "Какие устройства обрабатывать: \"render\" (воспроизведение), \"capture\" (запись), \"both\".", true);
-    document.Key(4, "role", ToString(settings.audio.role),
-        "Роль устройства по умолчанию: \"console\", \"multimedia\", \"communications\".", true);
-    document.Key(4, "periodSelection", ToString(settings.audio.periodSelection),
-        "Какой буфер запрашивать: \"min\" (минимальный), \"fundamental\" (базовый), \"fixed\" (см. ниже).", true);
-    document.Key(4, "requestedPeriodFrames", settings.audio.requestedPeriodFrames,
-        "Размер буфера в кадрах для periodSelection = \"fixed\" (0 — значение по умолчанию).", true);
-    document.Key(4, "allowPeriodSnap", settings.audio.allowPeriodSnap,
-        "true — если буфер уже зафиксирован другим приложением, принять его, а не сообщать об ошибке.", true);
-    document.Key(4, "releaseOnExit", settings.audio.releaseOnExit,
-        "true — освобождать аудиопоток при выходе (движок сам вернётся к 10 мс).", true);
-    document.SectionOpen(4, "reinit", "Когда переинициализировать потоки автоматически.");
-    document.Key(6, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged,
-        "Сменилось устройство по умолчанию (основной случай).", true);
-    document.Key(6, "deviceStateChanged", settings.audio.reinit.deviceStateChanged,
-        "Устройство стало активным или неактивным (выключение/включение наушников).", true);
-    document.Key(6, "deviceAdded", settings.audio.reinit.deviceAdded,
-        "Подключено новое устройство.", true);
-    document.Key(6, "deviceRemoved", settings.audio.reinit.deviceRemoved,
-        "Устройство удалено.", true);
-    document.Key(6, "resumeFromSleep", settings.audio.reinit.resumeFromSleep,
-        "Выход из сна / Modern Standby.", true);
-    document.Key(6, "sessionUnlock", settings.audio.reinit.sessionUnlock,
-        "Разблокировка сеанса (Win+L).", true);
-    document.Key(6, "debounceMs", settings.audio.reinit.debounceMs,
-        "Пауза перед переинициализацией: Windows присылает пачку событий подряд (мс).", false);
+    document.SectionOpen(2, "audio", text(Str::CfgAudioSection));
+    document.Key(4, "enabledOnStartup", settings.audio.enabledOnStartup, text(Str::CfgEnabledOnStartup), true);
+    document.Key(4, "dataFlow", ToString(settings.audio.dataFlow), text(Str::CfgDataFlow), true);
+    document.Key(4, "role", ToString(settings.audio.role), text(Str::CfgRole), true);
+    document.Key(4, "periodSelection", ToString(settings.audio.periodSelection), text(Str::CfgPeriodSelection), true);
+    document.Key(4, "requestedPeriodFrames", settings.audio.requestedPeriodFrames, text(Str::CfgRequestedPeriodFrames), true);
+    document.Key(4, "allowPeriodSnap", settings.audio.allowPeriodSnap, text(Str::CfgAllowPeriodSnap), true);
+    document.Key(4, "releaseOnExit", settings.audio.releaseOnExit, text(Str::CfgReleaseOnExit), true);
+    document.SectionOpen(4, "reinit", text(Str::CfgReinitSection));
+    document.Key(6, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged, text(Str::CfgReinitDeviceChanged), true);
+    document.Key(6, "deviceStateChanged", settings.audio.reinit.deviceStateChanged, text(Str::CfgReinitDeviceState), true);
+    document.Key(6, "deviceAdded", settings.audio.reinit.deviceAdded, text(Str::CfgReinitDeviceAdded), true);
+    document.Key(6, "deviceRemoved", settings.audio.reinit.deviceRemoved, text(Str::CfgReinitDeviceRemoved), true);
+    document.Key(6, "resumeFromSleep", settings.audio.reinit.resumeFromSleep, text(Str::CfgReinitResume), true);
+    document.Key(6, "sessionUnlock", settings.audio.reinit.sessionUnlock, text(Str::CfgReinitUnlock), true);
+    document.Key(6, "enableWhenDisabled", settings.audio.reinit.enableWhenDisabled, text(Str::CfgReinitEnableWhenDisabled), true);
+    document.Key(6, "failureTimeoutMs", settings.audio.reinit.failureTimeoutMs, text(Str::CfgReinitFailureTimeout), true);
+    document.Key(6, "debounceMs", settings.audio.reinit.debounceMs, text(Str::CfgReinitDebounce), false);
     document.SectionClose(4, false);
     document.SectionClose(2, true);
     document.Blank();
 
-    document.SectionOpen(2, "performance", "Побочные эффекты низкой задержки.");
-    document.Key(4, "processPriority", ToString(settings.performance.processPriority),
-        "Приоритет процесса: \"normal\", \"belowNormal\" или \"idle\".", true);
-    document.Key(4, "disablePowerThrottling", settings.performance.disablePowerThrottling,
-        "true — снять троттлинг скорости исполнения (Windows 11), чтобы аудиопоток не «занимал» ядро CPU.", false);
+    document.SectionOpen(2, "performance", text(Str::CfgPerformanceSection));
+    document.Key(4, "processPriority", ToString(settings.performance.processPriority), text(Str::CfgProcessPriority), true);
+    document.Key(4, "disablePowerThrottling", settings.performance.disablePowerThrottling, text(Str::CfgDisablePowerThrottling), false);
     document.SectionClose(2, true);
     document.Blank();
 
-    document.SectionOpen(2, "updates", "Проверка обновлений. По умолчанию полностью выключена.");
-    document.Key(4, "mode", ToString(settings.updates.mode),
-        "\"off\" — ни одного сетевого запроса; \"manual\" — проверка только при запуске, если включён checkOnStartup.", true);
-    document.Key(4, "repository", settings.updates.repository,
-        "Репозиторий GitHub, из которого берутся релизы (owner/name).", true);
-    document.Key(4, "checkOnStartup", settings.updates.checkOnStartup,
-        "true — один раз проверить обновления при запуске (только при mode = \"manual\").", false);
+    document.SectionOpen(2, "updates", text(Str::CfgUpdatesSection));
+    document.Key(4, "mode", ToString(settings.updates.mode), text(Str::CfgUpdatesMode), true);
+    document.Key(4, "repository", settings.updates.repository, text(Str::CfgUpdatesRepository), true);
+    document.Key(4, "checkOnStartup", settings.updates.checkOnStartup, text(Str::CfgUpdatesCheckOnStartup), false);
     document.SectionClose(2, true);
     document.Blank();
 
-    document.SectionOpen(2, "hotkeys", "Глобальные горячие клавиши.");
-    document.Key(4, "enabled", settings.hotkeys.enabled,
-        "true — регистрировать горячие клавиши.", true);
-    document.Key(4, "toggleEnabled", settings.hotkeys.toggleEnabled,
-        "Включить/выключить режим. Клавиши: Ctrl, Alt, Shift, Win, A-Z, 0-9, F1-F24.", true);
-    document.Key(4, "reinitialize", settings.hotkeys.reinitialize,
-        "Переинициализировать аудиопотоки.", false);
+    document.SectionOpen(2, "hotkeys", text(Str::CfgHotkeysSection));
+    document.Key(4, "enabled", settings.hotkeys.enabled, text(Str::CfgHotkeysEnabled), true);
+    document.Key(4, "toggleEnabled", settings.hotkeys.toggleEnabled, text(Str::CfgHotkeysToggle), true);
+    document.Key(4, "reinitialize", settings.hotkeys.reinitialize, text(Str::CfgHotkeysReinitialize), false);
     document.SectionClose(2, true);
     document.Blank();
 
-    document.SectionOpen(2, "logging", "Журнал работы программы.");
-    document.Key(4, "level", settings.logging.level,
-        "Подробность: \"trace\", \"debug\", \"info\", \"warn\", \"error\", \"off\".", true);
-    document.Key(4, "toConsole", settings.logging.toConsole,
-        "true — дублировать журнал в консоль (нужен showConsole или ключ --console).", true);
-    document.Key(4, "toFile", settings.logging.toFile,
-        "true — писать файл журнала.", true);
-    document.Key(4, "filePath", settings.logging.filePath,
-        "Путь к журналу: относительно каталога REAL.exe или абсолютный.", true);
-    document.Key(4, "maxFileSizeMb", settings.logging.maxFileSizeMb,
-        "Размер файла журнала до ротации (МБ).", true);
-    document.Key(4, "maxFiles", settings.logging.maxFiles,
-        "Сколько файлов журнала хранить.", false);
+    document.SectionOpen(2, "logging", text(Str::CfgLoggingSection));
+    document.Key(4, "level", settings.logging.level, text(Str::CfgLoggingLevel), true);
+    document.Key(4, "toConsole", settings.logging.toConsole, text(Str::CfgLoggingToConsole), true);
+    document.Key(4, "toFile", settings.logging.toFile, text(Str::CfgLoggingToFile), true);
+    document.Key(4, "filePath", settings.logging.filePath, text(Str::CfgLoggingFilePath), true);
+    document.Key(4, "maxFileSizeMb", settings.logging.maxFileSizeMb, text(Str::CfgLoggingMaxFileSize), true);
+    document.Key(4, "maxFiles", settings.logging.maxFiles, text(Str::CfgLoggingMaxFiles), false);
     document.SectionClose(2, false);
     document.Line(0, "}");
 

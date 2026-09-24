@@ -1,10 +1,12 @@
 #include "TrayIcon.h"
 
+#include "../Lang.h"
 #include "../Text.h"
 
 #include <cwchar>
 
 using namespace miniant::Windows;
+using namespace miniant::Lang;
 
 namespace {
 
@@ -13,12 +15,22 @@ enum MenuId : UINT {
     MENU_ID_REINITIALIZE = 1002,
     MENU_ID_SETTINGS = 1003,
     MENU_ID_LOG = 1004,
-    MENU_ID_START_WITH_WINDOWS = 1005,
-    MENU_ID_ABOUT = 1006,
-    MENU_ID_EXIT = 1007,
+    MENU_ID_DIAGNOSTICS = 1005,
+    MENU_ID_START_WITH_WINDOWS = 1006,
+    MENU_ID_ABOUT = 1007,
+    MENU_ID_EXIT = 1008,
 };
 
 constexpr size_t TOOLTIP_MAX_LENGTH = 120;
+
+// A balloon cannot show more than 256 characters, and the shell cuts the text
+// long before that; keep the notifications short.
+constexpr size_t NOTIFICATION_TITLE_MAX_LENGTH = 48;
+constexpr size_t NOTIFICATION_TEXT_MAX_LENGTH = 120;
+
+// Two clicks arrive as two messages (a legacy one and NIN_SELECT), and a double
+// click arrives as two selections: ignore everything that follows too quickly.
+constexpr ULONGLONG TOGGLE_DEBOUNCE_MS = 350;
 
 std::wstring Truncate(const std::wstring& text, size_t limit) {
     if (text.size() <= limit) {
@@ -51,14 +63,14 @@ tl::expected<void, WindowsError> TrayIcon::Show() {
     }
 
     if (::Shell_NotifyIconW(NIM_ADD, &m_data) == FALSE) {
-        return tl::make_unexpected(WindowsError("Could not create the tray icon."));
+        return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::LogTrayCreateFailed)));
     }
 
     NOTIFYICONDATAW versionData = m_data;
     versionData.uVersion = NOTIFYICON_VERSION_4;
     if (::Shell_NotifyIconW(NIM_SETVERSION, &versionData) == FALSE) {
         ::Shell_NotifyIconW(NIM_DELETE, &m_data);
-        return tl::make_unexpected(WindowsError("Could not configure the tray icon."));
+        return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::LogTrayConfigureFailed)));
     }
 
     m_visible = true;
@@ -104,8 +116,8 @@ void TrayIcon::Notify(const std::wstring& title, const std::wstring& text, bool 
     NOTIFYICONDATAW data = m_data;
     data.uFlags = NIF_INFO;
     data.dwInfoFlags = error ? NIIF_ERROR : NIIF_INFO;
-    wcscpy_s(data.szInfoTitle, Truncate(title, 60).c_str());
-    wcscpy_s(data.szInfo, Truncate(text, 250).c_str());
+    wcscpy_s(data.szInfoTitle, Truncate(title, NOTIFICATION_TITLE_MAX_LENGTH).c_str());
+    wcscpy_s(data.szInfo, Truncate(text, NOTIFICATION_TEXT_MAX_LENGTH).c_str());
 
     ::Shell_NotifyIconW(NIM_MODIFY, &data);
 }
@@ -119,26 +131,37 @@ void TrayIcon::Recreate() {
     }
 }
 
-void TrayIcon::HandleMessage(WPARAM /*wParam*/, LPARAM lParam) {
+void TrayIcon::HandleMessage(WPARAM wParam, LPARAM lParam) {
+    // The icon is registered with NOTIFYICON_VERSION_4, so the callback receives
+    // the icon id and the event in the low words of wParam and lParam. The high
+    // words carry the mouse message and the cursor position, which must not be
+    // mistaken for an id or an event: doing so made single clicks work only
+    // every other time.
     const UINT event = LOWORD(lParam);
-    const UINT iconId = HIWORD(lParam);
+    const UINT iconId = LOWORD(wParam);
 
     if (iconId != 0 && iconId != m_data.uID) {
         return;
     }
 
     switch (event) {
-        case WM_LBUTTONUP:
         case NIN_SELECT:
-        case NIN_KEYSELECT:
-        case WM_LBUTTONDBLCLK:
+        case NIN_KEYSELECT: {
+            const ULONGLONG now = ::GetTickCount64();
+            if (now - m_lastToggleTick < TOGGLE_DEBOUNCE_MS) {
+                // A double click or a duplicated message: ignore.
+                break;
+            }
+
+            m_lastToggleTick = now;
+
             if (m_handler) {
                 m_handler(miniant::Command::ToggleWindow);
             }
 
             break;
+        }
 
-        case WM_RBUTTONUP:
         case WM_CONTEXTMENU:
             ShowContextMenu();
             break;
@@ -151,6 +174,8 @@ void TrayIcon::HandleMessage(WPARAM /*wParam*/, LPARAM lParam) {
             break;
 
         default:
+            // NIN_BALLOONSHOW/HIDE/TIMEOUT and the legacy mouse messages that
+            // accompany a version 4 notification carry no action.
             break;
     }
 }
@@ -167,21 +192,25 @@ void TrayIcon::ShowContextMenu() {
     }
 
     if (m_state.toggleEnabled) {
-        ::AppendMenuW(menu, MF_STRING | (m_state.enabled ? MF_CHECKED : 0), MENU_ID_TOGGLE, L"Latency reduction enabled");
+        ::AppendMenuW(menu, MF_STRING | (m_state.enabled ? MF_CHECKED : 0), MENU_ID_TOGGLE, Wide(Str::TrayToggleEnabled).c_str());
     }
 
     if (m_state.reinitialize) {
-        ::AppendMenuW(menu, MF_STRING, MENU_ID_REINITIALIZE, L"Reinitialize now");
+        ::AppendMenuW(menu, MF_STRING, MENU_ID_REINITIALIZE, Wide(Str::TrayReinitialize).c_str());
     }
 
     ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 
     if (m_state.openSettings) {
-        ::AppendMenuW(menu, MF_STRING, MENU_ID_SETTINGS, L"Settings file...");
+        ::AppendMenuW(menu, MF_STRING, MENU_ID_SETTINGS, Wide(Str::TraySettings).c_str());
     }
 
     if (m_state.openLog) {
-        ::AppendMenuW(menu, MF_STRING, MENU_ID_LOG, L"Open log");
+        ::AppendMenuW(menu, MF_STRING, MENU_ID_LOG, Wide(Str::TrayLog).c_str());
+    }
+
+    if (m_state.diagnostics) {
+        ::AppendMenuW(menu, MF_STRING, MENU_ID_DIAGNOSTICS, Wide(Str::TrayDiagnostics).c_str());
     }
 
     if (m_state.startWithWindows) {
@@ -189,17 +218,17 @@ void TrayIcon::ShowContextMenu() {
             menu,
             MF_STRING | (m_state.startWithWindowsChecked ? MF_CHECKED : 0),
             MENU_ID_START_WITH_WINDOWS,
-            L"Start with Windows");
+            Wide(Str::TrayStartWithWindows).c_str());
     }
 
     ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 
     if (m_state.about) {
-        ::AppendMenuW(menu, MF_STRING, MENU_ID_ABOUT, L"About REAL");
+        ::AppendMenuW(menu, MF_STRING, MENU_ID_ABOUT, Wide(Str::TrayAbout).c_str());
     }
 
     if (m_state.exit) {
-        ::AppendMenuW(menu, MF_STRING, MENU_ID_EXIT, L"Exit");
+        ::AppendMenuW(menu, MF_STRING, MENU_ID_EXIT, Wide(Str::TrayExit).c_str());
     }
 
     POINT cursor = {};
@@ -235,6 +264,9 @@ void TrayIcon::ShowContextMenu() {
             break;
         case MENU_ID_LOG:
             m_handler(miniant::Command::OpenLog);
+            break;
+        case MENU_ID_DIAGNOSTICS:
+            m_handler(miniant::Command::Diagnose);
             break;
         case MENU_ID_START_WITH_WINDOWS:
             m_handler(miniant::Command::ToggleStartWithWindows);

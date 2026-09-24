@@ -51,11 +51,23 @@ void SetLevel(const std::string& level);
 
 void Write(Level level, const std::string& message);
 
+// A message about an operation the user performs or watches: it is written to
+// the file and shown in the window, and it is the only kind of message that
+// reaches the console (the console would be unreadable otherwise).
+void WriteOperation(const std::string& message);
+
 // Writes everything that is still buffered to the sinks. A log line that is
 // followed by a crash is otherwise lost (the file sinks cache the output).
 void Flush();
 
 bool WriteSnapshotToFile(const std::wstring& path);
+
+// Logs an operation (see WriteOperation); the text is written in the language
+// of the interface.
+template <typename... Args>
+void Operation(const char* format, const Args&... args) {
+    WriteOperation(fmt::format(format, args...));
+}
 
 template <typename... Args>
 void Trace(const char* format, const Args&... args) {

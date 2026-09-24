@@ -1,9 +1,11 @@
 #include "AutoUpdater.h"
 
 #include "AppVersion.h"
-#include "Http/HttpClient.h"
+#include "Lang.h"
 #include "Text.h"
 #include "Windows/Filesystem.h"
+
+#include <spdlog/fmt/fmt.h>
 
 #include <nlohmann/json.hpp>
 
@@ -29,7 +31,7 @@ AutoUpdater::AutoUpdater(std::string repository):
 
 tl::expected<UpdateInfo, std::string> AutoUpdater::GetLatestRelease() const {
     if (m_repository.empty()) {
-        return tl::make_unexpected(std::string("No repository is configured for update checks (updates.repository)."));
+        return tl::make_unexpected(std::string(Lang::Utf8(Lang::Str::ErrNoUpdateRepository)));
     }
 
     const std::wstring url = L"https://api.github.com/repos/" + Text::ToWide(m_repository) + L"/releases/latest";
@@ -41,30 +43,30 @@ tl::expected<UpdateInfo, std::string> AutoUpdater::GetLatestRelease() const {
 
     const Http::Response response = Http::Get(url, headers, REQUEST_TIMEOUT_SECONDS);
     if (!response.networkOk) {
-        return tl::make_unexpected(std::string("Could not reach GitHub: ") + response.error);
+        return tl::make_unexpected(fmt::format(Lang::Utf8(Lang::Str::ErrGithubUnreachable), response.error));
     }
 
     if (response.statusCode == 404) {
-        return tl::make_unexpected(std::string("The repository '") + m_repository + "' has no published releases.");
+        return tl::make_unexpected(fmt::format(Lang::Utf8(Lang::Str::ErrNoReleases), m_repository));
     }
 
     if (response.statusCode == 403 || response.statusCode == 429) {
-        return tl::make_unexpected(std::string("GitHub refused the request (HTTP ") + std::to_string(response.statusCode) + "), probably the API rate limit.");
+        return tl::make_unexpected(fmt::format(Lang::Utf8(Lang::Str::ErrRateLimit), response.statusCode));
     }
 
     if (response.statusCode != 200) {
-        return tl::make_unexpected(std::string("GitHub returned HTTP ") + std::to_string(response.statusCode) + ".");
+        return tl::make_unexpected(fmt::format(Lang::Utf8(Lang::Str::ErrHttpStatus), response.statusCode));
     }
 
     json release;
     try {
         release = json::parse(response.body);
     } catch (const json::exception& error) {
-        return tl::make_unexpected(std::string("Could not parse the GitHub response: ") + error.what());
+        return tl::make_unexpected(fmt::format(Lang::Utf8(Lang::Str::ErrGithubParse), error.what()));
     }
 
     if (!release.is_object()) {
-        return tl::make_unexpected(std::string("Unexpected GitHub response."));
+        return tl::make_unexpected(std::string(Lang::Utf8(Lang::Str::ErrGithubUnexpected)));
     }
 
     UpdateInfo info;
@@ -94,7 +96,7 @@ tl::expected<UpdateInfo, std::string> AutoUpdater::GetLatestRelease() const {
     }
 
     if (info.version == Version()) {
-        return tl::make_unexpected(std::string("Could not detect the version of the latest release."));
+        return tl::make_unexpected(std::string(Lang::Utf8(Lang::Str::ErrNoReleaseVersion)));
     }
 
     const auto bodyIt = release.find("body");
@@ -125,7 +127,7 @@ bool AutoUpdater::CleanupPreviousInstall(std::string* message) {
     std::error_code error;
     const bool removed = std::filesystem::remove(std::filesystem::path(leftover), error);
     if (!removed && message != nullptr) {
-        *message = std::string("Could not delete the leftover file from a previous update: ") + error.message();
+        *message = fmt::format(Lang::Utf8(Lang::Str::ErrDeleteLeftover), error.message());
     }
 
     return removed;

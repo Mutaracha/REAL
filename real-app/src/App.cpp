@@ -7,6 +7,7 @@
 #include "AppMessages.h"
 #include "AppVersion.h"
 #include "AutoUpdater.h"
+#include "Lang.h"
 #include "Log.h"
 #include "Text.h"
 #include "Windows/Console.h"
@@ -22,6 +23,7 @@
 #include <vector>
 
 using namespace miniant;
+using namespace miniant::Lang;
 
 namespace {
 
@@ -29,6 +31,9 @@ namespace {
 // becomes available again as soon as the device has been switched on.
 constexpr unsigned int INITIAL_AUDIO_RETRY_MS = 2000;
 constexpr unsigned int MAXIMUM_AUDIO_RETRY_MS = 30000;
+// Default of audio.reinit.failureTimeoutMs: after a minute of silence the mode
+// is switched off and the application stops polling the device.
+constexpr unsigned int FAILURE_TIMEOUT_MS = 60000;
 constexpr const wchar_t* DIAGNOSTICS_FILE_NAME = L"REAL-diagnostics.txt";
 
 }
@@ -174,7 +179,7 @@ int App::Run() {
     if (m_settings.application.singleInstance) {
         m_instanceMutex = ::CreateMutexW(nullptr, TRUE, L"Local\\REAL.SingleInstance");
         if (m_instanceMutex == nullptr) {
-            Log::Warn("Could not create the single instance mutex: {}", Windows::DescribeLastError());
+            Log::Warn(Lang::Utf8(Str::LogMutexFailed), Windows::DescribeLastError());
         } else if (::GetLastError() == ERROR_ALREADY_EXISTS) {
             m_anotherInstanceRuns = true;
         }
@@ -195,7 +200,7 @@ int App::Run() {
 
         if (NotifyRunningInstance(signal)) {
             if (m_options.action == CommandLine::Action::Run) {
-                std::cout << "REAL is already running: using the running instance." << std::endl;
+                std::cout << Lang::Utf8(Str::OpAlreadyRunning) << std::endl;
             }
 
             return 0;
@@ -205,7 +210,7 @@ int App::Run() {
             return 0;
         }
 
-        Log::Warn("Another instance seems to be running but did not answer; starting a new one.");
+        Log::Warn(Lang::Utf8(Str::LogInstanceNoAnswer));
     }
 
     InitializeLogging();
@@ -213,7 +218,7 @@ int App::Run() {
     LogBanner();
 
     if (!settingsLoaded) {
-        Log::Warn("The settings file could not be read; built-in default settings are used.");
+        Log::Warn(Lang::Utf8(Str::LogSettingsUnreadable));
     }
 
     if (m_options.action == CommandLine::Action::Exit) {
@@ -222,7 +227,7 @@ int App::Run() {
 
     const HRESULT comResult = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (FAILED(comResult)) {
-        Log::Error("Could not initialise COM: {}", Windows::DescribeHResult(static_cast<long>(comResult)));
+        Log::Error(Lang::Utf8(Str::LogComFailed), Windows::DescribeHResult(static_cast<long>(comResult)));
         Shutdown();
         return 1;
     }
@@ -264,25 +269,31 @@ bool App::LoadSettings() {
         const Config::LoadResult result = Config::Load(m_settingsPath);
         m_settings = result.settings;
 
+        // The language has to be known before anything is printed or written:
+        // the settings file itself is created with comments in that language.
+        Lang::Set(Lang::FromCode(m_settings.application.language));
+
         for (const auto& warning : result.warnings) {
-            std::cout << "Settings: " << warning << std::endl;
+            std::cout << Lang::Utf8(Str::SettingsPrefix) << " " << warning << std::endl;
         }
 
         if (result.parseFailed) {
-            std::cout << "Settings: " << result.error << std::endl;
+            std::cout << Lang::Utf8(Str::SettingsPrefix) << " " << result.error << std::endl;
         }
 
         if (!result.fileExists) {
             if (Config::Write(m_settings, m_settingsPath)) {
-                std::cout << "Settings: created a template at " << Text::ToUtf8(m_settingsPath) << std::endl;
+                std::cout << Lang::Utf8(Str::OpSettingsCreated) << ": " << Text::ToUtf8(m_settingsPath) << std::endl;
             } else {
-                std::cout << "Settings: could not create " << Text::ToUtf8(m_settingsPath) << std::endl;
+                std::cout << Lang::Utf8(Str::OpDiagnosticsFailed) << ": " << Text::ToUtf8(m_settingsPath) << std::endl;
             }
         }
 
         if (result.parseFailed) {
             return false;
         }
+    } else {
+        Lang::Set(Lang::Detect());
     }
 
     if (m_options.startMinimizedToTray) {
@@ -310,7 +321,7 @@ bool App::InitializeLogging() {
     if (m_settings.application.showConsole) {
         consoleAttached = Windows::Console::Attach();
         if (!consoleAttached) {
-            std::cout << "Could not attach a console window." << std::endl;
+            std::cout << Lang::Utf8(Str::ErrConsoleAttach) << std::endl;
         }
     }
 
@@ -319,16 +330,23 @@ bool App::InitializeLogging() {
 }
 
 void App::LogBanner() {
-    Log::Info("{} {} - {}, mini)(ant 2018-2019, fork maintained by Mutaracha", Text::ToUtf8(AppInfo::NAME), AppInfo::VERSION.ToString(), Text::ToUtf8(AppInfo::DESCRIPTION));
-    Log::Info("Project: {}", AppInfo::PROJECT_URL);
-    Log::Info("Upstream: {}", AppInfo::UPSTREAM_URL);
-    Log::Info("Settings: {} ({})", Text::ToUtf8(m_settingsPath), Config::Describe(m_settings));
+    Log::Operation(Lang::Utf8(Str::OpStarted), AppInfo::VERSION.ToString());
+    Log::Operation(Lang::Utf8(Str::OpSettingsFile), Text::ToUtf8(m_settingsPath));
+
+    Log::Info(
+        Lang::Utf8(Str::LogBanner),
+        AppInfo::PROJECT_URL,
+        Text::ToUtf8(AppInfo::DESCRIPTION),
+        AppInfo::VERSION.ToString());
+    Log::Info(Lang::Utf8(Str::LogUpstream), AppInfo::UPSTREAM_URL);
+    Log::Info(Lang::Utf8(Str::LogLanguage), Lang::Code(Lang::Current()), m_settings.application.language);
+    Log::Info("{}", Config::Describe(m_settings));
 }
 
 bool App::InitializeUi() {
     auto window = Windows::MainWindow::Create(m_instance);
     if (!window) {
-        Log::Error("Could not create the main window: {}", window.error().GetMessage());
+        Log::Error(Lang::Utf8(Str::LogWindowFailed), window.error().GetMessage());
         return false;
     }
 
@@ -336,6 +354,7 @@ bool App::InitializeUi() {
 
     m_window->SetMinimizeToTray(m_settings.application.minimizeToTray);
     m_window->SetHideOnClose(m_settings.application.closeButtonAction == Config::CloseAction::Minimize);
+    m_window->ApplyLanguage();
 
     m_window->SetCommandHandler([this](Command command) {
         OnCommand(command);
@@ -350,7 +369,7 @@ bool App::InitializeUi() {
     // Needed for WM_WTSSESSION_CHANGE (re-initialise the audio streams after
     // the session has been unlocked).
     if (::WTSRegisterSessionNotification(windowHandle, NOTIFY_FOR_THIS_SESSION) == FALSE) {
-        Log::Debug("Session notifications are not available: {}", Windows::DescribeLastError());
+        Log::Debug(Lang::Utf8(Str::LogSessionNotifications), Windows::DescribeLastError());
     }
 
     Log::Buffer().SetNotifyHandler([windowHandle]() {
@@ -360,7 +379,7 @@ bool App::InitializeUi() {
     m_window->AppendLogLines(Log::Buffer().TakePending());
 
     if (!m_settings.tray.enabled && m_settings.application.startMinimizedToTray) {
-        Log::Warn("The tray icon is disabled but the window would start hidden: showing the window.");
+        Log::Warn(Lang::Utf8(Str::LogTrayHidden));
         m_settings.application.startMinimizedToTray = false;
     }
 
@@ -409,7 +428,7 @@ void App::InitializeTray() {
     if (!m_window->IsTrayVisible()) {
         // Without a tray icon a hidden window could not be brought back, so the
         // window becomes the only way to control the application.
-        Log::Warn("The tray icon could not be created; the window stays visible.");
+        Log::Operation(Lang::Utf8(Str::OpTrayUnavailable));
         m_window->SetMinimizeToTray(false);
         m_window->SetHideOnClose(false);
         return;
@@ -456,7 +475,7 @@ void App::ApplyPerformanceSettings() {
     }
 
     if (::SetPriorityClass(process, priorityClass) == FALSE) {
-        Log::Warn("Could not change the process priority: {}", Windows::DescribeLastError());
+        Log::Warn(Lang::Utf8(Str::LogPriorityFailed), Windows::DescribeLastError());
     }
 
 #if defined(PROCESS_POWER_THROTTLING_EXECUTION_SPEED)
@@ -468,14 +487,14 @@ void App::ApplyPerformanceSettings() {
 
         if (::SetProcessInformation(process, ProcessPowerThrottling, &state, sizeof(state)) == FALSE) {
             // Windows 10 does not know this information class; it is not an error.
-            Log::Debug("Power throttling could not be disabled: {}", Windows::DescribeLastError());
+            Log::Debug(Lang::Utf8(Str::LogPowerThrottlingFailed), Windows::DescribeLastError());
         } else {
-            Log::Info("Power throttling (execution speed) disabled for this process.");
+            Log::Info(Lang::Utf8(Str::LogPowerThrottlingOff));
         }
     }
 #else
     if (m_settings.performance.disablePowerThrottling) {
-        Log::Debug("Power throttling is not available with the Windows SDK used for this build.");
+        Log::Debug(Lang::Utf8(Str::LogPowerThrottlingUnavailable));
     }
 #endif
 }
@@ -487,33 +506,60 @@ void App::ApplyAudio() {
 
     if (!m_audioEnabled) {
         m_audio.Stop();
-        Log::Info("Latency reduction is disabled; the audio engine returned to its default buffer size.");
+        Log::Operation(Lang::Utf8(Str::OpDisabled));
         UpdateStatus();
         return;
     }
 
+    Log::Operation(Lang::Utf8(Str::OpApplying));
+
     auto result = m_audio.Apply(m_settings);
     if (!result) {
+        // The details go to the file log; the user sees one short notification
+        // per outage, not one per retry.
         Log::Error("{}", result.error().GetMessage());
+        Log::Info(Lang::Utf8(Str::OpReportHint));
 
-        Log::Info("Run 'REAL.exe --diagnose' to write a report about the audio devices and drivers.");
+        if (m_failureSince == 0) {
+            m_failureSince = ::GetTickCount64();
 
-        if (m_settings.tray.notifications.onError) {
-            m_window->Notify(L"REAL - audio", Text::ToWide(result.error().GetMessage()), true);
+            if (m_settings.tray.notifications.onError) {
+                m_window->Notify(
+                    Lang::Wide(Str::NotifyAudioTitle),
+                    Lang::Wide(Str::NotifyDeviceNotReady),
+                    true);
+            }
         }
 
         m_lastApplyFailed = true;
         ScheduleAudioRetry();
-    } else {
-        m_lastApplyFailed = false;
-        CancelAudioRetry();
-
-        if (m_settings.tray.notifications.onStateChange) {
-            m_window->Notify(L"REAL", m_audio.GetStatusText(), false);
-        }
+        UpdateStatus();
+        return;
     }
 
+    // Success: any previous outage is over.
+    const bool recovered = m_failureSince != 0;
+    m_failureSince = 0;
+    m_lastApplyFailed = false;
+    m_audioSuspended = false;
+    CancelAudioRetry();
+
+    Log::Operation(Lang::Utf8(Str::OpApplied), Text::ToUtf8(m_audio.GetStatusText()));
+
+    if (m_deviceChangePending && m_settings.tray.notifications.onDeviceChange) {
+        m_window->Notify(Lang::Wide(Str::NotifyDeviceTitle), m_audio.GetStatusText(), false);
+    } else if (m_settings.tray.notifications.onStateChange || recovered) {
+        m_window->Notify(Lang::Wide(Str::NotifyTitle), m_audio.GetStatusText(), false);
+    }
+
+    m_deviceChangePending = false;
     UpdateStatus();
+}
+
+std::wstring App::CurrentOffStatusText() const {
+    // The mode is off either because the user switched it off or because the
+    // application gave up after a device stopped answering.
+    return Lang::Wide(m_audioSuspended ? Str::StatusSuspended : Str::StatusDisabled);
 }
 
 void App::UpdateStatus() {
@@ -521,7 +567,7 @@ void App::UpdateStatus() {
         return;
     }
 
-    const std::wstring status = m_audioEnabled ? m_audio.GetStatusText() : L"Latency reduction is disabled";
+    const std::wstring status = m_audioEnabled ? m_audio.GetStatusText() : CurrentOffStatusText();
     m_window->SetStatusText(status);
     m_window->SetTrayTooltip(std::wstring(AppInfo::NAME) + L" - " + status);
     UpdateTrayMenuState();
@@ -535,11 +581,12 @@ void App::UpdateTrayMenuState() {
     Windows::TrayMenuState state;
     state.enabled = m_audioEnabled;
     state.showStatus = m_settings.tray.menu.showStatus;
-    state.statusText = m_audioEnabled ? m_audio.GetStatusText() : L"Latency reduction is disabled";
+    state.statusText = m_audioEnabled ? m_audio.GetStatusText() : CurrentOffStatusText();
     state.toggleEnabled = m_settings.tray.menu.toggleEnabled;
     state.reinitialize = m_settings.tray.menu.reinitialize;
     state.openSettings = m_settings.tray.menu.openSettings;
     state.openLog = m_settings.tray.menu.openLog;
+    state.diagnostics = m_settings.tray.menu.diagnostics;
     state.startWithWindows = m_settings.tray.menu.startWithWindows;
     state.startWithWindowsChecked = IsStartWithWindowsEnabled();
     state.about = m_settings.tray.menu.about;
@@ -550,9 +597,9 @@ void App::UpdateTrayMenuState() {
 
 void App::SaveSettings() {
     if (Config::Write(m_settings, m_settingsPath)) {
-        Log::Info("Settings saved to {}.", Text::ToUtf8(m_settingsPath));
+        Log::Info(Lang::Utf8(Str::LogSettingsSaved), Text::ToUtf8(m_settingsPath));
     } else {
-        Log::Error("Could not write the settings file {}.", Text::ToUtf8(m_settingsPath));
+        Log::Error(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath));
     }
 }
 
@@ -567,15 +614,20 @@ void App::ReloadSettings() {
         Log::Warn("Settings: {}", warning);
     }
 
-    const bool wasConsoleEnabled = m_settings.application.showConsole;
     const Config::Settings previous = m_settings;
     m_settings = result.settings;
 
-    if (previous.application.showConsole != wasConsoleEnabled) {
-        Log::Warn("logging.toConsole / showConsole changes require a restart.");
+    if (previous.application.showConsole != m_settings.application.showConsole) {
+        Log::Warn(Lang::Utf8(Str::LogConsoleRestart));
+    }
+
+    if (previous.application.language != m_settings.application.language) {
+        Lang::Set(Lang::FromCode(m_settings.application.language));
+        Log::Info(Lang::Utf8(Str::LogLanguageChanged), Lang::Code(Lang::Current()));
     }
 
     if (m_window) {
+        m_window->ApplyLanguage();
         m_window->SetMinimizeToTray(m_settings.application.minimizeToTray);
         m_window->SetHideOnClose(m_settings.application.closeButtonAction == Config::CloseAction::Minimize);
 
@@ -593,7 +645,7 @@ void App::ReloadSettings() {
         ApplyAudio();
     }
 
-    Log::Info("Settings reloaded: {}", Config::Describe(m_settings));
+    Log::Operation(Lang::Utf8(Str::OpSettingsReloaded));
 }
 
 void App::OpenSettingsFile() {
@@ -630,7 +682,7 @@ void App::OpenLogFile() {
     if (path.empty() || !Windows::Filesystem::IsFile(path)) {
         path = Windows::Filesystem::JoinPath(Windows::Filesystem::GetTempDirectory(), L"REAL.log");
         if (!Log::WriteSnapshotToFile(path)) {
-            Log::Error("Could not write the log snapshot to {}.", Text::ToUtf8(path));
+            Log::Error(Lang::Utf8(Str::LogLogSnapshotFailed), Text::ToUtf8(path));
             return;
         }
     }
@@ -639,32 +691,30 @@ void App::OpenLogFile() {
 }
 
 void App::ShowAboutDialog() {
-    const std::wstring text =
-        std::wstring(AppInfo::NAME) + L" " + Text::ToWide(AppInfo::VERSION.ToString()) + L"\n" +
-        std::wstring(AppInfo::DESCRIPTION) + L"\n\n" +
-        L"While REAL is running, the Windows audio engine renders the default\n"
-        L"playback device with the smallest buffer size supported by its driver.\n"
-        L"The application can be closed to the system tray; use the tray menu or\n"
-        L"the hotkey to re-initialise the audio streams after a device change.\n\n" +
-        L"Settings: " + m_settingsPath + L"\n" +
-        L"Project:  " + Text::ToWide(AppInfo::PROJECT_URL) + L"\n" +
-        L"Upstream: " + Text::ToWide(AppInfo::UPSTREAM_URL);
+    const std::string formatted = fmt::format(
+        Lang::Utf8(Str::AboutText),
+        AppInfo::VERSION.ToString(),
+        Text::ToUtf8(m_settingsPath),
+        AppInfo::PROJECT_URL);
+
+    const std::wstring text = Text::ToWide(formatted);
+    const std::wstring title = Lang::Wide(Str::AboutTitle);
 
     ::MessageBoxW(
         m_window != nullptr ? m_window->GetHWindow() : nullptr,
         text.c_str(),
-        L"About REAL",
+        title.c_str(),
         MB_OK | MB_ICONINFORMATION);
 }
 
 void App::StartUpdateCheck() {
     if (m_settings.updates.mode == Config::UpdatesMode::Off) {
-        Log::Info("Update checks are disabled (updates.mode = \"off\").");
+        Log::Info(Lang::Utf8(Str::LogUpdatesDisabled));
         return;
     }
 
     if (m_updateThread.joinable()) {
-        Log::Info("An update check is already running.");
+        Log::Info(Lang::Utf8(Str::LogUpdateRunning));
         return;
     }
 
@@ -674,7 +724,8 @@ void App::StartUpdateCheck() {
         m_updateUrl.clear();
     }
 
-    Log::Info("Checking for updates in '{}'...", m_settings.updates.repository);
+    Log::Operation(Lang::Utf8(Str::OpUpdateChecking));
+    Log::Info(Lang::Utf8(Str::LogRepository), m_settings.updates.repository);
 
     const std::string repository = m_settings.updates.repository;
     const HWND windowHandle = m_window != nullptr ? m_window->GetHWindow() : nullptr;
@@ -684,20 +735,23 @@ void App::StartUpdateCheck() {
         auto release = updater.GetLatestRelease();
 
         std::string message;
+        std::string details;
         std::string url;
 
         if (!release) {
-            message = std::string("Update check failed: ") + release.error();
+            message = std::string(Lang::Utf8(Str::NotifyUpdateFailed));
+            details = release.error();
         } else if (release->version > AppInfo::VERSION) {
-            message = std::string("A newer release is available: ") + release->version.ToString();
+            message = fmt::format(Lang::Utf8(Str::NotifyUpdateAvailable), release->version.ToString());
             url = release->releaseUrl;
         } else {
-            message = std::string("You are running the latest version (") + AppInfo::VERSION.ToString() + ").";
+            message = fmt::format(Lang::Utf8(Str::NotifyUpdateLatest), AppInfo::VERSION.ToString());
         }
 
         {
             std::lock_guard<std::mutex> lock(m_updateMutex);
             m_updateMessage = message;
+            m_updateDetails = details;
             m_updateUrl = url;
         }
 
@@ -713,11 +767,13 @@ void App::FinishUpdateCheck() {
     }
 
     std::string message;
+    std::string details;
     std::string url;
 
     {
         std::lock_guard<std::mutex> lock(m_updateMutex);
         message = m_updateMessage;
+        details = m_updateDetails;
         url = m_updateUrl;
     }
 
@@ -728,18 +784,20 @@ void App::FinishUpdateCheck() {
     const bool hasUpdate = !url.empty();
     if (hasUpdate) {
         Log::Info("{} ({})", message, url);
+    } else if (!details.empty()) {
+        Log::Info("{}: {}", message, details);
     } else {
         Log::Info("{}", message);
     }
 
-    const bool isFailure = message.rfind("Update check failed", 0) == 0;
+    const bool isFailure = !details.empty();
 
     if (m_window != nullptr && (hasUpdate || (isFailure && m_settings.tray.notifications.onError))) {
         const std::string balloonText = hasUpdate
-            ? message + "\nClick this notification to open the release page."
+            ? message + "\n" + Lang::Utf8(Str::NotifyUpdateClick)
             : message;
 
-        m_window->Notify(L"REAL - updates", Text::ToWide(balloonText), isFailure);
+        m_window->Notify(Lang::Wide(Str::NotifyTitle), Text::ToWide(balloonText), isFailure);
     }
 }
 
@@ -747,21 +805,36 @@ void App::OnCommand(Command command) {
     switch (command) {
         case Command::ToggleEnabled:
             m_audioEnabled = !m_audioEnabled;
-            Log::Info("Latency reduction {}.", m_audioEnabled ? "enabled" : "disabled");
+            m_audioSuspended = false;
+            m_failureSince = 0;
+            m_lastApplyFailed = false;
+
+            // Switching the mode off is reported by ApplyAudio(); switching it
+            // on produces two lines there (applying + applied).
+            if (m_audioEnabled) {
+                Log::Operation(Lang::Utf8(Str::OpEnabled));
+            }
+
+            if (m_settings.tray.notifications.onStateChange) {
+                m_window->Notify(
+                    Lang::Wide(Str::NotifyTitle),
+                    Lang::Wide(m_audioEnabled ? Str::NotifyEnabled : Str::NotifyDisabled),
+                    false);
+            }
+
             CancelAudioRetry();
             ApplyAudio();
             break;
 
         case Command::Reinitialize:
-            if (!m_audioEnabled) {
-                // "Reinitialize now" always does something visible: it enables
-                // the latency reduction again and applies it.
-                Log::Info("The latency reduction was disabled; enabling it and reinitialising the audio streams.");
-                m_audioEnabled = true;
-            } else {
-                Log::Info("Reinitialising the audio streams...");
-            }
+            // "Reinitialize now" always does something visible: it enables the
+            // latency reduction again when it was off and applies it.
+            m_audioEnabled = true;
+            m_audioSuspended = false;
+            m_failureSince = 0;
+            m_lastApplyFailed = false;
 
+            Log::Operation(Lang::Utf8(Str::OpReinitialising));
             CancelAudioRetry();
             ApplyAudio();
             break;
@@ -827,7 +900,7 @@ void App::OnCommand(Command command) {
 
         case Command::Exit:
             m_exitCode = 0;
-            Log::Info("Exiting...");
+            Log::Operation(Lang::Utf8(Str::OpExiting));
             if (m_window != nullptr) {
                 ::DestroyWindow(m_window->GetHWindow());
             }
@@ -865,7 +938,7 @@ void App::OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         // The audio engine is reset when the machine leaves a sleep state; the
         // streams have to be re-created or the buffer size stays at its default.
         if (wParam == PBT_APMRESUMEAUTOMATIC || wParam == PBT_APMRESUMESUSPEND) {
-            OnSystemResume(L"resume from sleep");
+            OnSystemResume(Lang::Wide(Str::ReasonResume));
         }
 
         return;
@@ -873,7 +946,7 @@ void App::OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 
     if (message == WM_WTSSESSION_CHANGE) {
         if (wParam == WTS_SESSION_UNLOCK) {
-            OnSystemResume(L"session unlock");
+            OnSystemResume(Lang::Wide(Str::ReasonUnlock));
         }
 
         return;
@@ -914,19 +987,21 @@ void App::OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 
 void App::OnTimer(UINT_PTR timerId) {
     if (timerId == static_cast<UINT_PTR>(TimerId::Validate)) {
-        if (!m_audioEnabled) {
+        if (!m_audioEnabled || m_audioSuspended) {
+            // Nothing is applied and the application has stopped polling until
+            // a device event arrives (see ScheduleAudioRetry).
             return;
         }
 
         auto valid = m_audio.Validate();
         if (!valid) {
-            Log::Info("Reinitialising the audio streams: {}", valid.error().GetMessage());
+            Log::Info(Lang::Utf8(Str::LogReinitInvalid), valid.error().GetMessage());
             ApplyAudio();
             return;
         }
 
-        if (m_lastApplyFailed) {
-            Log::Info("The latency reduction could not be applied earlier; trying again.");
+        if (m_lastApplyFailed && m_failureSince == 0) {
+            Log::Info(Lang::Utf8(Str::LogApplyRetry));
             ApplyAudio();
         }
 
@@ -940,7 +1015,7 @@ void App::OnTimer(UINT_PTR timerId) {
             return;
         }
 
-        Log::Info("Retrying to enable the low latency mode...");
+        Log::Debug("{}", Lang::Utf8(Str::OpRetry));
         ApplyAudio();
         return;
     }
@@ -949,13 +1024,21 @@ void App::OnTimer(UINT_PTR timerId) {
         ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent));
 
         CancelAudioRetry();
-        m_lastApplyFailed = false;
-        Log::Info("Audio device change detected; re-applying the low latency mode...");
-        ApplyAudio();
 
-        if (m_settings.tray.notifications.onDeviceChange && m_audioEnabled) {
-            m_window->Notify(L"REAL - audio device", m_audio.GetStatusText(), false);
+        // A device appeared or became the default one: this is the moment to
+        // start over, including switching the mode back on when it was off.
+        m_failureSince = 0;
+        m_lastApplyFailed = false;
+        m_audioSuspended = false;
+        m_deviceChangePending = true;
+
+        if (!m_audioEnabled && m_settings.audio.reinit.enableWhenDisabled) {
+            m_audioEnabled = true;
+            Log::Operation(Lang::Utf8(Str::OpEnabled));
         }
+
+        Log::Operation(Lang::Utf8(Str::OpDeviceChanged));
+        ApplyAudio();
     }
 }
 
@@ -1003,14 +1086,61 @@ void App::ScheduleAudioRetry() {
         return;
     }
 
+    const ULONGLONG now = ::GetTickCount64();
+    if (m_failureSince == 0) {
+        m_failureSince = now;
+    }
+
+    const unsigned int limit = m_settings.audio.reinit.failureTimeoutMs > 0
+        ? static_cast<unsigned int>(m_settings.audio.reinit.failureTimeoutMs)
+        : FAILURE_TIMEOUT_MS;
+
+    const ULONGLONG elapsed = now - m_failureSince;
+    if (elapsed >= limit) {
+        GiveUpOnDevice();
+        return;
+    }
+
     m_retryDelayMs = m_retryDelayMs == 0
         ? INITIAL_AUDIO_RETRY_MS
         : std::min(m_retryDelayMs * 2, MAXIMUM_AUDIO_RETRY_MS);
 
-    Log::Info("Another attempt to enable the low latency mode will be made in {} ms.", m_retryDelayMs);
+    // Never sleep past the deadline: the last attempt happens while the device
+    // still has a chance to answer.
+    const ULONGLONG remaining = limit - elapsed;
+    unsigned int delay = static_cast<unsigned int>(std::min<ULONGLONG>(m_retryDelayMs, remaining));
+    delay = std::max(delay, 500u);
+
+    Log::Debug(Lang::Utf8(Str::OpDeviceNotReady), (delay + 999) / 1000);
 
     ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::AudioRetry));
-    ::SetTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::AudioRetry), m_retryDelayMs, nullptr);
+    ::SetTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::AudioRetry), delay, nullptr);
+}
+
+void App::GiveUpOnDevice() {
+    const unsigned int limit = m_settings.audio.reinit.failureTimeoutMs > 0
+        ? static_cast<unsigned int>(m_settings.audio.reinit.failureTimeoutMs)
+        : FAILURE_TIMEOUT_MS;
+
+    m_retryDelayMs = 0;
+    m_failureSince = 0;
+    m_lastApplyFailed = false;
+    m_audioSuspended = true;
+    m_audioEnabled = false;
+
+    CancelAudioRetry();
+    m_audio.Stop();
+
+    Log::Operation(Lang::Utf8(Str::OpGaveUp), (limit + 999) / 1000);
+
+    if (m_settings.tray.notifications.onError) {
+        m_window->Notify(
+            Lang::Wide(Str::NotifyAudioTitle),
+            Lang::Wide(Str::NotifyDisabledNoDevice),
+            true);
+    }
+
+    UpdateStatus();
 }
 
 void App::CancelAudioRetry() {
@@ -1043,17 +1173,15 @@ int App::RunDiagnostics() {
     LoadSettings();
     InitializeLogging();
 
-    Log::Info("Diagnostics: collecting information about the audio devices...");
+    Log::Operation(Lang::Utf8(Str::OpDiagnostics));
 
     const std::string report = Windows::Diagnostics::BuildReport(m_settings, m_settingsPath);
 
-    Log::Info("Diagnostics: the report is ready.");
-
     const std::wstring path = WriteDiagnosticsReport(report);
     if (!path.empty()) {
-        Log::Info("Diagnostics: report written to {}.", Text::ToUtf8(path));
+        Log::Info(Lang::Utf8(Str::OpDiagnostics), Text::ToUtf8(path));
     } else {
-        Log::Error("Diagnostics: the report could not be written.");
+        Log::Error(Lang::Utf8(Str::OpDiagnosticsFailed));
     }
 
     Log::Shutdown();
@@ -1067,7 +1195,7 @@ int App::RunDiagnostics() {
         if (redirected) {
             std::cout << report;
             if (!path.empty()) {
-                std::cout << "Report written to " << Text::ToUtf8(path) << std::endl;
+                std::cout << fmt::format(Lang::Utf8(Str::ConsoleReportWritten), Text::ToUtf8(path)) << std::endl;
             }
 
             std::cout.flush();
@@ -1081,11 +1209,10 @@ int App::RunDiagnostics() {
     }
 
     if (path.empty()) {
-        ::MessageBoxW(
-            nullptr,
-            L"The diagnostics report could not be written to a file.",
-            AppInfo::NAME,
-            MB_OK | MB_ICONERROR);
+        const std::wstring message = Lang::Wide(Str::DiagnosticsWriteFailed);
+        const std::wstring title = Lang::Wide(Str::NotifyTitle);
+
+        ::MessageBoxW(nullptr, message.c_str(), title.c_str(), MB_OK | MB_ICONERROR);
         return 1;
     }
 
@@ -1097,15 +1224,15 @@ void App::ShowDiagnostics() {
     const std::wstring path = WriteDiagnosticsReport(
         Windows::Diagnostics::BuildReport(m_settings, m_settingsPath));
     if (path.empty()) {
-        Log::Error("The diagnostics report could not be written.");
+        Log::Error(Lang::Utf8(Str::OpDiagnosticsFailed));
         if (m_window != nullptr) {
-            m_window->Notify(L"REAL - diagnostics", L"The diagnostics report could not be written.", true);
+            m_window->Notify(Lang::Wide(Str::NotifyTitle), Lang::Wide(Str::NotifyReportFailed), true);
         }
 
         return;
     }
 
-    Log::Info("Diagnostics report written to {}.", Text::ToUtf8(path));
+    Log::Info(Lang::Utf8(Str::OpDiagnostics), Text::ToUtf8(path));
     ::ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
@@ -1119,7 +1246,7 @@ void App::OnSystemResume(const wchar_t* reason) {
         return;
     }
 
-    Log::Info("The system reported {}; re-applying the low latency mode...", Text::ToUtf8(reason));
+    Log::Debug(Lang::Utf8(Str::LogResumeApply), Text::ToUtf8(reason));
 
     // The device list is not ready immediately after a resume; reuse the same
     // debounce timer as for device notifications.
@@ -1133,28 +1260,38 @@ void App::RegisterHotkeys() {
         return;
     }
 
+    bool toggleRegistered = false;
+    bool reinitializeRegistered = false;
+
     const HWND windowHandle = m_window->GetHWindow();
 
     const HotkeyDefinition toggle = ParseHotkey(m_settings.hotkeys.toggleEnabled);
     if (toggle.valid) {
         if (::RegisterHotKey(windowHandle, HOTKEY_ID_TOGGLE, toggle.modifiers | MOD_NOREPEAT, toggle.virtualKey) == FALSE) {
-            Log::Warn("Could not register the hotkey '{}'.", m_settings.hotkeys.toggleEnabled);
+            Log::Warn(Lang::Utf8(Str::LogHotkeyRegisterFailed), m_settings.hotkeys.toggleEnabled);
         } else {
-            Log::Info("Hotkey '{}' enables/disables the latency reduction.", m_settings.hotkeys.toggleEnabled);
+            toggleRegistered = true;
         }
     } else if (!m_settings.hotkeys.toggleEnabled.empty()) {
-        Log::Warn("Could not parse the hotkey '{}'.", m_settings.hotkeys.toggleEnabled);
+        Log::Warn(Lang::Utf8(Str::LogHotkeyParseFailed), m_settings.hotkeys.toggleEnabled);
     }
 
     const HotkeyDefinition reinitialize = ParseHotkey(m_settings.hotkeys.reinitialize);
     if (reinitialize.valid) {
         if (::RegisterHotKey(windowHandle, HOTKEY_ID_REINITIALIZE, reinitialize.modifiers | MOD_NOREPEAT, reinitialize.virtualKey) == FALSE) {
-            Log::Warn("Could not register the hotkey '{}'.", m_settings.hotkeys.reinitialize);
+            Log::Warn(Lang::Utf8(Str::LogHotkeyRegisterFailed), m_settings.hotkeys.reinitialize);
         } else {
-            Log::Info("Hotkey '{}' reinitialises the audio streams.", m_settings.hotkeys.reinitialize);
+            reinitializeRegistered = true;
         }
     } else if (!m_settings.hotkeys.reinitialize.empty()) {
-        Log::Warn("Could not parse the hotkey '{}'.", m_settings.hotkeys.reinitialize);
+        Log::Warn(Lang::Utf8(Str::LogHotkeyParseFailed), m_settings.hotkeys.reinitialize);
+    }
+
+    if (toggleRegistered || reinitializeRegistered) {
+        Log::Operation(
+            Lang::Utf8(Str::OpHotkeys),
+            toggleRegistered ? m_settings.hotkeys.toggleEnabled : std::string("-"),
+            reinitializeRegistered ? m_settings.hotkeys.reinitialize : std::string("-"));
     }
 }
 
@@ -1185,7 +1322,7 @@ bool App::IsStartWithWindowsEnabled() const {
 void App::SetStartWithWindows(bool enabled) {
     HKEY key = nullptr;
     if (::RegCreateKeyExW(HKEY_CURRENT_USER, RUN_KEY_PATH, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
-        Log::Error("Could not open the registry key for the autostart entry: {}", Windows::DescribeLastError());
+        Log::Error(Lang::Utf8(Str::LogAutostartOpenFailed), Windows::DescribeLastError());
         return;
     }
 
@@ -1204,13 +1341,13 @@ void App::SetStartWithWindows(bool enabled) {
             static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
 
         if (result == ERROR_SUCCESS) {
-            Log::Info("REAL will start with Windows.");
+            Log::Operation(Lang::Utf8(Str::OpAutostart), Lang::Utf8(Str::ValueOn));
         } else {
-            Log::Error("Could not write the autostart entry: {}", Windows::DescribeLastError());
+            Log::Error(Lang::Utf8(Str::LogAutostartWriteFailed), Windows::DescribeLastError());
         }
     } else {
         ::RegDeleteValueW(key, RUN_VALUE_NAME);
-        Log::Info("REAL will not start with Windows anymore.");
+        Log::Operation(Lang::Utf8(Str::OpAutostart), Lang::Utf8(Str::ValueOff));
     }
 
     ::RegCloseKey(key);
@@ -1219,7 +1356,7 @@ void App::SetStartWithWindows(bool enabled) {
 void App::CleanupPreviousInstall() {
     std::string message;
     if (AutoUpdater::AutoUpdater::CleanupPreviousInstall(&message)) {
-        Log::Info("Removed the leftover file from a previous update.");
+        Log::Info(Lang::Utf8(Str::LogUpdateLeftover));
     } else if (!message.empty()) {
         Log::Warn("{}", message);
     }
@@ -1263,7 +1400,7 @@ void App::Shutdown() {
 
     m_audio.Shutdown();
 
-    Log::Info("REAL stopped.");
+    Log::Info(Lang::Utf8(Str::LogStopped));
     Log::Shutdown();
 
     m_window.reset();

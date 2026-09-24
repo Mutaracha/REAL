@@ -1,7 +1,7 @@
 #include "Diagnostics.h"
 
 #include "../AppVersion.h"
-#include "../Log.h"
+#include "../Lang.h"
 #include "../Text.h"
 #include "ComPtr.h"
 #include "Filesystem.h"
@@ -107,7 +107,7 @@ void InspectEndpoint(IMMDevice& device, EndpointInfo& info) {
 
     if (info.supportsAudioClient3) {
         if (FAILED(audioClient3->GetMixFormat(&format)) || format == nullptr) {
-            info.error = "the mix format could not be read";
+            info.error = Lang::Utf8(Lang::Str::DiagMixFormatFailed);
             return;
         }
 
@@ -123,7 +123,7 @@ void InspectEndpoint(IMMDevice& device, EndpointInfo& info) {
         ::CoTaskMemFree(format);
 
         if (FAILED(hr)) {
-            info.error = std::string("the engine periods could not be queried: ") + DescribeHResult(static_cast<long>(hr));
+            info.error = fmt::format(Lang::Utf8(Lang::Str::DiagEnginePeriodsFailed), DescribeHResult(static_cast<long>(hr)));
             return;
         }
 
@@ -141,7 +141,7 @@ void InspectEndpoint(IMMDevice& device, EndpointInfo& info) {
         reinterpret_cast<void**>(audioClient.GetAddressOf()));
 
     if (FAILED(v1Result)) {
-        info.error = std::string("the audio client could not be created: ") + DescribeHResult(static_cast<long>(v1Result));
+        info.error = fmt::format(Lang::Utf8(Lang::Str::DiagActivateFailed), DescribeHResult(static_cast<long>(v1Result)));
         return;
     }
 
@@ -162,12 +162,11 @@ void InspectEndpoint(IMMDevice& device, EndpointInfo& info) {
         info.hasEnginePeriods = info.defaultPeriod != 0;
     }
 
-    info.error = "the driver does not expose IAudioClient3, so small buffers are not available for this device "
-                 "(typical for Bluetooth, HDMI/DisplayPort receivers and some virtual drivers)";
+    info.error = Lang::Utf8(Lang::Str::DiagNoAudioClient3Detail);
 }
 
 std::string FlowName(EDataFlow flow) {
-    return flow == eRender ? "playback (render)" : "recording (capture)";
+    return Lang::Utf8(flow == eRender ? Lang::Str::DiagFlowRender : Lang::Str::DiagFlowCapture);
 }
 
 std::string Milliseconds(uint32_t frames, uint32_t sampleRate) {
@@ -180,18 +179,18 @@ std::string Milliseconds(uint32_t frames, uint32_t sampleRate) {
 
 std::string Periods(const EndpointInfo& info) {
     if (!info.hasEnginePeriods) {
-        return "unknown";
+        return Lang::Utf8(Lang::Str::DiagUnknown);
     }
 
     if (!info.supportsAudioClient3) {
         return fmt::format(
-            "device period {} frames ({})",
+            Lang::Utf8(Lang::Str::DiagPeriodsNoClient3),
             info.defaultPeriod,
             Milliseconds(info.defaultPeriod, info.sampleRate));
     }
 
     return fmt::format(
-        "default {} frames ({}), minimum {} frames ({}), fundamental {} frames, maximum {} frames",
+        Lang::Utf8(Lang::Str::DiagPeriodsDetail),
         info.defaultPeriod,
         Milliseconds(info.defaultPeriod, info.sampleRate),
         info.minPeriod,
@@ -303,17 +302,20 @@ std::string miniant::Windows::Diagnostics::BuildReport(
     char timestamp[64] = {};
     std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &local);
 
-    text += "REAL diagnostics\n";
-    text += "================\n\n";
-    text += fmt::format("Version:    {} ({})\n", AppInfo::VERSION.ToString(), Text::ToUtf8(AppInfo::DESCRIPTION));
-    text += fmt::format("Generated:  {}\n", timestamp);
-    text += fmt::format("Windows:    {}\n", GetWindowsVersion());
-    text += fmt::format("Executable: {}\n", Text::ToUtf8(Filesystem::GetExecutablePath()));
-    text += fmt::format("Settings:   {}\n", Text::ToUtf8(settingsPath));
-    text += fmt::format("Config:     {}\n", Config::Describe(settings));
+    text += Lang::Utf8(Lang::Str::DiagTitle);
+    text += "\n";
+    text += Lang::Utf8(Lang::Str::DiagRule);
+    text += "\n\n";
+    text += fmt::format(
+        Lang::Utf8(Lang::Str::DiagVersion), AppInfo::VERSION.ToString(), Text::ToUtf8(AppInfo::DESCRIPTION));
+    text += fmt::format(Lang::Utf8(Lang::Str::DiagGenerated), timestamp);
+    text += fmt::format(Lang::Utf8(Lang::Str::DiagWindows), GetWindowsVersion());
+    text += fmt::format(Lang::Utf8(Lang::Str::DiagExecutable), Text::ToUtf8(Filesystem::GetExecutablePath()));
+    text += fmt::format(Lang::Utf8(Lang::Str::DiagSettings), Text::ToUtf8(settingsPath));
+    text += fmt::format(Lang::Utf8(Lang::Str::DiagConfig), Config::Describe(settings));
     text += "\n";
 
-    Log::Info("Diagnostics: location and configuration collected.");
+    Log::Info(Lang::Utf8(Lang::Str::LogDiagCollected));
     Log::Flush();
 
     HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -338,64 +340,68 @@ std::string miniant::Windows::Diagnostics::BuildReport(
                 reinterpret_cast<void**>(enumerator.GetAddressOf()));
         }
 
-        Log::Info("Diagnostics: the device enumerator is {}.", enumerator ? "ready" : "not available");
+        Log::Info(Lang::Utf8(enumerator ? Lang::Str::LogDiagEnumeratorReady : Lang::Str::LogDiagEnumeratorMissing));
         Log::Flush();
 
         if (!enumerator) {
             text += fmt::format(
-                "ERROR: the audio device enumerator could not be created ({}).\n",
-                DescribeHResult(static_cast<long>(hr)));
-            text += "The Windows audio service (Audiosrv) is probably not running.\n";
+                Lang::Utf8(Lang::Str::DiagEnumeratorError), DescribeHResult(static_cast<long>(hr)));
+            text += Lang::Utf8(Lang::Str::DiagAudiosrvHint);
         } else {
             const EDataFlow flows[] = { eRender, eCapture };
             for (EDataFlow flow : flows) {
-                text += fmt::format("--- {} devices ---\n\n", FlowName(flow));
+                text += fmt::format(Lang::Utf8(Lang::Str::DiagFlowHeader), FlowName(flow));
 
                 const std::vector<EndpointInfo> endpoints = EnumerateEndpoints(flow, *enumerator.Get());
-                Log::Info("Diagnostics: {} endpoints for flow {}.", endpoints.size(), FlowName(flow));
+                Log::Info(
+                    Lang::Utf8(Lang::Str::LogDiagEndpoints),
+                    endpoints.size(),
+                    Lang::Utf8(flow == EDataFlow::eRender ? Lang::Str::FlowRender : Lang::Str::FlowCapture));
                 Log::Flush();
 
                 if (endpoints.empty()) {
-                    text += "No active devices.\n\n";
+                    text += Lang::Utf8(Lang::Str::DiagNoDevices);
                     continue;
                 }
 
                 for (const EndpointInfo& info : endpoints) {
                     text += fmt::format(
                         "{}{}\n",
-                        Text::ToUtf8(info.deviceName.empty() ? std::wstring(L"<unknown device>") : info.deviceName),
-                        info.isDefault ? "   [default]" : "");
-                    text += fmt::format("    id:       {}\n", Text::ToUtf8(info.deviceId));
+                        Text::ToUtf8(info.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : info.deviceName),
+                        info.isDefault ? Lang::Utf8(Lang::Str::DiagDefaultMark) : "");
+                    text += fmt::format(Lang::Utf8(Lang::Str::DiagDeviceId), Text::ToUtf8(info.deviceId));
 
                     if (!info.driverProvider.empty() || !info.driverVersion.empty()) {
                         text += fmt::format(
-                            "    driver:   {} {}\n",
+                            Lang::Utf8(Lang::Str::DiagDriver),
                             Text::ToUtf8(info.driverProvider),
                             Text::ToUtf8(info.driverVersion));
                     }
 
                     if (info.sampleRate != 0) {
                         text += fmt::format(
-                            "    format:   {} Hz, {} channels, {} bit\n",
+                            Lang::Utf8(Lang::Str::DiagFormat),
                             info.sampleRate,
                             info.channels,
                             info.bitsPerSample);
                     }
 
                     text += fmt::format(
-                        "    periods:  {}\n",
-                        info.hasEnginePeriods ? Periods(info) : "unknown");
+                        Lang::Utf8(Lang::Str::DiagPeriods),
+                        info.hasEnginePeriods ? Periods(info) : Lang::Utf8(Lang::Str::DiagUnknown));
 
                     if (info.supportsAudioClient3) {
                         text += fmt::format(
-                            "    result:   {} (IAudioClient3 is supported)\n",
+                            Lang::Utf8(Lang::Str::DiagResult),
                             info.lowLatencyPossible
                                 ? fmt::format(
-                                      "small buffers are available, a buffer of {} can be requested",
+                                      Lang::Utf8(Lang::Str::DiagSmallBuffer),
                                       Milliseconds(info.minPeriod, info.sampleRate))
-                                : "the driver offers nothing smaller than its default buffer, so REAL cannot lower the latency here");
+                                : std::string(Lang::Utf8(Lang::Str::DiagNoGain)));
                     } else {
-                        text += fmt::format("    result:   {}\n", info.error.empty() ? "IAudioClient3 is not available" : info.error);
+                        text += fmt::format(
+                            Lang::Utf8(Lang::Str::DiagResult),
+                            info.error.empty() ? Lang::Utf8(Lang::Str::DiagNoAudioClient3) : info.error);
                     }
 
                     text += "\n";
@@ -403,14 +409,8 @@ std::string miniant::Windows::Diagnostics::BuildReport(
             }
 
             // What REAL itself is doing right now.
-            text += "--- summary ---\n\n";
-            text += "A device is suitable for the latency reduction when its minimum period is\n";
-            text += "smaller than its default period (see 'result' above). Typical exceptions:\n";
-            text += "Bluetooth endpoints (10 ms by design), HDMI/DisplayPort receivers and some\n";
-            text += "vendor drivers (Realtek, Nahimic, ACX) as well as virtual devices.\n";
-            text += "\nIf a suitable device is used by default right after the next start, the status\n";
-            text += "line of the window shows the buffer size the audio engine is running with,\n";
-            text += "for example '2.67 ms - Speakers (Realtek Audio)'.\n";
+            text += Lang::Utf8(Lang::Str::DiagSummaryHeader);
+            text += Lang::Utf8(Lang::Str::DiagSummary);
         }
     }
 
@@ -419,7 +419,7 @@ std::string miniant::Windows::Diagnostics::BuildReport(
         ::CoUninitialize();
     }
 
-    Log::Info("Diagnostics: the report text has been built ({} bytes).", text.size());
+    Log::Info(Lang::Utf8(Lang::Str::LogDiagReportBuilt), text.size());
     Log::Flush();
 
     return text;

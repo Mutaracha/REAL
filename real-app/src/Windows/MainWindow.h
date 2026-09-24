@@ -44,6 +44,10 @@ public:
     void SetMinimizeToTray(bool value);
     void SetHideOnClose(bool value);
 
+    // Re-reads every caption from the language table (used at start and after
+    // the language setting has changed).
+    void ApplyLanguage();
+
     void SetStatusText(const std::wstring& text);
     void AppendLogLines(const std::vector<std::string>& lines);
     void Notify(const std::wstring& title, const std::wstring& text, bool error);
@@ -71,6 +75,7 @@ private:
     HWND m_status = nullptr;
     HWND m_log = nullptr;
     std::vector<std::pair<HWND, miniant::Command>> m_buttons;
+    bool m_statusTextSet = false;
 
     HFONT m_uiFont = nullptr;
     HFONT m_monoFont = nullptr;

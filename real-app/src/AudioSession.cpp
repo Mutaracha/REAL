@@ -1,5 +1,6 @@
 #include "AudioSession.h"
 
+#include "Lang.h"
 #include "Log.h"
 #include "Text.h"
 
@@ -82,10 +83,6 @@ bool SameDevice(const std::wstring& left, const std::wstring& right) {
     return true;
 }
 
-const char* ToString(EDataFlow flow) {
-    return flow == eRender ? "render" : "capture";
-}
-
 }
 
 AudioSession::AudioSession() = default;
@@ -106,8 +103,8 @@ tl::expected<void, WindowsError> AudioSession::Initialize(DeviceEventHandler han
         IID_IMMDeviceEnumeratorLocal,
         reinterpret_cast<void**>(m_enumerator.GetAddressOf()));
     if (FAILED(hr)) {
-        return tl::make_unexpected(WindowsError(
-            std::string("Could not create the audio device enumerator: ") + DescribeHResult(static_cast<long>(hr))));
+        return tl::make_unexpected(WindowsError(fmt::format(
+            Lang::Utf8(Lang::Str::ErrAudioEnumeratorFailed), DescribeHResult(static_cast<long>(hr)))));
     }
 
     m_notification = std::make_unique<DeviceNotificationClient>(std::move(handler));
@@ -115,8 +112,8 @@ tl::expected<void, WindowsError> AudioSession::Initialize(DeviceEventHandler han
     hr = m_enumerator->RegisterEndpointNotificationCallback(m_notification.get());
     if (FAILED(hr)) {
         m_notification.reset();
-        return tl::make_unexpected(WindowsError(
-            std::string("Could not register for endpoint notifications: ") + DescribeHResult(static_cast<long>(hr))));
+        return tl::make_unexpected(WindowsError(fmt::format(
+            Lang::Utf8(Lang::Str::ErrAudioNotificationsFailed), DescribeHResult(static_cast<long>(hr)))));
     }
 
     m_notificationsRegistered = true;
@@ -154,7 +151,7 @@ IMMDeviceEnumerator* AudioSession::GetEnumerator() const {
 
 tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Settings& settings) {
     if (!m_enumerator) {
-        return tl::make_unexpected(WindowsError("The audio session has not been initialised."));
+        return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::ErrNotInitialised)));
     }
 
     Stop();
@@ -172,9 +169,10 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
             settings.audio.allowPeriodSnap);
 
         if (!stream) {
-            const std::string message = std::string(ToString(flow)) + ": " + stream.error().GetMessage();
+            const std::string message = Lang::Utf8(flow == EDataFlow::eRender ? Lang::Str::FlowRender : Lang::Str::FlowCapture)
+                + ": " + stream.error().GetMessage();
             errors.push_back(message);
-            Log::Error("Could not enable low latency mode ({})", message);
+            Log::Error(Lang::Utf8(Lang::Str::LogLowLatencyFailed), message);
             continue;
         }
 
@@ -185,20 +183,17 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
             // stream is held (see MinimumLatencyAudioClient::Start).
             m_streamsInfo.push_back(info);
             Log::Warn(
-                "The driver of '{}' does not offer a period smaller than the default one ({} frames, {:.2f} ms): "
-                "the audio engine already uses its smallest buffer for this device, so nothing has to be held open.",
-                Text::ToUtf8(info.deviceName),
+                Lang::Utf8(Lang::Str::LogDriverMinimum),
+                Text::ToUtf8(info.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : info.deviceName),
                 info.defaultPeriod,
                 info.PeriodMilliseconds(info.defaultPeriod));
             continue;
         }
 
-        Log::Info("Low latency stream started: {}", DescribeStreamWin32(info));
+        Log::Info(Lang::Utf8(Lang::Str::LogLowLatencyStarted), DescribeStreamWin32(info));
 
         if (info.acceptedLockedPeriod) {
-            Log::Info(
-                "Another application has already locked the audio engine period; snapped to {} frames.",
-                info.requestedPeriod);
+            Log::Info(Lang::Utf8(Lang::Str::LogPeriodLocked), info.requestedPeriod);
         }
 
         m_streamsInfo.push_back(info);
@@ -206,7 +201,7 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
     }
 
     if (m_streams.empty() && !errors.empty()) {
-        std::string message = "Could not enable low latency mode.";
+        std::string message = Lang::Utf8(Lang::Str::ErrLowLatency);
         message += " ";
         message += errors.front();
 
@@ -214,7 +209,7 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
     }
 
     if (m_streams.empty() && m_streamsInfo.empty()) {
-        return tl::make_unexpected(WindowsError("No audio endpoint could be inspected."));
+        return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::ErrNoEndpoint)));
     }
 
     return {};
@@ -222,7 +217,7 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
 
 std::wstring AudioSession::GetStatusText() const {
     if (m_streamsInfo.empty()) {
-        return L"Latency reduction is not active";
+        return Lang::Wide(Lang::Str::StatusNotActive);
     }
 
     const AudioStreamInfo& first = m_streamsInfo.front();
@@ -230,28 +225,28 @@ std::wstring AudioSession::GetStatusText() const {
     if (m_streams.empty()) {
         // Every inspected device already uses its smallest buffer.
         std::string text = fmt::format(
-            "driver already uses its smallest buffer ({:.2f} ms) - {}",
+            Lang::Utf8(Lang::Str::StatusDriverMinimum),
             first.PeriodMilliseconds(first.currentPeriod),
-            Text::ToUtf8(first.deviceName.empty() ? std::wstring(L"<unknown device>") : first.deviceName));
+            Text::ToUtf8(first.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : first.deviceName));
 
         if (m_streamsInfo.size() > 1) {
-            text += fmt::format(" (+{} more)", m_streamsInfo.size() - 1);
+            text += fmt::format(Lang::Utf8(Lang::Str::StatusMoreDevices), m_streamsInfo.size() - 1);
         }
 
         return Text::ToWide(text);
     }
 
     std::string text = fmt::format(
-        "{:.2f} ms - {}",
+        Lang::Utf8(Lang::Str::StatusActive),
         first.PeriodMilliseconds(first.currentPeriod),
-        Text::ToUtf8(first.deviceName.empty() ? std::wstring(L"<unknown device>") : first.deviceName));
+        Text::ToUtf8(first.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : first.deviceName));
 
     if (first.acceptedLockedPeriod) {
-        text += " (period locked by another app)";
+        text += Lang::Utf8(Lang::Str::StatusPeriodLocked);
     }
 
     if (m_streamsInfo.size() > 1) {
-        text += fmt::format(" (+{} more)", m_streamsInfo.size() - 1);
+        text += fmt::format(Lang::Utf8(Lang::Str::StatusMoreDevices), m_streamsInfo.size() - 1);
     }
 
     return Text::ToWide(text);
@@ -259,7 +254,7 @@ std::wstring AudioSession::GetStatusText() const {
 
 tl::expected<void, WindowsError> AudioSession::Validate() {
     if (!m_enumerator) {
-        return tl::make_unexpected(WindowsError("The audio session has not been initialised."));
+        return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::ErrNotInitialised)));
     }
 
     if (m_streams.empty()) {
@@ -269,7 +264,8 @@ tl::expected<void, WindowsError> AudioSession::Validate() {
     for (size_t i = 0; i < m_streams.size(); ++i) {
         auto period = m_streams[i].GetCurrentPeriod();
         if (!period) {
-            return tl::make_unexpected(WindowsError(std::string("The audio stream is no longer valid: ") + period.error().GetMessage()));
+            return tl::make_unexpected(WindowsError(fmt::format(
+                Lang::Utf8(Lang::Str::ErrStreamInvalid), period.error().GetMessage())));
         }
 
         const AudioStreamInfo& info = m_streams[i].GetInfo();
@@ -277,13 +273,13 @@ tl::expected<void, WindowsError> AudioSession::Validate() {
         ComPtr<IMMDevice> device;
         const HRESULT hr = m_enumerator->GetDefaultAudioEndpoint(info.dataFlow, info.role, device.GetAddressOf());
         if (FAILED(hr)) {
-            return tl::make_unexpected(WindowsError(
-                std::string("Could not query the default audio endpoint: ") + DescribeHResult(static_cast<long>(hr))));
+            return tl::make_unexpected(WindowsError(fmt::format(
+                Lang::Utf8(Lang::Str::ErrDefaultEndpointQuery), DescribeHResult(static_cast<long>(hr)))));
         }
 
         const std::wstring defaultDeviceId = GetDeviceId(device.Get());
         if (!SameDevice(defaultDeviceId, info.deviceId)) {
-            return tl::make_unexpected(WindowsError("The default audio device has changed."));
+            return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::ErrDefaultDeviceChanged)));
         }
     }
 

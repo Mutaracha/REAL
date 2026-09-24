@@ -1,10 +1,13 @@
 #include "CommandLine.h"
 
 #include "AppVersion.h"
+#include "Lang.h"
 #include "Text.h"
 
 #include <Windows.h>
 #include <shellapi.h>
+
+#include <spdlog/fmt/fmt.h>
 
 #include <sstream>
 
@@ -109,7 +112,7 @@ Options miniant::CommandLine::Parse() {
             if (i + 1 < arguments.size()) {
                 options.configPath = arguments[++i];
             } else {
-                options.unknown.push_back("--config requires a path");
+                options.unknown.push_back(Lang::Utf8(Lang::Str::ArgConfigNeedsPath));
             }
 
             continue;
@@ -119,7 +122,7 @@ Options miniant::CommandLine::Parse() {
             if (i + 1 < arguments.size()) {
                 options.logLevel = Text::ToLowerAscii(Text::ToUtf8(arguments[++i]));
             } else {
-                options.unknown.push_back("--log-level requires a value");
+                options.unknown.push_back(Lang::Utf8(Lang::Str::ArgLogLevelNeedsValue));
             }
 
             continue;
@@ -138,30 +141,15 @@ Options miniant::CommandLine::Parse() {
 }
 
 std::wstring miniant::CommandLine::HelpText() {
-    std::wstringstream stream;
-    stream << AppInfo::NAME << L" - " << AppInfo::DESCRIPTION << L" " << AppInfo::VERSION.ToString().c_str() << L"\n\n";
-    stream << L"Usage: REAL.exe [options]\n\n";
-    stream << L"  (no options)          Start with the main window; the tray icon is created as well\n";
-    stream << L"  --tray                Start minimised to the system tray\n";
-    stream << L"  --no-tray             Start with the main window visible\n";
-    stream << L"  --console             Also attach a console window for the log output\n";
-    stream << L"  --config <path>       Use the given settings file instead of real.settings.json\n";
-    stream << L"  --no-config           Ignore the settings file, use built-in defaults\n";
-    stream << L"  --log-level <level>   trace | debug | info | warn | error | off\n";
-    stream << L"  --multi-instance      Do not reuse an already running instance\n";
-    stream << L"\nCommands for a running instance (the command is forwarded to it and this process exits):\n";
-    stream << L"  --reinit              Re-initialise the audio streams (e.g. after a device change)\n";
-    stream << L"  --enable              Enable the latency reduction\n";
-    stream << L"  --disable             Disable the latency reduction (audio engine returns to its default)\n";
-    stream << L"  --exit                Close the running instance\n";
-    stream << L"\nDiagnostics:\n";
-    stream << L"  --diagnose            Write a report about the audio devices and drivers (REAL-diagnostics.txt)\n";
-    stream << L"\n  --help, -h, /?        Show this help\n";
-    stream << L"  --version             Show the version\n";
-    stream << L"\nSettings: real.settings.json next to REAL.exe (created on the first run).\n";
-    stream << L"Every parameter is documented by comments inside that file,\n";
-    stream << L"see also docs/CONFIG.md in the repository.\n";
-    return stream.str();
+    // The whole help is one translated block: the layout of the option table
+    // differs between languages, so it cannot be assembled from parts.
+    const std::string text = fmt::format(
+        miniant::Lang::Utf8(miniant::Lang::Str::HelpText),
+        miniant::Text::ToUtf8(AppInfo::NAME),
+        miniant::Text::ToUtf8(AppInfo::DESCRIPTION),
+        AppInfo::VERSION.ToString());
+
+    return miniant::Text::ToWide(text);
 }
 
 std::wstring miniant::CommandLine::VersionText() {

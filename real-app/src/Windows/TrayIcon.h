@@ -22,6 +22,7 @@ struct TrayMenuState {
     bool reinitialize = true;
     bool openSettings = true;
     bool openLog = true;
+    bool diagnostics = true;
     bool startWithWindows = true;
     bool startWithWindowsChecked = false;
     bool about = true;
@@ -63,6 +64,7 @@ private:
     TrayMenuState m_state;
     CommandHandler m_handler;
     bool m_visible = false;
+    ULONGLONG m_lastToggleTick = 0;
 };
 
 }

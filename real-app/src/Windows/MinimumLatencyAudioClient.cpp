@@ -1,6 +1,7 @@
 #include "MinimumLatencyAudioClient.h"
 
 #include "../Text.h"
+#include "../Lang.h"
 #include "ComPtr.h"
 
 #include <spdlog/fmt/fmt.h>
@@ -46,14 +47,14 @@ bool IsTransientEndpointError(long code) {
         code == static_cast<long>(AUDCLNT_E_RESOURCES_INVALIDATED);
 }
 
-std::string DescribeEndpointError(const char* what, long code) {
+std::string DescribeEndpointError(Lang::Str what, long code) {
+    const std::string prefix = Lang::Utf8(what);
+
     if (IsTransientEndpointError(code)) {
-        return std::string(what) +
-            ": the audio endpoint is not available at the moment (device change or audio service restart); "
-            "another attempt will be made automatically";
+        return prefix + Lang::Utf8(Lang::Str::ErrEndpointTransient);
     }
 
-    return std::string(what) + ": " + DescribeHResult(code);
+    return prefix + ": " + DescribeHResult(code);
 }
 }
 
@@ -167,7 +168,7 @@ const AudioStreamInfo& MinimumLatencyAudioClient::GetInfo() const {
 
 tl::expected<uint32_t, WindowsError> MinimumLatencyAudioClient::GetCurrentPeriod() {
     if (m_audioClient == nullptr) {
-        return tl::make_unexpected(WindowsError("The audio stream is not running."));
+        return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::ErrStreamNotRunning)));
     }
 
     WAVEFORMATEX* currentFormat = nullptr;
@@ -197,7 +198,7 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
     HRESULT hr = enumerator.GetDefaultAudioEndpoint(dataFlow, role, device.GetAddressOf());
     if (FAILED(hr)) {
         return tl::make_unexpected(WindowsError(
-            DescribeEndpointError("Could not open the default audio endpoint", static_cast<long>(hr))));
+            DescribeEndpointError(Lang::Str::ErrOpenEndpoint, static_cast<long>(hr))));
     }
 
     ComPtr<IAudioClient3> audioClient;
@@ -207,21 +208,19 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
         nullptr,
         reinterpret_cast<void**>(audioClient.GetAddressOf()));
     if (hr == E_NOINTERFACE) {
-        return tl::make_unexpected(WindowsError(
-            "The device does not support IAudioClient3, so small buffers are not available for it "
-            "(typical for Bluetooth and some virtual/vendor drivers)."));
+        return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::ErrNoAudioClient3)));
     }
 
     if (FAILED(hr)) {
         return tl::make_unexpected(WindowsError(
-            std::string("Could not activate the audio client: ") + DescribeHResult(static_cast<long>(hr))));
+            fmt::format(Lang::Utf8(Lang::Str::ErrActivateClient), DescribeHResult(static_cast<long>(hr)))));
     }
 
     WAVEFORMATEX* format = nullptr;
     hr = audioClient->GetMixFormat(&format);
     if (FAILED(hr) || format == nullptr) {
         return tl::make_unexpected(WindowsError(
-            std::string("Could not read the device mix format: ") + DescribeHResult(static_cast<long>(hr))));
+            fmt::format(Lang::Utf8(Lang::Str::ErrMixFormat), DescribeHResult(static_cast<long>(hr)))));
     }
 
     AudioStreamInfo info;
@@ -247,7 +246,7 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
     if (FAILED(hr)) {
         ::CoTaskMemFree(format);
         return tl::make_unexpected(WindowsError(
-            std::string("Could not query the engine periods: ") + DescribeHResult(static_cast<long>(hr))));
+            fmt::format(Lang::Utf8(Lang::Str::ErrEnginePeriods), DescribeHResult(static_cast<long>(hr)))));
     }
 
     info.lowLatencyNotAvailable = info.minPeriod >= info.defaultPeriod;
@@ -290,18 +289,18 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
 
         if (hr == AUDCLNT_E_ENGINE_FORMAT_LOCKED || hr == AUDCLNT_E_ENGINE_PERIODICITY_LOCKED) {
             return tl::make_unexpected(WindowsError(
-                std::string("The audio engine is currently locked by another application: ") + DescribeHResult(static_cast<long>(hr))));
+                fmt::format(Lang::Utf8(Lang::Str::ErrEngineLocked), DescribeHResult(static_cast<long>(hr)))));
         }
 
         return tl::make_unexpected(WindowsError(
-            std::string("Could not initialise the low latency stream: ") + DescribeHResult(static_cast<long>(hr))));
+            fmt::format(Lang::Utf8(Lang::Str::ErrInitStream), DescribeHResult(static_cast<long>(hr)))));
     }
 
     hr = audioClient->Start();
     if (FAILED(hr)) {
         ::CoTaskMemFree(format);
         return tl::make_unexpected(WindowsError(
-            std::string("Could not start the audio stream: ") + DescribeHResult(static_cast<long>(hr))));
+            fmt::format(Lang::Utf8(Lang::Str::ErrStartStream), DescribeHResult(static_cast<long>(hr)))));
     }
 
     WAVEFORMATEX* currentFormat = nullptr;
