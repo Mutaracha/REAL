@@ -158,7 +158,9 @@ void InspectEndpoint(IMMDevice& device, EndpointInfo& info) {
     if (SUCCEEDED(audioClient->GetDevicePeriod(&defaultDevicePeriod, &minimumDevicePeriod))) {
         info.defaultPeriod = ToFrames(defaultDevicePeriod, info.sampleRate);
         info.minPeriod = ToFrames(minimumDevicePeriod, info.sampleRate);
-        info.fundamentalPeriod = info.minPeriod;
+        // IAudioClient::GetDevicePeriod() knows nothing about a step: it is left
+        // at zero and the report simply has no line for it.
+        info.fundamentalPeriod = 0;
         info.maxPeriod = info.defaultPeriod;
         info.hasEnginePeriods = info.defaultPeriod != 0;
     }
@@ -220,7 +222,15 @@ std::string Periods(const EndpointInfo& info) {
 
     std::string text = PeriodLine(miniant::Lang::Str::DiagPeriodDefault, info.defaultPeriod, info.sampleRate);
     text += "\n" + indent + PeriodLine(miniant::Lang::Str::DiagPeriodMinimum, info.minPeriod, info.sampleRate);
-    text += "\n" + indent + PeriodLine(miniant::Lang::Str::DiagPeriodFundamental, info.fundamentalPeriod, info.sampleRate);
+
+    // The base step is not a period: a driver is free to report a step that is
+    // smaller than its own minimum (1 frame happens), and it says nothing about
+    // the smallest period that can be requested. The line is shown only when
+    // the driver reports a step at all, and the notes explain what it means.
+    if (info.fundamentalPeriod > 0) {
+        text += "\n" + indent + PeriodLine(miniant::Lang::Str::DiagPeriodFundamental, info.fundamentalPeriod, info.sampleRate);
+    }
+
     text += "\n" + indent + PeriodLine(miniant::Lang::Str::DiagPeriodMaximum, info.maxPeriod, info.sampleRate);
     return text;
 }

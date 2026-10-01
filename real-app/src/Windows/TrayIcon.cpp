@@ -199,89 +199,93 @@ void TrayIcon::HandleMessage(WPARAM wParam, LPARAM lParam) {
     }
 }
 
+// A divider divides, so it is never the first thing in the menu and never
+// stands next to another divider. The check is done on the menu itself, not on
+// the flags of the items: whatever combination of the settings is drawn, the
+// menu cannot end up with two lines in a row.
+void AppendSeparator(HMENU menu) {
+    const int count = ::GetMenuItemCount(menu);
+    if (count <= 0) {
+        return;
+    }
+
+    MENUITEMINFOW previous = {};
+    previous.cbSize = sizeof(previous);
+    previous.fMask = MIIM_FTYPE;
+
+    if (::GetMenuItemInfoW(menu, static_cast<UINT>(count - 1), TRUE, &previous) == FALSE) {
+        return;
+    }
+
+    if ((previous.fType & MFT_SEPARATOR) != 0) {
+        return;
+    }
+
+    ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+}
+
 void TrayIcon::ShowContextMenu(const POINT& anchor) {
     HMENU menu = ::CreatePopupMenu();
     if (menu == nullptr) {
         return;
     }
 
-    // The menu is built group by group: a separator is a divider between two
-    // groups of items, so it is not drawn at all when one of the groups is
-    // empty (a menu of one item with a divider looks broken).
-    bool anythingDrawn = false;
+    // The menu is built group by group, and every group is preceded by a
+    // divider: the divider is skipped by AppendSeparator() when there is nothing
+    // above it or when the line above is a divider already, so a group that is
+    // switched off in the options leaves no empty line behind.
 
+    // The state of the mode and the activation, with the status above them.
     if (m_state.showStatus) {
         ::AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, Truncate(m_state.statusText, 90).c_str());
-        anythingDrawn = true;
     }
 
-    // The state of the mode and the activation belong to one group.
-    bool firstGroup = false;
+    if (m_state.toggleEnabled || m_state.reinitialize) {
+        AppendSeparator(menu);
 
-    if (m_state.toggleEnabled) {
-        ::AppendMenuW(menu, MF_STRING | (m_state.enabled ? MF_CHECKED : 0), MENU_ID_TOGGLE, Wide(Str::TrayToggleEnabled).c_str());
-        firstGroup = true;
-    }
-
-    if (m_state.reinitialize) {
-        ::AppendMenuW(menu, MF_STRING, MENU_ID_REINITIALIZE, Wide(Str::TrayReinitialize).c_str());
-        firstGroup = true;
-    }
-
-    if (firstGroup) {
-        if (anythingDrawn) {
-            ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        if (m_state.toggleEnabled) {
+            ::AppendMenuW(menu, MF_STRING | (m_state.enabled ? MF_CHECKED : 0), MENU_ID_TOGGLE, Wide(Str::TrayToggleEnabled).c_str());
         }
 
-        anythingDrawn = true;
+        if (m_state.reinitialize) {
+            ::AppendMenuW(menu, MF_STRING, MENU_ID_REINITIALIZE, Wide(Str::TrayReinitialize).c_str());
+        }
     }
 
     // The files and the autostart: every item of the group can be switched off
     // in the options, and the divider goes away with the last of them.
-    bool secondGroup = false;
+    if (m_state.openLog || m_state.diagnostics || m_state.startWithWindows) {
+        AppendSeparator(menu);
 
-    if (m_state.openLog) {
-        ::AppendMenuW(menu, MF_STRING, MENU_ID_LOG, Wide(Str::TrayLog).c_str());
-        secondGroup = true;
-    }
-
-    if (m_state.diagnostics) {
-        ::AppendMenuW(menu, MF_STRING, MENU_ID_DIAGNOSTICS, Wide(Str::TrayDiagnostics).c_str());
-        secondGroup = true;
-    }
-
-    if (m_state.startWithWindows) {
-        ::AppendMenuW(
-            menu,
-            MF_STRING | (m_state.startWithWindowsChecked ? MF_CHECKED : 0),
-            MENU_ID_START_WITH_WINDOWS,
-            Wide(Str::TrayStartWithWindows).c_str());
-        secondGroup = true;
-    }
-
-    if (secondGroup) {
-        if (anythingDrawn) {
-            ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        if (m_state.openLog) {
+            ::AppendMenuW(menu, MF_STRING, MENU_ID_LOG, Wide(Str::TrayLog).c_str());
         }
 
-        anythingDrawn = true;
-    }
-
-    if (m_state.about) {
-        if (anythingDrawn) {
-            ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        if (m_state.diagnostics) {
+            ::AppendMenuW(menu, MF_STRING, MENU_ID_DIAGNOSTICS, Wide(Str::TrayDiagnostics).c_str());
         }
 
-        ::AppendMenuW(menu, MF_STRING, MENU_ID_ABOUT, Wide(Str::TrayAbout).c_str());
-        anythingDrawn = true;
+        if (m_state.startWithWindows) {
+            ::AppendMenuW(
+                menu,
+                MF_STRING | (m_state.startWithWindowsChecked ? MF_CHECKED : 0),
+                MENU_ID_START_WITH_WINDOWS,
+                Wide(Str::TrayStartWithWindows).c_str());
+        }
     }
 
-    if (m_state.exit) {
-        if (anythingDrawn && !m_state.about) {
-            ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    // The program itself: "About" and "Exit" stay together, one divider for
+    // both of them.
+    if (m_state.about || m_state.exit) {
+        AppendSeparator(menu);
+
+        if (m_state.about) {
+            ::AppendMenuW(menu, MF_STRING, MENU_ID_ABOUT, Wide(Str::TrayAbout).c_str());
         }
 
-        ::AppendMenuW(menu, MF_STRING, MENU_ID_EXIT, Wide(Str::TrayExit).c_str());
+        if (m_state.exit) {
+            ::AppendMenuW(menu, MF_STRING, MENU_ID_EXIT, Wide(Str::TrayExit).c_str());
+        }
     }
 
     ::SetForegroundWindow(m_owner);

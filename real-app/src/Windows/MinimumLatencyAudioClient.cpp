@@ -86,11 +86,19 @@ std::wstring GetDeviceFriendlyName(IMMDevice* device) {
     return name;
 }
 
+// The period that is finally asked from the engine. The driver reports the
+// range of the periods it accepts (minimum...maximum) and the step of the grid
+// inside that range; the step itself is not a period, so a value below the
+// minimum (a driver may report a step of one frame) never reaches the engine:
+// the result is always inside [minimum, maximum].
 uint32_t ChoosePeriod(
     PeriodSelection selection,
     uint32_t requestedPeriodFrames,
     const AudioStreamInfo& info) {
-    uint32_t desired = info.minPeriod;
+    const uint32_t minimum = info.minPeriod;
+    const uint32_t maximum = std::max(info.minPeriod, info.maxPeriod);
+
+    uint32_t desired = minimum;
 
     if (selection == PeriodSelection::Fundamental) {
         desired = info.fundamentalPeriod;
@@ -103,8 +111,8 @@ uint32_t ChoosePeriod(
         desired = steps > 0 ? steps * info.fundamentalPeriod : info.fundamentalPeriod;
     }
 
-    desired = std::max(desired, info.minPeriod);
-    desired = std::min(desired, info.maxPeriod);
+    desired = std::max(desired, minimum);
+    desired = std::min(desired, maximum);
     return desired;
 }
 

@@ -43,8 +43,8 @@
   "audio": {  // Параметры работы с аудиодвижком.
     "enabledOnStartup": true,  // true - включать снижение задержки сразу при запуске.
     "dataFlow": "render",  // Какие устройства обрабатывать: "render" (воспроизведение), "capture" (запись), "both".
-    "role": "console",  // Роль устройства по умолчанию: "console", "multimedia", "communications".
-    "periodSelection": "min",  // Какой буфер запрашивать: "min" (минимальный), "fundamental" (базовый), "fixed".
+    "role": "console",  // Какое «устройство по умолчанию» Windows брать: "console" - игры и системные звуки, "multimedia" - музыка, фильмы и медиаплееры, "communications" - программы связи (мессенджеры, VoIP). В Windows у каждой роли своё устройство по умолчанию.
+    "periodSelection": "min",  // Какой буфер запрашивать: "min" - минимальный период устройства, "fundamental" - минимальный период, выровненный по базовому шагу движка (меньше минимального не запрашивается никогда), "fixed" - значение ключа ниже (requestedPeriodFrames).
     "requestedPeriodFrames": 0,  // Размер буфера в кадрах для periodSelection = "fixed" (0 - решает приложение).
     "allowPeriodSnap": true,  // true - если буфер уже зафиксирован другим приложением, принять его, а не сообщать об ошибке.
     "releaseOnExit": true,  // true - освобождать аудиопоток при выходе (движок сам вернётся к 10 мс).
@@ -62,7 +62,7 @@
   },
 
   "performance": {  // Побочные эффекты низкой задержки.
-    "processPriority": "normal",  // Приоритет процесса: "normal", "belowNormal" или "idle".
+    "processPriority": "normal",  // Приоритет процесса как в диспетчере задач: "normal" (обычный), "belowNormal" (ниже обычного), "idle" (низкий).
     "disablePowerThrottling": true  // true - снять троттлинг скорости исполнения (Windows 11), чтобы аудиопоток не занимал ядро CPU.
   },
 

@@ -60,7 +60,6 @@ enum class Id : int {
     TrayMenuAbout,
     TrayMenuExit,
 
-    RestartHint,
 
     AudioEnabledOnStartup,
     AudioDataFlow,
@@ -337,6 +336,16 @@ int AddHeader(Context& context, Lang::Str text, int y) {
     return y + HEADER_STEP;
 }
 
+// An explanation under a control: it belongs to the page like everything else
+// and takes as many rows as it has lines.
+int AddHint(Context& context, Lang::Str text, int lines, int y) {
+    BindToPage(context, CreateControl(
+        context, L"STATIC", Lang::Wide(text), SS_LEFT, static_cast<Id>(0),
+        MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, ROW_HEIGHT * lines));
+
+    return y + ROW_HEIGHT * lines;
+}
+
 int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y) {
     const std::wstring caption = Lang::Wide(text);
 
@@ -371,10 +380,12 @@ int AddCombo(Context& context, Id id, Lang::Str label, const std::vector<std::ws
         context, L"STATIC", Lang::Wide(label), SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
         MARGIN, y, LABEL_WIDTH, ROW_HEIGHT));
 
+    // The same width as the fields of the hotkeys: a list does not need the
+    // whole window, and a row of controls of different lengths looks ragged.
     const HWND combo = CreateControl(
         context, L"COMBOBOX", L"",
         WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, id,
-        MARGIN + LABEL_WIDTH, y, WINDOW_WIDTH - 2 * MARGIN - LABEL_WIDTH, ROW_HEIGHT * 8);
+        MARGIN + LABEL_WIDTH, y, FIELD_WIDTH, ROW_HEIGHT * 8);
 
     // A list belongs to its page like every other control: without this the
     // lists of all three pages would be drawn in the same place at once.
@@ -546,12 +557,6 @@ int BuildWindowPage(Context& context) {
 
     y += 3 * ROW_STEP + GROUP_GAP;
 
-    // The console and the tray icon are created once, at start-up.
-    BindToPage(context, CreateControl(
-        context, L"STATIC", Lang::Wide(Lang::Str::SettingsRestartHint),
-        SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS, Id::RestartHint,
-        MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, ROW_HEIGHT));
-
     return y + ROW_STEP;
 }
 
@@ -569,6 +574,7 @@ int BuildAudioPage(Context& context) {
         IndexOf(DATA_FLOWS, settings.audio.dataFlow), y);
     y = AddCombo(context, Id::AudioRole, Lang::Str::SettingsRole, Texts(DEVICE_ROLES),
         IndexOf(DEVICE_ROLES, settings.audio.role), y);
+    y = AddHint(context, Lang::Str::SettingsRoleHint, 3, y);
     y = AddCombo(context, Id::AudioPeriodSelection, Lang::Str::SettingsPeriod, Texts(PERIODS),
         IndexOf(PERIODS, settings.audio.periodSelection), y);
     y = AddEdit(context, Id::AudioRequestedPeriodFrames, Lang::Str::SettingsRequestedPeriod,
@@ -634,7 +640,7 @@ int BuildOtherPage(Context& context) {
     y = AddCombo(context, Id::LogLevel, Lang::Str::SettingsLogLevel, LogLevelTexts(),
         LogLevelIndex(settings.logging.level), y);
     y = AddEdit(context, Id::LogFilePath, Lang::Str::SettingsLogFilePath,
-        Text::ToWide(settings.logging.filePath), WINDOW_WIDTH - 2 * MARGIN - LABEL_WIDTH, y);
+        Text::ToWide(settings.logging.filePath), FIELD_WIDTH, y);
     y = AddEdit(context, Id::LogMaxFileSize, Lang::Str::SettingsLogMaxFileSize,
         std::to_wstring(settings.logging.maxFileSizeMb), FIELD_WIDTH, y);
     y = AddEdit(context, Id::LogMaxFiles, Lang::Str::SettingsLogMaxFiles,
