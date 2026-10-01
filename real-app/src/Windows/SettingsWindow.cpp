@@ -66,7 +66,6 @@ enum class Id : int {
     AudioPeriodSelection,
     AudioRequestedPeriodFrames,
     AudioAllowPeriodSnap,
-    AudioReleaseOnExit,
 
     ReinitDefaultDevice,
     ReinitDeviceState,
@@ -561,8 +560,6 @@ int BuildAudioPage(Context& context) {
         std::to_wstring(settings.audio.requestedPeriodFrames), FIELD_WIDTH, y);
     y = AddCheck(context, Id::AudioAllowPeriodSnap, Lang::Str::SettingsAllowPeriodSnap,
         settings.audio.allowPeriodSnap, y);
-    y = AddCheck(context, Id::AudioReleaseOnExit, Lang::Str::SettingsReleaseOnExit,
-        settings.audio.releaseOnExit, y);
 
     y += GROUP_GAP;
     y = AddHeader(context, Lang::Str::SettingsHeaderReinit, y);
@@ -766,7 +763,6 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     updated.audio.dataFlow = ValueAt(DATA_FLOWS, SelectedIndex(context, Id::AudioDataFlow));
     updated.audio.periodSelection = ValueAt(PERIODS, SelectedIndex(context, Id::AudioPeriodSelection));
     updated.audio.allowPeriodSnap = IsChecked(context, Id::AudioAllowPeriodSnap);
-    updated.audio.releaseOnExit = IsChecked(context, Id::AudioReleaseOnExit);
 
     bool valid = true;
 

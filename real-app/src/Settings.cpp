@@ -312,7 +312,12 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
         ReadEnum(*section, "periodSelection", PERIOD_SELECTION_MAP, settings.audio.periodSelection, result.warnings, "audio");
         ReadUnsigned(*section, "requestedPeriodFrames", settings.audio.requestedPeriodFrames, 0xFFFFFFFFu, result.warnings, "audio");
         ReadBool(*section, "allowPeriodSnap", settings.audio.allowPeriodSnap, result.warnings, "audio");
-        ReadBool(*section, "releaseOnExit", settings.audio.releaseOnExit, result.warnings, "audio");
+        // "releaseOnExit" was dropped when it turned out to change nothing:
+        // the streams are closed on exit in any case, and the engine returns
+        // to its default period by itself. A file from an older version is
+        // accepted and the key is gone from the next written version.
+        bool obsoleteReleaseOnExit = true;
+        ReadBool(*section, "releaseOnExit", obsoleteReleaseOnExit, result.warnings, "audio");
 
         if (const json* reinit = FindSection(*section, "reinit")) {
             ReadBool(*reinit, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged, result.warnings, "audio.reinit");
@@ -502,7 +507,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     audio["periodSelection"] = ToString(settings.audio.periodSelection);
     audio["requestedPeriodFrames"] = settings.audio.requestedPeriodFrames;
     audio["allowPeriodSnap"] = settings.audio.allowPeriodSnap;
-    audio["releaseOnExit"] = settings.audio.releaseOnExit;
 
     json& reinit = root["audio"]["reinit"];
     reinit["defaultDeviceChanged"] = settings.audio.reinit.defaultDeviceChanged;
@@ -585,7 +589,6 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.Key(4, "periodSelection", ToString(settings.audio.periodSelection), text(Str::CfgPeriodSelection), true);
     document.Key(4, "requestedPeriodFrames", settings.audio.requestedPeriodFrames, text(Str::CfgRequestedPeriodFrames), true);
     document.Key(4, "allowPeriodSnap", settings.audio.allowPeriodSnap, text(Str::CfgAllowPeriodSnap), true);
-    document.Key(4, "releaseOnExit", settings.audio.releaseOnExit, text(Str::CfgReleaseOnExit), true);
     document.SectionOpen(4, "reinit", text(Str::CfgReinitSection));
     document.Key(6, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged, text(Str::CfgReinitDeviceChanged), true);
     document.Key(6, "deviceStateChanged", settings.audio.reinit.deviceStateChanged, text(Str::CfgReinitDeviceState), true);

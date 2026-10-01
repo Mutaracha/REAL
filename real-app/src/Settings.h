@@ -6,15 +6,17 @@
 namespace miniant::Config {
 
 // The layout of the settings file. The comments in it are written by the
-// program, so the number grows when the layout changes (7: audio.role is gone -
-// the small buffer is taken on the default device of every role; 6:
+// program, so the number grows when the layout changes (8: audio.releaseOnExit
+// is gone - it changed nothing, the streams are closed on exit anyway; 7:
+// audio.role is gone - the small buffer is taken on the default device of
+// every role; 6:
 // logging.level is the only logging parameter, "off" switches the file off; 5:
 // the key tray.menu.openSettings is gone - the settings window keeps the button
 // that opens the file; 4: application.theme is gone; 3: the theme of the windows
 // was a parameter of its own; 2: a comment sits in the same line as its value).
 // A file with an older number is rewritten once, with every value kept; a file
 // of the current number and a newer one are left as they are.
-inline constexpr int CONFIG_VERSION = 7;
+inline constexpr int CONFIG_VERSION = 8;
 
 enum class CloseAction {
     Minimize,
@@ -95,7 +97,6 @@ struct AudioSettings {
     PeriodSelection periodSelection = PeriodSelection::Minimum;
     unsigned int requestedPeriodFrames = 0;
     bool allowPeriodSnap = true;
-    bool releaseOnExit = true;
     ReinitSettings reinit;
 };
 
