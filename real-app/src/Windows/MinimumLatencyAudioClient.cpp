@@ -322,7 +322,7 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
 namespace {
 
 std::string DescribeStream(const AudioStreamInfo& info, bool withFlow) {
-    std::string text = Text::ToUtf8(info.deviceName.empty() ? std::wstring(L"<unknown device>") : info.deviceName);
+    std::string text = miniant::Text::ToUtf8(info.deviceName.empty() ? std::wstring(L"<unknown device>") : info.deviceName);
 
     if (withFlow) {
         text += info.dataFlow == eRender ? ", render" : ", capture";

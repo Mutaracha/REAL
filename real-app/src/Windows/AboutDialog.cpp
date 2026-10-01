@@ -148,13 +148,13 @@ void miniant::Windows::ShowAboutDialog(HWND owner, HINSTANCE instance) {
     auto* context = new AboutContext();
     context->projectUrl = Text::ToWide(AppInfo::PROJECT_URL);
 
-    const std::wstring title = Lang::Wide(Str::AboutTitle);
+    const std::wstring title = Lang::Wide(Lang::Str::AboutTitle);
     const std::wstring versionText = Text::ToWide(
-        fmt::format(Lang::Utf8(Str::AboutVersion), AppInfo::VERSION.ToString()));
-    const std::wstring description = Lang::Wide(Str::AboutDescription);
+        fmt::format(Lang::Utf8(Lang::Str::AboutVersion), AppInfo::VERSION.ToString()));
+    const std::wstring description = Lang::Wide(Lang::Str::AboutDescription);
     const std::wstring project = Text::ToWide(
-        fmt::format(Lang::Utf8(Str::AboutProject), AppInfo::PROJECT_URL));
-    const std::wstring closeText = Lang::Wide(Str::AboutClose);
+        fmt::format(Lang::Utf8(Lang::Str::AboutProject), AppInfo::PROJECT_URL));
+    const std::wstring closeText = Lang::Wide(Lang::Str::AboutClose);
 
     RECT desired = { 0, 0, CLIENT_WIDTH, CLIENT_HEIGHT };
     ::AdjustWindowRectEx(&desired, ABOUT_STYLE, FALSE, ABOUT_EX_STYLE);
