@@ -11,6 +11,7 @@
 #include <commctrl.h>
 #include <shellapi.h>
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,6 +24,8 @@ namespace {
 const wchar_t SETTINGS_CLASS_NAME[] = L"REAL.SettingsWindow";
 
 const int WINDOW_WIDTH = 680;
+// The window is created with this height; once the pages are built it gets the
+// height of the tallest one (see FitWindowToContent).
 const int WINDOW_HEIGHT = 660;
 
 const int MARGIN = 14;
@@ -36,6 +39,17 @@ const int PAGE_TOP = 62;
 const int BUTTON_HEIGHT = 30;
 const int BUTTON_WIDTH = 120;
 const int BUTTON_GAP = 8;
+
+// The two rows of buttons at the bottom of the window, the space between them
+// and the tabs, and the space between the lowest control of a page and the
+// bottom border of the tabs.
+const int FRAME_HEIGHT = 2 * BUTTON_HEIGHT + BUTTON_GAP;
+const int FRAME_GAP = 8;
+const int PAGE_BOTTOM_PADDING = 8;
+
+// A header is measured in real pixels and rounded to design ones: a few pixels
+// of reserve keep its last letter from being cut off.
+const int HEADER_SLACK = 4;
 
 // Every control of the window has a number: the values are read back by it, so
 // a control that is not on screen at the moment (another page is open) keeps
@@ -61,7 +75,6 @@ enum class Id : int {
     TrayMenuStartWithWindows,
     TrayMenuAbout,
     TrayMenuExit,
-
 
     AudioEnabledOnStartup,
     AudioDataFlow,
@@ -136,6 +149,15 @@ struct Context {
     HWND tabs = nullptr;
     int offsetX = 0;
     int offsetY = 0;
+
+    // The right edge of the display area of the tabs in design pixels: no
+    // control of a page is wider than the space up to it, so nothing is drawn
+    // over the border of the tabs.
+    int pageRight = WINDOW_WIDTH - MARGIN;
+
+    // The top of the two rows of buttons in design pixels: right under the
+    // tabs, whose height follows the tallest page.
+    int frameTop = WINDOW_HEIGHT - MARGIN - FRAME_HEIGHT;
 
     bool saved = false;
     bool done = false;
@@ -227,29 +249,51 @@ Enum ValueAt(const Choice<Enum> (&choices)[N], int index) {
     return choices[static_cast<size_t>(index)].value;
 }
 
-// The level names are the values of the file: they are not translated.
-const char* LOG_LEVELS[] = { "trace", "debug", "info", "warn", "error", "off" };
+// The levels of the log file from "no file" to "everything": every next one
+// keeps more. The text says what gets into the file, the value of the settings
+// file follows it in parentheses.
+const Choice<const char*> LOG_LEVELS[] = {
+    { "off", Lang::Str::SettingsLogLevelOff },
+    { "error", Lang::Str::SettingsLogLevelError },
+    { "warn", Lang::Str::SettingsLogLevelWarn },
+    { "info", Lang::Str::SettingsLogLevelInfo },
+    { "debug", Lang::Str::SettingsLogLevelDebug },
+    { "trace", Lang::Str::SettingsLogLevelTrace },
+};
+
 const size_t LOG_LEVEL_COUNT = sizeof(LOG_LEVELS) / sizeof(LOG_LEVELS[0]);
 
+// The value of the file is read the way the log reads it (Log.cpp): the case
+// of the letters and the synonyms do not matter, anything unknown is "info".
 int LogLevelIndex(const std::string& level) {
+    std::string value = Text::ToLowerAscii(Text::Trim(level));
+
+    if (value == "none") {
+        value = "off";
+    } else if (value == "warning") {
+        value = "warn";
+    } else if (value == "err") {
+        value = "error";
+    }
+
+    int info = 0;
+
     for (size_t i = 0; i < LOG_LEVEL_COUNT; ++i) {
-        if (level == LOG_LEVELS[i]) {
+        if (value == LOG_LEVELS[i].value) {
             return static_cast<int>(i);
+        }
+
+        if (std::string(LOG_LEVELS[i].value) == "info") {
+            info = static_cast<int>(i);
         }
     }
 
-    return 2; // "info"
+    return info;
 }
 
-std::vector<std::wstring> LogLevelTexts() {
-    std::vector<std::wstring> items;
-    items.reserve(LOG_LEVEL_COUNT);
-
-    for (size_t i = 0; i < LOG_LEVEL_COUNT; ++i) {
-        items.push_back(Text::ToWide(LOG_LEVELS[i]));
-    }
-
-    return items;
+bool IsLogLevelOff(int index) {
+    return index >= 0 && index < static_cast<int>(LOG_LEVEL_COUNT) &&
+        std::string(LOG_LEVELS[static_cast<size_t>(index)].value) == "off";
 }
 
 int LanguageIndex(const std::string& code) {
@@ -291,15 +335,23 @@ void BindToPage(Context& context, HWND control) {
 // The box of a check mark plus the gap between it and the caption.
 const int CHECK_GLYPH_WIDTH = 24;
 
-// A control is never wider than its own text: a click far to the right of a
-// caption does nothing, and the caption is the only thing that reacts.
-int CheckWidth(Context& context, const std::wstring& text) {
-    const int textWidth = MeasureTextWidth(context.font, text);
+// The width of a text in design pixels: the measured width is in real pixels
+// of the current DPI, the layout works in design ones. Zero when the text could
+// not be measured.
+int DesignTextWidth(Context& context, HFONT font, const std::wstring& text) {
+    const int textWidth = MeasureTextWidth(font, text);
 
-    // The measured width is in real pixels, the caller works in design ones.
-    return textWidth > 0
-        ? ::MulDiv(textWidth, 96, static_cast<int>(context.dpi)) + CHECK_GLYPH_WIDTH
-        : WINDOW_WIDTH - 2 * MARGIN;
+    return textWidth > 0 ? ::MulDiv(textWidth, 96, static_cast<int>(context.dpi)) : 0;
+}
+
+// A control is never wider than its own text: a click far to the right of a
+// caption does nothing, and the caption is the only thing that reacts. It is
+// not wider than the page either, whatever the length of a translation.
+int CheckWidth(Context& context, const std::wstring& text, int x) {
+    const int available = context.pageRight - x;
+    const int textWidth = DesignTextWidth(context, context.font, text);
+
+    return textWidth > 0 ? (std::min)(textWidth + CHECK_GLYPH_WIDTH, available) : available;
 }
 
 HWND CreateControl(
@@ -338,10 +390,18 @@ HWND CreateControl(
     return control;
 }
 
+// A header is as wide as its own text: a label up to the edge of the window
+// painted its background over the right border of the tabs.
 int AddHeader(Context& context, Lang::Str text, int y) {
+    const std::wstring caption = Lang::Wide(text);
+    const int available = context.pageRight - MARGIN;
+    const int textWidth = DesignTextWidth(
+        context, context.headerFont != nullptr ? context.headerFont : context.font, caption);
+    const int width = textWidth > 0 ? (std::min)(textWidth + HEADER_SLACK, available) : available;
+
     const HWND label = CreateControl(
-        context, L"STATIC", Lang::Wide(text), SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
-        MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, ROW_HEIGHT);
+        context, L"STATIC", caption, SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
+        MARGIN, y, width, ROW_HEIGHT);
 
     if (label != nullptr && context.headerFont != nullptr) {
         ::SendMessageW(label, WM_SETFONT, reinterpret_cast<WPARAM>(context.headerFont), TRUE);
@@ -356,7 +416,7 @@ int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y) {
 
     const HWND check = CreateControl(
         context, L"BUTTON", caption, BS_AUTOCHECKBOX | WS_TABSTOP, id,
-        MARGIN, y, CheckWidth(context, caption), ROW_HEIGHT);
+        MARGIN, y, CheckWidth(context, caption, MARGIN), ROW_HEIGHT);
 
     if (check != nullptr) {
         ::SendMessageW(check, BM_SETCHECK, value ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -371,7 +431,7 @@ void AddCheckColumn(Context& context, Id id, Lang::Str text, bool value, int x, 
 
     const HWND check = CreateControl(
         context, L"BUTTON", caption, BS_AUTOCHECKBOX | WS_TABSTOP, id,
-        x, y, CheckWidth(context, caption), ROW_HEIGHT);
+        x, y, CheckWidth(context, caption, x), ROW_HEIGHT);
 
     if (check != nullptr) {
         ::SendMessageW(check, BM_SETCHECK, value ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -579,9 +639,11 @@ int BuildWindowPage(Context& context) {
             MARGIN + column * (columnWidth + MARGIN), y + row * ROW_STEP);
     }
 
-    y += 3 * ROW_STEP + GROUP_GAP;
+    // The grid of the menu items is the lowest block of the page: its last row
+    // is where the page ends.
+    const int rows = static_cast<int>((menuItemCount + 2) / 3);
 
-    return y + ROW_STEP;
+    return y + rows * ROW_STEP;
 }
 
 int BuildAudioPage(Context& context) {
@@ -656,7 +718,7 @@ int BuildOtherPage(Context& context) {
 
     y += GROUP_GAP;
     y = AddHeader(context, Lang::Str::SettingsHeaderLog, y);
-    y = AddCombo(context, Id::LogLevel, Lang::Str::SettingsLogLevel, LogLevelTexts(),
+    y = AddCombo(context, Id::LogLevel, Lang::Str::SettingsLogLevel, Texts(LOG_LEVELS),
         LogLevelIndex(settings.logging.level), y);
     y = AddEdit(context, Id::LogFilePath, Lang::Str::SettingsLogFilePath,
         Text::ToWide(settings.logging.filePath), FIELD_WIDTH, y);
@@ -682,9 +744,9 @@ void CreateTabs(Context& context) {
     };
 
     const int top = MARGIN;
-    // The bottom of the window holds two rows of buttons, the pages end above
-    // them (see BuildFrame).
-    const int bottom = WINDOW_HEIGHT - MARGIN - 2 * BUTTON_HEIGHT - BUTTON_GAP - 8;
+    // A provisional bottom: FitWindowToContent sets the real one when the pages
+    // are built and their height is known.
+    const int bottom = WINDOW_HEIGHT - MARGIN - FRAME_HEIGHT - FRAME_GAP;
 
     context.tabs = CreateControl(
         context, WC_TABCONTROLW, L"",
@@ -718,73 +780,71 @@ void CreateTabs(Context& context) {
     // Two pixels of air between the frame of the tabs and the first control.
     context.offsetX += 2;
     context.offsetY += 2;
+
+    // The same two pixels on the right: a control of a page ends before the
+    // right border of the tabs.
+    context.pageRight = MARGIN + ::MulDiv(
+        display.right - display.left - 4, 96, static_cast<int>(context.dpi));
 }
 
 // The parts of the window live further down the file; the rebuild uses them.
-void BuildFrame(Context& context);
-void ResetPageOffset(Context& context);
 void ShowPage(Context& context, Page page);
 bool ReadControls(Context& context, Config::Settings& updated, std::wstring& invalidFields);
 void UpdateEnabledStates(Context& context);
-
-// Builds the content again for another DPI. The design coordinates never
-// change, CreateControl scales them: the window of one monitor keeps the
-// layout that was approved, only larger or smaller.
-void Rebuild(Context& context, UINT dpi) {
-    // Whatever the user has already typed is read back first: the controls are
-    // destroyed and built again, and a typed value must not be lost because the
-    // window was moved to another monitor. A value that cannot be used stays as
-    // it is in the settings; the window shows it again.
-    Config::Settings edited = *context.settings;
-    std::wstring invalidFields;
-    ReadControls(context, edited, invalidFields);
-    *context.settings = edited;
-
-    for (const HWND control : context.allControls) {
-        if (control != nullptr) {
-            ::DestroyWindow(control);
-        }
-    }
-
-    context.allControls.clear();
-    context.pageControls.clear();
-    context.tabs = nullptr;
-
-    if (context.font != nullptr) {
-        ::DeleteObject(context.font);
-    }
-
-    if (context.headerFont != nullptr) {
-        ::DeleteObject(context.headerFont);
-    }
-
-    context.dpi = dpi != 0 ? dpi : Dpi::ForSystem();
-    context.font = Dpi::CreateUiFont(context.dpi);
-    context.headerFont = Dpi::CreateHeaderFont(context.dpi);
-
-    BuildFrame(context);
-    CreateTabs(context);
-    BuildWindowPage(context);
-    BuildAudioPage(context);
-    BuildOtherPage(context);
-
-    ResetPageOffset(context);
-    ShowPage(context, context.page);
-    UpdateEnabledStates(context);
-}
 
 void ResetPageOffset(Context& context) {
     context.offsetX = 0;
     context.offsetY = 0;
 }
 
-// The frame of the window: the buttons at the bottom.
+// The window is as high as its tallest page: the tabs end a little below the
+// lowest control of the pages (the menu items of the tray on "Window"), the
+// two rows of buttons follow right under them. Everything is counted in real
+// pixels of the current DPI, so the window fits again on another monitor.
+void FitWindowToContent(Context& context, int contentBottom) {
+    if (context.window == nullptr || context.tabs == nullptr) {
+        return;
+    }
+
+    RECT tabsRect = {};
+    ::GetWindowRect(context.tabs, &tabsRect);
+    ::MapWindowPoints(HWND_DESKTOP, context.window, reinterpret_cast<POINT*>(&tabsRect), 2);
+
+    const int tabsWidth = tabsRect.right - tabsRect.left;
+    const int tabsHeight = tabsRect.bottom - tabsRect.top;
+
+    // What the tabs draw under their display area: the bottom border.
+    RECT display = { 0, 0, tabsWidth, tabsHeight };
+    ::SendMessageW(context.tabs, TCM_ADJUSTRECT, FALSE, reinterpret_cast<LPARAM>(&display));
+    const int borderBelow = tabsHeight - display.bottom;
+
+    // The pages are still placed with the offset of the display area here.
+    const int tabsBottom =
+        context.Scale(contentBottom + PAGE_BOTTOM_PADDING) + context.offsetY + borderBelow;
+
+    ::SetWindowPos(
+        context.tabs, nullptr, 0, 0, tabsWidth, tabsBottom - tabsRect.top,
+        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+    context.frameTop = ::MulDiv(tabsBottom, 96, static_cast<int>(context.dpi)) + FRAME_GAP;
+
+    RECT window = {
+        0, 0, context.Scale(WINDOW_WIDTH), context.Scale(context.frameTop + FRAME_HEIGHT + MARGIN) };
+    Dpi::AdjustWindowRect(
+        window, static_cast<DWORD>(::GetWindowLongPtrW(context.window, GWL_STYLE)), context.dpi);
+
+    ::SetWindowPos(
+        context.window, nullptr, 0, 0, window.right - window.left, window.bottom - window.top,
+        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+// The frame of the window: the buttons under the tabs.
 void BuildFrame(Context& context) {
     // Two rows: the file, the button that reads it again and the path of the
     // file on the first one, the buttons that end the window on the second one.
     // In one row the path was overlapped by the buttons next to it.
-    const int secondRowY = WINDOW_HEIGHT - MARGIN - BUTTON_HEIGHT;
-    const int firstRowY = secondRowY - BUTTON_GAP - BUTTON_HEIGHT;
+    const int firstRowY = context.frameTop;
+    const int secondRowY = firstRowY + BUTTON_HEIGHT + BUTTON_GAP;
 
     const int openFileWidth = BUTTON_WIDTH + 30;
 
@@ -821,6 +881,74 @@ void BuildFrame(Context& context) {
         WINDOW_WIDTH - MARGIN - BUTTON_WIDTH, secondRowY, BUTTON_WIDTH, BUTTON_HEIGHT);
 }
 
+// Every control of the window for the current DPI. The order of creation is
+// the order of Tab: the tabs, the fields of the page, the buttons of the frame
+// last. The frame is built after the pages because it is placed under the
+// tabs, whose height follows the tallest page.
+void BuildContent(Context& context) {
+    CreateTabs(context);
+
+    const int windowBottom = BuildWindowPage(context);
+    const int audioBottom = BuildAudioPage(context);
+    const int otherBottom = BuildOtherPage(context);
+
+    FitWindowToContent(context, (std::max)({ windowBottom, audioBottom, otherBottom }));
+
+    ResetPageOffset(context);
+    BuildFrame(context);
+}
+
+// Builds the content again for another DPI. The design coordinates never
+// change, CreateControl scales them: the window of one monitor keeps the
+// layout that was approved, only larger or smaller.
+void Rebuild(Context& context, UINT dpi) {
+    // Whatever the user has already typed is read back first: the controls are
+    // destroyed and built again, and a typed value must not be lost because the
+    // window was moved to another monitor. A value that cannot be used stays as
+    // it is in the settings; the window shows it again.
+    Config::Settings edited = *context.settings;
+    std::wstring invalidFields;
+    ReadControls(context, edited, invalidFields);
+    *context.settings = edited;
+
+    // The pages are built one after another and the last one would stay open:
+    // the page the user was on is remembered.
+    const Page page = context.page;
+
+    for (const HWND control : context.allControls) {
+        if (control != nullptr) {
+            ::DestroyWindow(control);
+        }
+    }
+
+    context.allControls.clear();
+    context.pageControls.clear();
+    context.tabs = nullptr;
+
+    if (context.font != nullptr) {
+        ::DeleteObject(context.font);
+    }
+
+    if (context.headerFont != nullptr) {
+        ::DeleteObject(context.headerFont);
+    }
+
+    context.dpi = dpi != 0 ? dpi : Dpi::ForSystem();
+    context.font = Dpi::CreateUiFont(context.dpi);
+    context.headerFont = Dpi::CreateHeaderFont(context.dpi);
+
+    BuildContent(context);
+
+    ShowPage(context, page);
+    UpdateEnabledStates(context);
+
+    // The control that had the keyboard is gone: the tabs take it, as when the
+    // window opens.
+    if (context.tabs != nullptr) {
+        ::SetFocus(context.tabs);
+    }
+}
+
 Page PageOfIndex(int index) {
     switch (index) {
         case 1: return Page::Audio;
@@ -847,6 +975,65 @@ void ShowPage(Context& context, Page page) {
             ::SendMessageW(context.tabs, TCM_SETCURSEL, static_cast<WPARAM>(index), 0);
         }
     }
+}
+
+// A list whose drop-down part is open keeps its keys: Ctrl+PgDn there is
+// still a key of the list, not a change of the page.
+bool IsOpenList(HWND control) {
+    wchar_t className[16] = {};
+    ::GetClassNameW(control, className, static_cast<int>(sizeof(className) / sizeof(className[0])));
+
+    return ::lstrcmpiW(className, L"ComboBox") == 0 &&
+        ::SendMessageW(control, CB_GETDROPPEDSTATE, 0, 0) != FALSE;
+}
+
+// Ctrl+Tab and Ctrl+Shift+Tab, Ctrl+PgDn and Ctrl+PgUp switch the pages from
+// any control of the window, the way the tabs of the system do it everywhere.
+// The keys are taken before IsDialogMessageW, which would move the focus to the
+// next control instead.
+bool HandlePageKeys(Context& context, const MSG& message) {
+    if (message.message != WM_KEYDOWN || context.window == nullptr || context.tabs == nullptr) {
+        return false;
+    }
+
+    if (message.hwnd != context.window && ::IsChild(context.window, message.hwnd) == FALSE) {
+        return false;
+    }
+
+    if (::GetKeyState(VK_CONTROL) >= 0 || IsOpenList(message.hwnd)) {
+        return false;
+    }
+
+    int step = 0;
+
+    if (message.wParam == VK_TAB) {
+        step = ::GetKeyState(VK_SHIFT) < 0 ? -1 : 1;
+    } else if (message.wParam == VK_NEXT) {
+        step = 1;
+    } else if (message.wParam == VK_PRIOR) {
+        step = -1;
+    } else {
+        return false;
+    }
+
+    const int count = static_cast<int>(::SendMessageW(context.tabs, TCM_GETITEMCOUNT, 0, 0));
+    if (count <= 0) {
+        return false;
+    }
+
+    const int current = static_cast<int>(::SendMessageW(context.tabs, TCM_GETCURSEL, 0, 0));
+    const int next = ((current < 0 ? 0 : current) + step + count) % count;
+
+    ShowPage(context, PageOfIndex(next));
+
+    // A field of the page that has just been hidden cannot keep the keyboard:
+    // the tabs take it, and the next Tab goes into the new page.
+    const HWND focus = ::GetFocus();
+    if (focus == nullptr || ::IsWindowVisible(focus) == FALSE) {
+        ::SetFocus(context.tabs);
+    }
+
+    return true;
 }
 
 // Reads every control back into a copy of the settings. Returns false when a
@@ -924,7 +1111,7 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
 
     const int levelIndex = SelectedIndex(context, Id::LogLevel);
     if (levelIndex >= 0 && levelIndex < static_cast<int>(LOG_LEVEL_COUNT)) {
-        updated.logging.level = LOG_LEVELS[static_cast<size_t>(levelIndex)];
+        updated.logging.level = LOG_LEVELS[static_cast<size_t>(levelIndex)].value;
     }
 
     updated.logging.filePath = Text::ToUtf8(
@@ -1023,9 +1210,7 @@ void UpdateEnabledStates(Context& context) {
     const bool fixedPeriod =
         ValueAt(PERIODS, SelectedIndex(context, Id::AudioPeriodSelection)) == Config::PeriodSelection::Fixed;
 
-    const int levelIndex = SelectedIndex(context, Id::LogLevel);
-    const bool fileLog = levelIndex >= 0 && levelIndex < static_cast<int>(LOG_LEVEL_COUNT) &&
-        std::string(LOG_LEVELS[static_cast<size_t>(levelIndex)]) != "off";
+    const bool fileLog = !IsLogLevelOff(SelectedIndex(context, Id::LogLevel));
 
     const struct {
         Id id;
@@ -1328,22 +1513,28 @@ bool miniant::Windows::ShowSettingsWindow(
         return false;
     }
 
+    // The scale of the monitor the window has really opened on: without the
+    // main window on screen it is not necessarily the monitor of the owner.
+    context.dpi = Dpi::ForWindow(window);
+
     context.font = Dpi::CreateUiFont(context.dpi);
     context.headerFont = Dpi::CreateHeaderFont(context.dpi);
 
-    // The frame is built first (it is not inside the tabs), then the tab
-    // control, and only after it the pages, which are placed inside its display
-    // area by the offset it reports.
-    BuildFrame(context);
-
     InitCommonControlsOnce();
 
-    CreateTabs(context);
-    BuildWindowPage(context);
-    BuildAudioPage(context);
-    BuildOtherPage(context);
+    BuildContent(context);
 
-    ResetPageOffset(context);
+    // The window has got its real size: it is placed near the main window again,
+    // so that it is not pulled up for the height it was created with.
+    RECT fitted = {};
+    if (::GetWindowRect(window, &fitted) != FALSE) {
+        PlaceNearOwner(owner, fitted.right - fitted.left, fitted.bottom - fitted.top, x, y);
+
+        if (x != CW_USEDEFAULT && y != CW_USEDEFAULT) {
+            ::SetWindowPos(window, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
+
     ShowPage(context, Page::Window);
 
     // The dependent fields are greyed out before the window is shown, so that
@@ -1359,6 +1550,12 @@ bool miniant::Windows::ShowSettingsWindow(
     ::ShowWindow(window, SW_SHOW);
     ::SetForegroundWindow(window);
 
+    // The keyboard starts on the tabs: the arrows switch the pages, Tab goes
+    // through the fields of the page and then to the buttons.
+    if (context.tabs != nullptr) {
+        ::SetFocus(context.tabs);
+    }
+
     MSG message = {};
     bool quit = false;
 
@@ -1371,6 +1568,10 @@ bool miniant::Windows::ShowSettingsWindow(
             // program, so it is put back and read there.
             quit = result == 0;
             break;
+        }
+
+        if (HandlePageKeys(context, message)) {
+            continue;
         }
 
         if (context.window != nullptr && ::IsDialogMessageW(context.window, &message) != FALSE) {

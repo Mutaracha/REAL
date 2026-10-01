@@ -189,7 +189,9 @@ void BuildContent(Context& context, const std::wstring& settingsPath) {
 
     CreateControl(context, L"STATIC", Lang::Wide(Lang::Str::AboutSettings), SS_LEFT | SS_CENTERIMAGE,
         SETTINGS_LABEL_ID, MARGIN, y, LABEL_WIDTH, ROW_HEIGHT, context.font);
-    CreateControl(context, L"STATIC", settingsPath, SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS,
+    // A long path loses its middle, not its end: the name of the file stays
+    // visible, the same way as in the Options window.
+    CreateControl(context, L"STATIC", settingsPath, SS_LEFT | SS_CENTERIMAGE | SS_PATHELLIPSIS,
         SETTINGS_PATH_ID, MARGIN + LABEL_WIDTH, y,
         WINDOW_WIDTH - 2 * MARGIN - LABEL_WIDTH, ROW_HEIGHT, context.font);
 }

@@ -488,7 +488,7 @@ const Entry TABLE[] = {
       "  --no-tray             Start with the main window visible\n"
       "  --config <path>       Use the given settings file instead of real.settings.json\n"
       "  --no-config           Ignore the settings file, use the built-in defaults\n"
-      "  --log-level <level>   trace | debug | info | warn | error | off\n"
+      "  --log-level <level>   off | error | warn | info | debug | trace\n"
       "  --multi-instance      Do not reuse an already running instance\n"
       "\n"
       "Commands for a running instance (the command is passed to it and this process exits):\n"
@@ -514,7 +514,7 @@ const Entry TABLE[] = {
       "  --no-tray             стартовать с видимым окном\n"
       "  --config <путь>       использовать другой файл настроек вместо real.settings.json\n"
       "  --no-config           не читать файл настроек, взять встроенные значения\n"
-      "  --log-level <уровень> trace | debug | info | warn | error | off\n"
+      "  --log-level <уровень> off | error | warn | info | debug | trace\n"
       "  --multi-instance      не переиспользовать уже запущенную копию\n"
       "\n"
       "Команды для работающей копии (передаются ей, этот процесс завершается):\n"
@@ -651,6 +651,14 @@ const Entry TABLE[] = {
     { Str::SettingsHotkeyReinitialize, "Activate again", "Активировать заново" },
     { Str::SettingsCheckOnStartup, "Check on start-up", "Проверять при запуске" },
     { Str::SettingsLogLevel, "Level", "Уровень" },
+    // The value of the file stays in parentheses: the list and the settings
+    // file read the same, and the reference names the value.
+    { Str::SettingsLogLevelOff, "Off (off)", "Выключен (off)" },
+    { Str::SettingsLogLevelError, "Errors (error)", "Ошибки (error)" },
+    { Str::SettingsLogLevelWarn, "Warnings (warn)", "Предупреждения (warn)" },
+    { Str::SettingsLogLevelInfo, "Main events (info)", "Основное (info)" },
+    { Str::SettingsLogLevelDebug, "Detailed (debug)", "Подробно (debug)" },
+    { Str::SettingsLogLevelTrace, "Everything (trace)", "Всё (trace)" },
     { Str::SettingsLogFilePath, "File", "Файл" },
     { Str::SettingsLogMaxFileSize, "Max size, MB", "Максимальный размер, МБ" },
     { Str::SettingsLogMaxFiles, "Files to keep", "Хранить файлов, шт." },
@@ -738,8 +746,8 @@ const Entry TABLE[] = {
     { Str::CfgHotkeysReinitialize, "Activate the audio streams.", "Активировать аудиопотоки." },
     { Str::CfgLoggingSection, "Log file. The window of the program always shows the operations at the info level.",
                               "Файл журнала. В окне программы всегда видны основные операции уровня info." },
-    { Str::CfgLoggingLevel, "\"off\" - the file is not written at all; \"trace\", \"debug\", \"info\", \"warn\", \"error\" - how detailed the file is.",
-                            "\"off\" - файл не ведётся совсем; \"trace\", \"debug\", \"info\", \"warn\", \"error\" - насколько подробно ведётся файл." },
+    { Str::CfgLoggingLevel, "\"off\" - the file is not written at all; \"error\", \"warn\", \"info\", \"debug\", \"trace\" - from the shortest file to the most detailed one.",
+                            "\"off\" - файл не ведётся совсем; \"error\", \"warn\", \"info\", \"debug\", \"trace\" - от самого краткого файла к самому подробному." },
     { Str::CfgLoggingFilePath, "Log path: relative to the REAL.exe directory or absolute.",
                                "Путь к журналу: относительно каталога REAL.exe или абсолютный." },
     { Str::CfgLoggingMaxFileSize, "Log file size before rotation (MB).", "Размер файла журнала до ротации (МБ)." },

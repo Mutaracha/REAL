@@ -82,7 +82,7 @@ used by the audio engine, for example `2.67 ms - Speakers (Realtek Audio)`.
 | `--no-tray` | Start with the main window visible |
 | `--config <path>` | Use another settings file |
 | `--no-config` | Ignore the settings file, use built-in defaults |
-| `--log-level <level>` | `trace`, `debug`, `info`, `warn`, `error`, `off` |
+| `--log-level <level>` | `off`, `error`, `warn`, `info`, `debug`, `trace` |
 | `--multi-instance` | Do not reuse an already running instance |
 
 Commands for a running instance (the command is passed to it and this process exits):
