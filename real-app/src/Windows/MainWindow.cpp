@@ -44,8 +44,12 @@ const struct {
     { 101, miniant::Lang::Str::ButtonSettings, miniant::Command::OpenSettings },
     { 102, miniant::Lang::Str::ButtonLog, miniant::Command::OpenLog },
     { 103, miniant::Lang::Str::ButtonDiagnostics, miniant::Command::Diagnose },
-    { 104, miniant::Lang::Str::ButtonAbout, miniant::Command::About },
 };
+
+// "About" is an item of the menu bar itself: the menu of a window can hold a
+// plain item next to its popups, and a click on it sends the very same command
+// a drop-down entry would.
+const UINT MENU_ABOUT_ID = 104;
 
 constexpr size_t BUTTON_COUNT = sizeof(BUTTONS) / sizeof(BUTTONS[0]);
 constexpr size_t FILE_MENU_ITEM_COUNT = sizeof(FILE_MENU_ITEMS) / sizeof(FILE_MENU_ITEMS[0]);
@@ -202,6 +206,14 @@ void MainWindow::ApplyLanguage() {
             MF_BYPOSITION | MF_STRING | MF_POPUP,
             reinterpret_cast<UINT_PTR>(m_fileMenu),
             miniant::Lang::Wide(miniant::Lang::Str::ButtonFileMenu).c_str());
+
+        // The second position of the menu bar is the "About" item.
+        ::ModifyMenuW(
+            m_menu,
+            1,
+            MF_BYPOSITION | MF_STRING,
+            MENU_ABOUT_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::ButtonAbout).c_str());
     }
 
     if (!m_statusTextSet && m_status != nullptr) {
@@ -366,6 +378,12 @@ void MainWindow::CreateControls() {
             reinterpret_cast<UINT_PTR>(m_fileMenu),
             miniant::Lang::Wide(miniant::Lang::Str::ButtonFileMenu).c_str());
 
+        ::AppendMenuW(
+            m_menu,
+            MF_STRING,
+            MENU_ABOUT_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::ButtonAbout).c_str());
+
         ::SetMenu(m_window, m_menu);
     }
 
@@ -499,6 +517,11 @@ LRESULT MainWindow::WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam) 
             }
 
             if (notification == 0) {
+                if (id == MENU_ABOUT_ID) {
+                    RaiseCommand(miniant::Command::About);
+                    return 0;
+                }
+
                 for (size_t i = 0; i < FILE_MENU_ITEM_COUNT; ++i) {
                     if (FILE_MENU_ITEMS[i].id == id) {
                         RaiseCommand(FILE_MENU_ITEMS[i].command);

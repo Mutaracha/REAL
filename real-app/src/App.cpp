@@ -647,9 +647,10 @@ void App::UpdateTrayMenuState() {
 }
 
 void App::SaveSettings() {
-    if (Config::Write(m_settings, m_settingsPath)) {
-        Log::Info(Lang::Utf8(Str::LogSettingsSaved), Text::ToUtf8(m_settingsPath));
-    } else {
+    // A successful write is a normal event and needs no line of its own: the
+    // file is the proof, and on a machine that starts with Windows the line
+    // would be written on every start. Only a failure is worth reporting.
+    if (!Config::Write(m_settings, m_settingsPath)) {
         Log::Error(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath));
     }
 }
@@ -759,6 +760,8 @@ void App::OpenLogFile() {
 }
 
 void App::ShowAboutDialog() {
+    // The system message box: the information icon, the text of the previous
+    // version and no button of its own (see the About text in Lang.cpp).
     const std::string formatted = fmt::format(
         Lang::Utf8(Str::AboutText),
         AppInfo::DisplayVersion(),
@@ -1240,9 +1243,8 @@ int App::RunDiagnostics() {
         m_commentsRewritten.clear();
     }
 
-    // OpDiagnostics carries the report path and therefore needs an argument.
-    Log::Operation(Lang::Utf8(Str::OpDiagnosticsStart));
-
+    // One line about the diagnostics: the steps of the report stay at the
+    // debug level, otherwise a single key press fills the log with four lines.
     const std::string report = Windows::Diagnostics::BuildReport(m_settings, m_settingsPath);
 
     const std::wstring path = WriteDiagnosticsReport(report);

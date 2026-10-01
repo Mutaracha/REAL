@@ -172,8 +172,9 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
             const std::string message =
                 std::string(Lang::Utf8(flow == EDataFlow::eRender ? Lang::Str::FlowRender : Lang::Str::FlowCapture))
                 + ": " + stream.error().GetMessage();
+            // The message is handed to the caller: the failure is reported
+            // once, when the whole apply is over (see App::ApplyAudio).
             errors.push_back(message);
-            Log::Error(Lang::Utf8(Lang::Str::LogLowLatencyFailed), message);
             continue;
         }
 

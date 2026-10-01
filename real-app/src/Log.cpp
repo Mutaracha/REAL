@@ -1,5 +1,6 @@
 #include "Log.h"
 
+#include "Lang.h"
 #include "Settings.h"
 #include "Text.h"
 #include "Windows/Filesystem.h"
@@ -43,6 +44,83 @@ std::shared_ptr<spdlog::logger> g_logger;
 std::shared_ptr<spdlog::logger> g_consoleLogger;
 std::unique_ptr<LogBuffer> g_buffer;
 std::wstring g_logFilePath;
+
+// Repeating lines. A device that is being switched off and on again makes the
+// application retry, and every retry fails with the very same text: a log full
+// of identical lines hides everything else. The first line is written as
+// usual, the following identical ones are counted and reported by a single
+// line once the run of repetitions is over (see FlushRepeatedMessages).
+struct RepeatTracker {
+    bool hasLast = false;
+    Level level = Level::Info;
+    std::string text;
+    unsigned int count = 0;
+};
+
+RepeatTracker g_repeat;
+
+void WriteToLoggers(Level level, const std::string& message) {
+    if (!g_logger) {
+        return;
+    }
+
+    // Failures are worth seeing in the console as well, everything else is
+    // written to the file and shown in the window only.
+    if (level == Level::Error && g_consoleLogger != nullptr) {
+        g_consoleLogger->error(message);
+    }
+
+    switch (level) {
+        case Level::Trace:
+            g_logger->trace(message);
+            return;
+        case Level::Debug:
+            g_logger->debug(message);
+            return;
+        case Level::Warn:
+            g_logger->warn(message);
+            return;
+        case Level::Error:
+            g_logger->error(message);
+            return;
+        default:
+            g_logger->info(message);
+            return;
+    }
+}
+
+// "ещё 1 раз", "ещё 3 раза", "ещё 11 раз": the word for the repetitions has to
+// agree with the number, and English has its own rule.
+const char* RepeatWord(unsigned int count) {
+    if (Lang::Current() == Lang::Language::Russian) {
+        const unsigned int last = count % 10;
+        const unsigned int lastTwo = count % 100;
+
+        if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) {
+            return "раза";
+        }
+
+        return "раз";
+    }
+
+    return count == 1 ? "time" : "times";
+}
+
+// Reports how many times the previous message was repeated, if it was. The
+// summary carries the level of the repeated message and is written directly:
+// it is a line about the log itself, not a new message.
+void FlushRepeatedMessages() {
+    if (g_repeat.count == 0) {
+        return;
+    }
+
+    const unsigned int count = g_repeat.count;
+    g_repeat.count = 0;
+
+    WriteToLoggers(
+        g_repeat.level,
+        fmt::format(Lang::Utf8(Lang::Str::LogRepeated), count, RepeatWord(count)));
+}
 
 spdlog::level::level_enum ToSpdlogLevel(const std::string& level) {
     const std::string value = Text::ToLowerAscii(Text::Trim(level));
@@ -201,6 +279,7 @@ void miniant::Log::Initialize(const Config::Settings& settings, bool consoleAtta
 }
 
 void miniant::Log::Shutdown() {
+    FlushRepeatedMessages();
     g_consoleLogger.reset();
     if (g_logger) {
         g_logger->flush();
@@ -246,32 +325,26 @@ void miniant::Log::Write(Level level, const std::string& message) {
         return;
     }
 
-    // Failures are worth seeing in the console as well, everything else is
-    // written to the file and shown in the window only.
-    if (level == Level::Error && g_consoleLogger != nullptr) {
-        g_consoleLogger->error(message);
+    if (g_repeat.hasLast && level == g_repeat.level && message == g_repeat.text) {
+        ++g_repeat.count;
+        return;
     }
 
-    switch (level) {
-        case Level::Trace:
-            g_logger->trace(message);
-            return;
-        case Level::Debug:
-            g_logger->debug(message);
-            return;
-        case Level::Warn:
-            g_logger->warn(message);
-            return;
-        case Level::Error:
-            g_logger->error(message);
-            return;
-        default:
-            g_logger->info(message);
-            return;
-    }
+    // Another message means the run of repetitions (if any) is over.
+    FlushRepeatedMessages();
+
+    g_repeat.hasLast = true;
+    g_repeat.level = level;
+    g_repeat.text = message;
+
+    WriteToLoggers(level, message);
 }
 
 void miniant::Log::Flush() {
+    // The counted repetitions are a part of the log as well: without this they
+    // would only appear at the next different line or at shutdown.
+    FlushRepeatedMessages();
+
     if (g_logger != nullptr) {
         g_logger->flush();
     }

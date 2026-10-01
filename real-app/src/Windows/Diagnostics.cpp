@@ -341,7 +341,7 @@ std::string miniant::Windows::Diagnostics::BuildReport(
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagConfig), Config::Describe(settings));
     text += "\n";
 
-    Log::Info(miniant::Lang::Utf8(miniant::Lang::Str::LogDiagCollected));
+    Log::Debug(miniant::Lang::Utf8(miniant::Lang::Str::LogDiagCollected));
     Log::Flush();
 
     HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -366,7 +366,14 @@ std::string miniant::Windows::Diagnostics::BuildReport(
                 reinterpret_cast<void**>(enumerator.GetAddressOf()));
         }
 
-        Log::Info(miniant::Lang::Utf8(enumerator ? miniant::Lang::Str::LogDiagEnumeratorReady : miniant::Lang::Str::LogDiagEnumeratorMissing));
+        // A missing enumerator is a real failure: it is the reason why the
+        // report has nothing to show, so it keeps the error level.
+        if (enumerator) {
+            Log::Debug(miniant::Lang::Utf8(miniant::Lang::Str::LogDiagEnumeratorReady));
+        } else {
+            Log::Error(miniant::Lang::Utf8(miniant::Lang::Str::LogDiagEnumeratorMissing));
+        }
+
         Log::Flush();
 
         if (!enumerator) {
@@ -390,7 +397,7 @@ std::string miniant::Windows::Diagnostics::BuildReport(
                     flow == EDataFlow::eRender ? miniant::Lang::Str::DiagDevicesRender : miniant::Lang::Str::DiagDevicesCapture);
 
                 const std::vector<EndpointInfo> endpoints = EnumerateEndpoints(flow, *enumerator.Get());
-                Log::Info(
+                Log::Debug(
                     miniant::Lang::Utf8(miniant::Lang::Str::LogDiagEndpoints),
                     miniant::Lang::Utf8(flow == EDataFlow::eRender ? miniant::Lang::Str::FlowRender : miniant::Lang::Str::FlowCapture),
                     endpoints.size());
@@ -457,7 +464,7 @@ std::string miniant::Windows::Diagnostics::BuildReport(
         ::CoUninitialize();
     }
 
-    Log::Info(miniant::Lang::Utf8(miniant::Lang::Str::LogDiagReportBuilt), text.size());
+    Log::Debug(miniant::Lang::Utf8(miniant::Lang::Str::LogDiagReportBuilt), text.size());
     Log::Flush();
 
     return text;
