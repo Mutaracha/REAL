@@ -6,11 +6,12 @@
 namespace miniant::Config {
 
 // The layout of the settings file. The comments in it are written by the
-// program, so the number grows when the layout changes (3: the theme of the
-// windows is a parameter of its own; 2: a comment sits in the same line as its
-// value). A file with an older number is rewritten once, with every value kept;
-// a file of the current number and a newer one are left as they are.
-inline constexpr int CONFIG_VERSION = 3;
+// program, so the number grows when the layout changes (4: the key
+// application.theme is gone; 3: the theme of the windows was a parameter of its
+// own; 2: a comment sits in the same line as its value). A file with an older
+// number is rewritten once, with every value kept; a file of the current number
+// and a newer one are left as they are.
+inline constexpr int CONFIG_VERSION = 4;
 
 enum class CloseAction {
     Minimize,
@@ -46,14 +47,6 @@ enum class UpdatesMode {
     Manual,
 };
 
-// The look of the windows: "auto" follows the Windows setting, the other two
-// force it.
-enum class ThemeMode {
-    Auto,
-    Dark,
-    Light,
-};
-
 struct ReinitSettings {
     bool defaultDeviceChanged = true;
     bool deviceStateChanged = true;
@@ -73,7 +66,6 @@ struct ReinitSettings {
 
 struct ApplicationSettings {
     std::string language = "auto";
-    ThemeMode theme = ThemeMode::Auto;
     bool startMinimizedToTray = false;
     bool minimizeToTray = true;
     CloseAction closeButtonAction = CloseAction::Minimize;

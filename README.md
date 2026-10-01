@@ -19,7 +19,6 @@ that is still maintained and adds quality-of-life features:
 * no forced update checks: checking is optional and never closes the application
 * external settings file next to the executable (`real.settings.json`), edited
   either in the **Settings...** window of the program or in a text editor
-* the window follows the theme of Windows (dark/light) or a theme of your choice
 * Windows 11 tweaks (power throttling, informative HRESULT diagnostics)
 
 ## Features

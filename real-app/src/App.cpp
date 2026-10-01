@@ -10,11 +10,11 @@
 #include "Lang.h"
 #include "Log.h"
 #include "Text.h"
+#include "Windows/AboutWindow.h"
 #include "Windows/Console.h"
 #include "Windows/Diagnostics.h"
 #include "Windows/Filesystem.h"
 #include "Windows/SettingsWindow.h"
-#include "Windows/Theme.h"
 
 #include <spdlog/fmt/fmt.h>
 
@@ -387,10 +387,6 @@ void App::LogBanner() {
 }
 
 bool App::InitializeUi() {
-    // The windows follow the setting before the first of them exists: the dark
-    // theme has to be known while the captions are created.
-    Windows::Theme::SetMode(m_settings.application.theme);
-
     auto window = Windows::MainWindow::Create(m_instance);
     if (!window) {
         Log::Error(Lang::Utf8(Str::LogWindowFailed), window.error().GetMessage());
@@ -725,11 +721,6 @@ void App::ApplySettings(const Config::Settings& previous) {
 
     Log::SetLevel(m_settings.logging.level);
 
-    Windows::Theme::SetMode(m_settings.application.theme);
-    if (m_window != nullptr) {
-        m_window->ApplyTheme();
-    }
-
     UnregisterHotkeys();
     RegisterHotkeys();
 
@@ -810,22 +801,13 @@ void App::OpenLogFile() {
 }
 
 void App::ShowAboutDialog() {
-    // The system message box: the information icon, the text of the previous
-    // version and no button of its own (see the About text in Lang.cpp).
-    const std::string formatted = fmt::format(
-        Lang::Utf8(Str::AboutText),
-        AppInfo::DisplayVersion(),
-        Text::ToUtf8(m_settingsPath),
-        AppInfo::PROJECT_URL);
-
-    const std::wstring text = Text::ToWide(formatted);
-    const std::wstring title = Lang::Wide(Str::AboutTitle);
-
-    ::MessageBoxW(
+    // A window of its own: the icon of the program, its name in large letters,
+    // the note about the latency reduction and clickable links to the
+    // documentation and to the project.
+    Windows::ShowAboutWindow(
         m_window != nullptr ? m_window->GetHWindow() : nullptr,
-        text.c_str(),
-        title.c_str(),
-        MB_OK | MB_ICONINFORMATION);
+        m_instance,
+        m_settingsPath);
 }
 
 void App::StartUpdateCheck() {

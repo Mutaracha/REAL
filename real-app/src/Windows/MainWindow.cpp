@@ -5,7 +5,6 @@
 #include "../Lang.h"
 #include "../Log.h"
 #include "../Text.h"
-#include "Theme.h"
 
 #include <algorithm>
 
@@ -165,24 +164,6 @@ void MainWindow::Toggle() {
     } else {
         Show();
     }
-}
-
-void MainWindow::ApplyTheme() {
-    if (m_window == nullptr) {
-        return;
-    }
-
-    Theme::ApplyToWindow(m_window);
-    Theme::ApplyToControl(m_status);
-    Theme::ApplyToControl(m_log);
-
-    for (const auto& button : m_buttons) {
-        Theme::ApplyToControl(button.first);
-    }
-
-    ::RedrawWindow(
-        m_window, nullptr, nullptr,
-        RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
 
 bool MainWindow::IsVisible() const {
@@ -352,11 +333,13 @@ void MainWindow::CreateFonts() {
 }
 
 void MainWindow::CreateControls() {
+    // The status line of the window: a sunken strip at the bottom, the way a
+    // status bar of a program looks.
     m_status = ::CreateWindowExW(
         0,
         L"STATIC",
         miniant::Lang::Wide(miniant::Lang::Str::StatusStarting).c_str(),
-        WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS,
+        WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS | SS_SUNKEN,
         0, 0, 0, 0,
         m_window,
         nullptr,
@@ -448,10 +431,13 @@ void MainWindow::LayoutControls() {
     const int width = client.right - client.left;
     const int height = client.bottom - client.top;
 
-    ::MoveWindow(m_status, MARGIN, MARGIN, width - 2 * MARGIN, STATUS_HEIGHT, TRUE);
+    // The status line is the last strip of the window: the buttons sit above
+    // it, the log fills everything that is left.
+    const int statusTop = height - MARGIN - STATUS_HEIGHT;
+    ::MoveWindow(m_status, MARGIN, statusTop, width - 2 * MARGIN, STATUS_HEIGHT, TRUE);
 
-    const int buttonsTop = height - MARGIN - BUTTON_HEIGHT;
-    const int logTop = MARGIN + STATUS_HEIGHT + 4;
+    const int buttonsTop = statusTop - 4 - BUTTON_HEIGHT;
+    const int logTop = MARGIN;
     const int logHeight = std::max(40, buttonsTop - logTop - 4);
 
     ::MoveWindow(m_log, MARGIN, logTop, width - 2 * MARGIN, logHeight, TRUE);
@@ -536,41 +522,6 @@ LRESULT MainWindow::WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam) 
 
         case WM_SIZE:
             LayoutControls();
-            return 0;
-
-        case WM_ERASEBKGND: {
-            RECT client = {};
-            ::GetClientRect(m_window, &client);
-            ::FillRect(reinterpret_cast<HDC>(wParam), &client, Theme::BackgroundBrush());
-            return 1;
-        }
-
-        case WM_CTLCOLORSTATIC:
-        case WM_CTLCOLORBTN: {
-            // The status line and the buttons: a themed control paints itself,
-            // so the colours below matter to the classic look (or to an older
-            // Windows that knows nothing about the dark theme).
-            HDC dc = reinterpret_cast<HDC>(wParam);
-            ::SetTextColor(dc, Theme::TextColor());
-            ::SetBkColor(dc, Theme::BackgroundColor());
-            return reinterpret_cast<LRESULT>(Theme::BackgroundBrush());
-        }
-
-        case WM_CTLCOLOREDIT:
-        case WM_CTLCOLORLISTBOX: {
-            // The log: an edit box with the read-only style reports itself as a
-            // static control, but the colour is set here as well.
-            HDC dc = reinterpret_cast<HDC>(wParam);
-            ::SetTextColor(dc, Theme::TextColor());
-            ::SetBkColor(dc, Theme::EditBackgroundColor());
-            return reinterpret_cast<LRESULT>(Theme::EditBackgroundBrush());
-        }
-
-        case WM_SETTINGCHANGE:
-        case WM_THEMECHANGED:
-            // The colours of Windows have changed: "auto" follows them.
-            Theme::Refresh();
-            ApplyTheme();
             return 0;
 
         case WM_COMMAND: {

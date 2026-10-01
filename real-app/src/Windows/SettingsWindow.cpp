@@ -3,7 +3,6 @@
 #include "../../res/resource.h"
 #include "../Lang.h"
 #include "../Text.h"
-#include "Theme.h"
 
 #include <shellapi.h>
 
@@ -33,11 +32,11 @@ const int BUTTON_HEIGHT = 30;
 const int BUTTON_WIDTH = 120;
 const int TAB_WIDTH = 110;
 
-// The path of the settings file and the reminder about the restart are drawn in
-// the muted colour: they explain the window, they are not its parameters.
+// Every control of the window has a number: the values are read back by it, so
+// a control that is not on screen at the moment (another page is open) keeps
+// its state.
 enum class Id : int {
     Language = 1000,
-    Theme,
     StartWithWindows,
     StartMinimizedToTray,
     MinimizeToTray,
@@ -176,12 +175,6 @@ const Choice<Config::UpdatesMode> UPDATE_MODES[] = {
     { Config::UpdatesMode::Manual, Lang::Str::SettingsUpdatesOnStartup },
 };
 
-const Choice<Config::ThemeMode> THEMES[] = {
-    { Config::ThemeMode::Auto, Lang::Str::SettingsThemeAuto },
-    { Config::ThemeMode::Dark, Lang::Str::SettingsThemeDark },
-    { Config::ThemeMode::Light, Lang::Str::SettingsThemeLight },
-};
-
 template <typename Enum, size_t N>
 std::vector<std::wstring> Texts(const Choice<Enum> (&choices)[N]) {
     std::vector<std::wstring> items;
@@ -267,12 +260,6 @@ std::vector<std::wstring> LanguageTexts() {
     };
 }
 
-void ApplyFont(HWND control, HFONT font) {
-    if (control != nullptr && font != nullptr) {
-        ::SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    }
-}
-
 // Every control of the page that is being built is remembered: switching a page
 // is nothing but showing and hiding them.
 void BindToPage(Context& context, HWND control) {
@@ -306,7 +293,10 @@ HWND CreateControl(
         context.instance,
         nullptr);
 
-    ApplyFont(control, context.font);
+    if (control != nullptr && context.font != nullptr) {
+        ::SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(context.font), TRUE);
+    }
+
     return control;
 }
 
@@ -314,9 +304,12 @@ int AddHeader(Context& context, Lang::Str text, int y) {
     const HWND label = CreateControl(
         context, L"STATIC", Lang::Wide(text), SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
         MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, ROW_HEIGHT);
-    ApplyFont(label, context.headerFont);
-    BindToPage(context, label);
 
+    if (label != nullptr && context.headerFont != nullptr) {
+        ::SendMessageW(label, WM_SETFONT, reinterpret_cast<WPARAM>(context.headerFont), TRUE);
+    }
+
+    BindToPage(context, label);
     return y + HEADER_STEP;
 }
 
@@ -324,20 +317,25 @@ int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y) {
     const HWND check = CreateControl(
         context, L"BUTTON", Lang::Wide(text), BS_AUTOCHECKBOX | WS_TABSTOP, id,
         MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, ROW_HEIGHT);
-    ::SendMessageW(check, BM_SETCHECK, value ? BST_CHECKED : BST_UNCHECKED, 0);
-    BindToPage(context, check);
 
+    if (check != nullptr) {
+        ::SendMessageW(check, BM_SETCHECK, value ? BST_CHECKED : BST_UNCHECKED, 0);
+    }
+
+    BindToPage(context, check);
     return y + ROW_STEP;
 }
 
-int AddCheckColumn(Context& context, Id id, Lang::Str text, bool value, int x, int width, int y) {
+void AddCheckColumn(Context& context, Id id, Lang::Str text, bool value, int x, int width, int y) {
     const HWND check = CreateControl(
         context, L"BUTTON", Lang::Wide(text), BS_AUTOCHECKBOX | WS_TABSTOP, id,
         x, y, width, ROW_HEIGHT);
-    ::SendMessageW(check, BM_SETCHECK, value ? BST_CHECKED : BST_UNCHECKED, 0);
-    BindToPage(context, check);
 
-    return y;
+    if (check != nullptr) {
+        ::SendMessageW(check, BM_SETCHECK, value ? BST_CHECKED : BST_UNCHECKED, 0);
+    }
+
+    BindToPage(context, check);
 }
 
 int AddCombo(Context& context, Id id, Lang::Str label, const std::vector<std::wstring>& items, int selected, int y) {
@@ -350,12 +348,14 @@ int AddCombo(Context& context, Id id, Lang::Str label, const std::vector<std::ws
         WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, id,
         MARGIN + LABEL_WIDTH, y, WINDOW_WIDTH - 2 * MARGIN - LABEL_WIDTH, ROW_HEIGHT * 8);
 
-    for (const std::wstring& item : items) {
-        ::SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item.c_str()));
-    }
+    if (combo != nullptr) {
+        for (const std::wstring& item : items) {
+            ::SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item.c_str()));
+        }
 
-    if (selected >= 0 && selected < static_cast<int>(items.size())) {
-        ::SendMessageW(combo, CB_SETCURSEL, static_cast<WPARAM>(selected), 0);
+        if (selected >= 0 && selected < static_cast<int>(items.size())) {
+            ::SendMessageW(combo, CB_SETCURSEL, static_cast<WPARAM>(selected), 0);
+        }
     }
 
     return y + ROW_STEP;
@@ -374,6 +374,10 @@ int AddEdit(Context& context, Id id, Lang::Str label, const std::wstring& value,
 }
 
 HWND Get(Context& context, Id id) {
+    if (context.window == nullptr) {
+        return nullptr;
+    }
+
     return ::GetDlgItem(context.window, ControlId(id));
 }
 
@@ -454,8 +458,6 @@ int BuildWindowPage(Context& context) {
     y = AddHeader(context, Lang::Str::SettingsHeaderApplication, y);
     y = AddCombo(context, Id::Language, Lang::Str::SettingsLanguage, LanguageTexts(),
         LanguageIndex(settings.application.language), y);
-    y = AddCombo(context, Id::Theme, Lang::Str::SettingsTheme, Texts(THEMES),
-        IndexOf(THEMES, settings.application.theme), y);
     y = AddCheck(context, Id::StartWithWindows, Lang::Str::SettingsStartWithWindows,
         settings.application.startWithWindows, y);
     y = AddCheck(context, Id::StartMinimizedToTray, Lang::Str::SettingsStartMinimized,
@@ -516,11 +518,10 @@ int BuildWindowPage(Context& context) {
     y += 3 * ROW_STEP + GROUP_GAP;
 
     // The console and the tray icon are created once, at start-up.
-    const HWND hint = CreateControl(
+    BindToPage(context, CreateControl(
         context, L"STATIC", Lang::Wide(Lang::Str::SettingsRestartHint),
         SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS, Id::RestartHint,
-        MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, ROW_HEIGHT);
-    BindToPage(context, hint);
+        MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, ROW_HEIGHT));
 
     return y + ROW_STEP;
 }
@@ -632,7 +633,10 @@ void BuildFrame(Context& context) {
             context, L"BUTTON", Lang::Wide(TABS[i].text),
             BS_AUTORADIOBUTTON | WS_TABSTOP | (i == 0 ? WS_GROUP : 0L), TABS[i].id,
             MARGIN + static_cast<int>(i) * (TAB_WIDTH + 4), MARGIN, TAB_WIDTH, ROW_HEIGHT + 2);
-        ::SendMessageW(tab, BM_SETCHECK, i == 0 ? BST_CHECKED : BST_UNCHECKED, 0);
+
+        if (tab != nullptr) {
+            ::SendMessageW(tab, BM_SETCHECK, i == 0 ? BST_CHECKED : BST_UNCHECKED, 0);
+        }
     }
 
     const int buttonY = WINDOW_HEIGHT - MARGIN - BUTTON_HEIGHT;
@@ -662,23 +666,26 @@ void ShowPage(Context& context, Page page) {
     context.page = page;
 
     for (const auto& entry : context.pageControls) {
-        ::ShowWindow(entry.first, entry.second == page ? SW_SHOW : SW_HIDE);
-
-        // A control that has just appeared has not seen the theme change of its
-        // parent window.
-        if (entry.second == page) {
-            Theme::ApplyToControl(entry.first);
+        if (entry.first != nullptr) {
+            ::ShowWindow(entry.first, entry.second == page ? SW_SHOW : SW_HIDE);
         }
     }
 
-    ::SendMessageW(Get(context, Id::TabWindow), BM_SETCHECK,
-        page == Page::Window ? BST_CHECKED : BST_UNCHECKED, 0);
-    ::SendMessageW(Get(context, Id::TabAudio), BM_SETCHECK,
-        page == Page::Audio ? BST_CHECKED : BST_UNCHECKED, 0);
-    ::SendMessageW(Get(context, Id::TabOther), BM_SETCHECK,
-        page == Page::Other ? BST_CHECKED : BST_UNCHECKED, 0);
+    const struct {
+        Id id;
+        Page page;
+    } TABS[] = {
+        { Id::TabWindow, Page::Window },
+        { Id::TabAudio, Page::Audio },
+        { Id::TabOther, Page::Other },
+    };
 
-    ::InvalidateRect(context.window, nullptr, TRUE);
+    for (const auto& tab : TABS) {
+        const HWND control = Get(context, tab.id);
+        if (control != nullptr) {
+            ::SendMessageW(control, BM_SETCHECK, tab.page == page ? BST_CHECKED : BST_UNCHECKED, 0);
+        }
+    }
 }
 
 // Reads every control back into a copy of the settings. Returns false when a
@@ -687,7 +694,6 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     const Config::Settings& current = *context.settings;
 
     updated.application.language = LanguageCode(SelectedIndex(context, Id::Language));
-    updated.application.theme = ValueAt(THEMES, SelectedIndex(context, Id::Theme));
     updated.application.startWithWindows = IsChecked(context, Id::StartWithWindows);
     updated.application.startMinimizedToTray = IsChecked(context, Id::StartMinimizedToTray);
     updated.application.minimizeToTray = IsChecked(context, Id::MinimizeToTray);
@@ -785,8 +791,8 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     return invalidFields.empty();
 }
 
-// "Check these values: {0}" without a formatting library: the message of the
-// window is the only place where a placeholder has to be filled by hand.
+// "Check these values: {0}" without a formatting library: the text of the
+// message is the only place where a placeholder is filled by hand.
 std::wstring InvalidValuesText(const std::wstring& fields) {
     std::wstring text = Lang::Wide(Lang::Str::SettingsInvalidValues);
 
@@ -816,7 +822,10 @@ void OnSave(Context& context) {
     *context.settings = updated;
 
     context.saved = true;
-    ::DestroyWindow(context.window);
+
+    if (context.window != nullptr) {
+        ::DestroyWindow(context.window);
+    }
 }
 
 void OnOpenFile(Context& context) {
@@ -868,28 +877,9 @@ void OnCommand(Context& context, UINT id, UINT notification) {
         return;
     }
 
-    if (id == static_cast<UINT>(ControlId(Id::Cancel))) {
+    if (id == static_cast<UINT>(ControlId(Id::Cancel)) && context.window != nullptr) {
         ::DestroyWindow(context.window);
     }
-}
-
-bool IsMutedText(Context& context, HWND control) {
-    return control == Get(context, Id::SettingsPath) || control == Get(context, Id::RestartHint);
-}
-
-void ApplyThemeToWindow(Context& context) {
-    Theme::ApplyToWindow(context.window);
-
-    for (const auto& entry : context.pageControls) {
-        Theme::ApplyToControl(entry.first);
-    }
-
-    Theme::ApplyToControl(Get(context, Id::OpenFile));
-    Theme::ApplyToControl(Get(context, Id::Cancel));
-    Theme::ApplyToControl(Get(context, Id::Save));
-    Theme::ApplyToControl(Get(context, Id::SettingsPath));
-
-    ::InvalidateRect(context.window, nullptr, TRUE);
 }
 
 LRESULT CALLBACK WindowProcedureThunk(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
@@ -902,52 +892,27 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
     }
 
     switch (message) {
-        case WM_COMMAND:
-            OnCommand(*context, LOWORD(wParam), HIWORD(wParam));
-            return 0;
+        case WM_COMMAND: {
+            const UINT id = LOWORD(wParam);
+            const UINT notification = HIWORD(wParam);
 
-        case WM_ERASEBKGND: {
-            RECT client = {};
-            ::GetClientRect(window, &client);
-            ::FillRect(reinterpret_cast<HDC>(wParam), &client, Theme::BackgroundBrush());
-            return 1;
+            if (id == 0) {
+                break;
+            }
+
+            if (notification == BN_CLICKED || id == IDOK || id == IDCANCEL) {
+                OnCommand(*context, id, notification);
+                return 0;
+            }
+
+            break;
         }
-
-        case WM_CTLCOLORSTATIC: {
-            HDC dc = reinterpret_cast<HDC>(wParam);
-            ::SetTextColor(dc, IsMutedText(*context, reinterpret_cast<HWND>(lParam))
-                ? Theme::MutedTextColor()
-                : Theme::TextColor());
-            ::SetBkColor(dc, Theme::BackgroundColor());
-            return reinterpret_cast<LRESULT>(Theme::BackgroundBrush());
-        }
-
-        case WM_CTLCOLOREDIT:
-        case WM_CTLCOLORLISTBOX: {
-            HDC dc = reinterpret_cast<HDC>(wParam);
-            ::SetTextColor(dc, Theme::TextColor());
-            ::SetBkColor(dc, Theme::EditBackgroundColor());
-            return reinterpret_cast<LRESULT>(Theme::EditBackgroundBrush());
-        }
-
-        case WM_CTLCOLORBTN: {
-            // A themed button paints itself; the background is for the controls
-            // that are not themed (an older Windows in the dark look).
-            HDC dc = reinterpret_cast<HDC>(wParam);
-            ::SetTextColor(dc, Theme::TextColor());
-            ::SetBkColor(dc, Theme::BackgroundColor());
-            return reinterpret_cast<LRESULT>(Theme::BackgroundBrush());
-        }
-
-        case WM_SETTINGCHANGE:
-        case WM_THEMECHANGED:
-            // The colours of Windows have changed: "auto" follows them.
-            Theme::Refresh();
-            ApplyThemeToWindow(*context);
-            return 0;
 
         case WM_CLOSE:
-            ::DestroyWindow(window);
+            if (context->window != nullptr) {
+                ::DestroyWindow(window);
+            }
+
             return 0;
 
         case WM_DESTROY:
@@ -996,9 +961,9 @@ bool miniant::Windows::ShowSettingsWindow(
     windowClass.hIcon = ::LoadIconW(instance, MAKEINTRESOURCEW(IDI_ICON1));
     windowClass.hIconSm = windowClass.hIcon;
     windowClass.hCursor = ::LoadCursorW(nullptr, IDC_ARROW);
-    // The background is painted by the window itself: its colour depends on the
-    // theme of Windows.
-    windowClass.hbrBackground = nullptr;
+    // The usual background of a window of the system: the settings are drawn by
+    // the controls themselves, the window has nothing of its own to paint.
+    windowClass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
     windowClass.lpszClassName = SETTINGS_CLASS_NAME;
 
     if (::RegisterClassExW(&windowClass) == 0 && ::GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
@@ -1011,7 +976,7 @@ bool miniant::Windows::ShowSettingsWindow(
     ::AdjustWindowRectEx(&desired, style, FALSE, 0);
 
     const HWND window = ::CreateWindowExW(
-        0,
+        WS_EX_CONTROLPARENT,
         SETTINGS_CLASS_NAME,
         Lang::Wide(Lang::Str::SettingsWindowTitle).c_str(),
         style,
@@ -1044,10 +1009,6 @@ bool miniant::Windows::ShowSettingsWindow(
     BuildAudioPage(context);
     BuildOtherPage(context);
     ShowPage(context, Page::Window);
-    ApplyThemeToWindow(context);
-
-    ::ShowWindow(window, SW_SHOW);
-    ::SetForegroundWindow(window);
 
     // Modal for the main window: it takes no commands while the settings are
     // being edited, but the tray icon and the audio stream keep working.
@@ -1055,12 +1016,33 @@ bool miniant::Windows::ShowSettingsWindow(
         ::EnableWindow(owner, FALSE);
     }
 
+    ::ShowWindow(window, SW_SHOW);
+    ::SetForegroundWindow(window);
+
     MSG message = {};
-    while (!context.done && ::GetMessageW(&message, nullptr, 0, 0) > 0) {
-        if (!::IsDialogMessageW(context.window, &message)) {
-            ::TranslateMessage(&message);
-            ::DispatchMessageW(&message);
+    bool quit = false;
+
+    while (!context.done) {
+        const BOOL result = ::GetMessageW(&message, nullptr, 0, 0);
+
+        if (result <= 0) {
+            // 0 is WM_QUIT: the window of the program was closed while the
+            // settings were open. The message belongs to the loop of the
+            // program, so it is put back and read there.
+            quit = result == 0;
+            break;
         }
+
+        if (context.window != nullptr && ::IsDialogMessageW(context.window, &message) != FALSE) {
+            continue;
+        }
+
+        ::TranslateMessage(&message);
+        ::DispatchMessageW(&message);
+    }
+
+    if (quit) {
+        ::PostQuitMessage(static_cast<int>(message.wParam));
     }
 
     if (owner != nullptr) {

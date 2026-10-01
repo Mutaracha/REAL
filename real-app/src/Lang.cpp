@@ -474,23 +474,15 @@ const Entry TABLE[] = {
 
     // Dialogs
     { Str::AboutTitle, "About REAL", "О программе REAL" },
-    // The system message box of "About": the version, the note about the
-    // program, the path of the settings file and the address of the project.
+    { Str::AboutUsage, "Instructions:", "Инструкция:" },
+    { Str::AboutConfig, "Parameters:", "Параметры:" },
+    { Str::AboutProject, "Project:", "Проект:" },
+    { Str::AboutSettings, "Settings:", "Настройки:" },
+    // The note of the About window: one sentence, in the language of the
+    // interface; "{}" is the version and is drawn by the window itself.
     { Str::AboutText,
-      "REAL {0}\n"
-      "While REAL is running, Windows uses the smallest buffer the driver of the default audio device supports.\n"
-      "\n"
-      "A click on the tray icon shows or hides this window, the tray menu can activate the audio streams.\n"
-      "\n"
-      "Settings: {1}\n"
-      "Project:  {2}",
-      "REAL {0}\n"
-      "Пока REAL запущен, Windows использует минимальный буфер, который поддерживает драйвер устройства по умолчанию.\n"
-      "\n"
-      "Клик по значку в трее показывает и прячет это окно, через меню значка можно активировать аудиопотоки.\n"
-      "\n"
-      "Настройки: {1}\n"
-      "Проект:  {2}" },
+      "While REAL is running, Windows uses the smallest buffer the driver of the default audio device supports.",
+      "Пока REAL запущен, Windows использует минимальный буфер, который поддерживает драйвер устройства по умолчанию." },
 
     { Str::DiagnosticsWriteFailed, "The diagnostics report could not be written to a file.",
                                    "Не удалось записать отчёт диагностики в файл." },
@@ -554,10 +546,6 @@ const Entry TABLE[] = {
     { Str::SettingsLanguageAuto, "as in Windows", "как в Windows" },
     { Str::SettingsLanguageEnglish, "English", "английский" },
     { Str::SettingsLanguageRussian, "Russian", "русский" },
-    { Str::SettingsTheme, "Theme", "Тема" },
-    { Str::SettingsThemeAuto, "as in Windows", "как в Windows" },
-    { Str::SettingsThemeDark, "dark", "тёмная" },
-    { Str::SettingsThemeLight, "light", "светлая" },
     { Str::SettingsStartWithWindows, "Start with Windows", "Запускать вместе с Windows" },
     { Str::SettingsStartMinimized, "Start minimized to tray", "Запускать свёрнутым в трей" },
     { Str::SettingsMinimizeToTray, "Minimize to tray", "Сворачивать в трей" },
@@ -634,8 +622,6 @@ const Entry TABLE[] = {
                                 "true - автозапуск при входе в систему (запись REAL в HKCU Run)." },
     { Str::CfgLanguage, "Language of the interface, the log and these comments: \"auto\" (Windows), \"en\", \"ru\". When the language changes, the comments are rewritten on the next start, the values stay.",
                         "Язык интерфейса, журнала и этих комментариев: \"auto\" (язык Windows), \"en\", \"ru\". При смене языка комментарии перезаписываются при следующем запуске, значения сохраняются." },
-    { Str::CfgTheme, "Look of the window: \"auto\" (the Windows setting), \"dark\" or \"light\". The window itself, its texts and the list of the log follow it; the menus and the check boxes follow when Windows supports it.",
-                      "Оформление окна: \"auto\" (как в Windows), \"dark\" (тёмное) или \"light\" (светлое). Программа сама рисует фон, тексты и журнал, а меню и флажки подхватывают тему, если Windows это поддерживает." },
     { Str::CfgTraySection, "Icon in the notification area.", "Значок в системном трее." },
     { Str::CfgTrayEnabled, "true - show the tray icon (left click shows the window, right click opens the menu).",
                            "true - показывать значок в трее (левый клик - окно, правый - меню)." },

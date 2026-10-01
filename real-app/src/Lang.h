@@ -185,6 +185,10 @@ enum class Str {
     // Dialogs
     AboutTitle,
     AboutText,
+    AboutUsage,
+    AboutConfig,
+    AboutProject,
+    AboutSettings,
     DiagnosticsWriteFailed,
 
     // Console / log: operations
@@ -237,10 +241,6 @@ enum class Str {
     SettingsLanguageAuto,
     SettingsLanguageEnglish,
     SettingsLanguageRussian,
-    SettingsTheme,
-    SettingsThemeAuto,
-    SettingsThemeDark,
-    SettingsThemeLight,
     SettingsStartWithWindows,
     SettingsStartMinimized,
     SettingsMinimizeToTray,
@@ -301,7 +301,6 @@ enum class Str {
     // Settings file comments
     CfgFileHeader,
     CfgApplicationSection,
-    CfgTheme,
     CfgStartMinimizedToTray,
     CfgMinimizeToTray,
     CfgCloseButtonAction,
