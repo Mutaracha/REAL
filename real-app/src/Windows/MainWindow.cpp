@@ -24,6 +24,8 @@ const int STATUS_HEIGHT = 26;
 const int BUTTON_HEIGHT = 30;
 const int MARGIN = 8;
 
+// The log view keeps the newest part of the session: past this length the
+// oldest half is dropped (see AppendLogLines).
 const size_t MAX_LOG_LENGTH = 200000;
 
 // The bottom row holds the two actions a user needs most: activate the audio
@@ -287,9 +289,22 @@ void MainWindow::AppendLogLines(const std::vector<std::string>& lines) {
         return;
     }
 
+    // Past the limit the oldest lines go, up to a line break, so that the view
+    // never starts in the middle of a line and the recent history stays.
     const int currentLength = ::GetWindowTextLengthW(m_log);
     if (currentLength > static_cast<int>(MAX_LOG_LENGTH)) {
-        ::SetWindowTextW(m_log, L"");
+        std::wstring current(static_cast<size_t>(currentLength) + 1, L'\0');
+        ::GetWindowTextW(m_log, current.data(), currentLength + 1);
+
+        const size_t keepFrom = static_cast<size_t>(currentLength) - MAX_LOG_LENGTH / 2;
+        const size_t lineBreak = current.find(L"\r\n", keepFrom);
+
+        if (lineBreak != std::wstring::npos) {
+            ::SendMessageW(m_log, EM_SETSEL, 0, static_cast<LPARAM>(lineBreak + 2));
+            ::SendMessageW(m_log, EM_REPLACESEL, FALSE, reinterpret_cast<LPARAM>(L""));
+        } else {
+            ::SetWindowTextW(m_log, L"");
+        }
     }
 
     std::string text;
@@ -451,6 +466,14 @@ void MainWindow::CreateControls() {
         nullptr,
         m_instance,
         nullptr);
+
+    // An edit control accepts about 32 000 characters by default, and
+    // EM_REPLACESEL silently stops appending at that limit: the view would
+    // freeze after a few hundred lines. The limit is lifted, the length is
+    // kept in check by AppendLogLines instead.
+    if (m_log != nullptr) {
+        ::SendMessageW(m_log, EM_SETLIMITTEXT, 0, 0);
+    }
 
     for (size_t i = 0; i < BUTTON_COUNT; ++i) {
         const HWND button = ::CreateWindowExW(
