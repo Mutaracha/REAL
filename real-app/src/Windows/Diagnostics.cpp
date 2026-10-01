@@ -306,6 +306,13 @@ std::vector<EndpointInfo> miniant::Windows::Diagnostics::EnumerateEndpoints(
         defaultDeviceId = GetDeviceId(*defaultDevice.Get());
     }
 
+    ComPtr<IMMDevice> communicationDevice;
+    std::wstring communicationDeviceId;
+    if (SUCCEEDED(enumerator.GetDefaultAudioEndpoint(dataFlow, eCommunications, communicationDevice.GetAddressOf())) &&
+        communicationDevice) {
+        communicationDeviceId = GetDeviceId(*communicationDevice.Get());
+    }
+
     UINT count = 0;
     if (FAILED(collection->GetCount(&count))) {
         return result;
@@ -320,6 +327,7 @@ std::vector<EndpointInfo> miniant::Windows::Diagnostics::EnumerateEndpoints(
         EndpointInfo info;
         InspectEndpoint(*device.Get(), info);
         info.isDefault = !defaultDeviceId.empty() && info.deviceId == defaultDeviceId;
+        info.isCommunication = !communicationDeviceId.empty() && info.deviceId == communicationDeviceId;
         result.push_back(std::move(info));
     }
 
@@ -419,10 +427,20 @@ std::string miniant::Windows::Diagnostics::BuildReport(
                 }
 
                 for (const EndpointInfo& info : endpoints) {
+                    std::string marks;
+
+                    if (info.isDefault) {
+                        marks += miniant::Lang::Utf8(miniant::Lang::Str::DiagDefaultMark);
+                    }
+
+                    if (info.isCommunication) {
+                        marks += miniant::Lang::Utf8(miniant::Lang::Str::DiagCommunicationMark);
+                    }
+
                     text += fmt::format(
                         "{}{}\n",
                         Text::ToUtf8(info.deviceName.empty() ? miniant::Lang::Wide(miniant::Lang::Str::UnknownDevice) : info.deviceName),
-                        info.isDefault ? miniant::Lang::Utf8(miniant::Lang::Str::DiagDefaultMark) : "");
+                        marks);
                     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagDeviceId), Text::ToUtf8(info.deviceId));
 
                     if (!info.driverProvider.empty() || !info.driverVersion.empty()) {

@@ -357,6 +357,9 @@ const Entry TABLE[] = {
     { Str::DiagDefaultMark,
       "   [default]",
       "   [по умолчанию]" },
+    { Str::DiagCommunicationMark,
+      "   [communication]",
+      "   [связь]" },
     { Str::DiagDeviceId,
       "    id:       {0}\n",
       "    код:      {0}\n" },
@@ -389,9 +392,11 @@ const Entry TABLE[] = {
       "--- Примечания ---\n\n" },
     { Str::DiagNotes,
       "A device is suitable for the latency reduction when its minimum period is smaller than its default period (see 'result'). Typical exceptions: Bluetooth endpoints (10 ms by design), HDMI/DisplayPort receivers, some vendor drivers (Realtek, Nahimic, ACX) and virtual devices.\n"
-      "The base step is the amount by which the engine can change its period: any value between the minimum and the maximum with that step is allowed. The step itself is not a period, so a value like \"step of 1 frame\" cannot be requested; REAL never asks for a period below the minimum.\n",
+      "The base step is the amount by which the engine can change its period: any value between the minimum and the maximum with that step is allowed. The step itself is not a period, so a value like \"step of 1 frame\" cannot be requested; REAL never asks for a period below the minimum.\n"
+      "The small buffer is taken on both default devices of the chosen direction: the usual default device and the default communication device (Settings - System - Sound).\n",
       "Устройство подходит для снижения задержки, если его минимальный период меньше стандартного (см. «итог»). Обычные исключения: Bluetooth (10 мс по замыслу), приёмники HDMI/DisplayPort, некоторые драйверы производителей (Realtek, Nahimic, ACX) и виртуальные устройства.\n"
-      "Базовый шаг — это ступень, с которой движок меняет период: допустимы значения от минимального до максимального с этим шагом. Сам шаг периодом не является, поэтому значение вида «шаг 1 кадр» использовать нельзя — программа запрашивает период не меньше минимального.\n" },
+      "Базовый шаг — это ступень, с которой движок меняет период: допустимы значения от минимального до максимального с этим шагом. Сам шаг периодом не является, поэтому значение вида «шаг 1 кадр» использовать нельзя — программа запрашивает период не меньше минимального.\n"
+      "Малый буфер берётся на обоих устройствах по умолчанию выбранного направления: на обычном устройстве по умолчанию и на устройстве связи по умолчанию («Параметры → Система → Звук»).\n" },
 
     { Str::DiagPeriodsNoClient3,
       "device period {0} ({1})",
@@ -573,17 +578,6 @@ const Entry TABLE[] = {
     { Str::SettingsFlowRender, "playback (render)", "воспроизведение (render)" },
     { Str::SettingsFlowCapture, "recording (capture)", "запись (capture)" },
     { Str::SettingsFlowBoth, "playback and recording", "воспроизведение и запись" },
-    { Str::SettingsRole, "Device role", "Роль устройства" },
-    { Str::SettingsRoleConsole, "console", "консольное" },
-    { Str::SettingsRoleMultimedia, "multimedia", "мультимедиа" },
-    { Str::SettingsRoleCommunications, "communications", "связь" },
-    { Str::SettingsRoleHint,
-      "console - games and system sounds\n"
-      "multimedia - music, movies and media players\n"
-      "communications - voice apps (messengers, VoIP)",
-      "console - игры и системные звуки\n"
-      "multimedia - музыка, фильмы и медиаплееры\n"
-      "communications - программы связи (мессенджеры, VoIP)" },
     { Str::SettingsPeriod, "Period", "Период" },
     { Str::SettingsPeriodMinimum, "minimum", "минимальный" },
     { Str::SettingsPeriodFundamental, "by the base step", "по базовому шагу" },
@@ -661,12 +655,10 @@ const Entry TABLE[] = {
                                 "true - включать снижение задержки сразу при запуске." },
     { Str::CfgDataFlow, "Devices to process: \"render\" (playback), \"capture\" (recording), \"both\".",
                         "Какие устройства обрабатывать: \"render\" (воспроизведение), \"capture\" (запись), \"both\"." },
-    { Str::CfgRole, "Which \"default device\" of Windows to use: \"console\" - games and system sounds, \"multimedia\" - music, movies and media players, \"communications\" - voice apps (messengers, VoIP). Windows keeps a separate default device for each role.",
-                    "Какое «устройство по умолчанию» Windows брать: \"console\" - игры и системные звуки, \"multimedia\" - музыка, фильмы и медиаплееры, \"communications\" - программы связи (мессенджеры, VoIP). В Windows у каждой роли своё устройство по умолчанию." },
-    { Str::CfgPeriodSelection, "Which buffer to request: \"min\" - the smallest period of the device, \"fundamental\" - the smallest period of the device rounded to the base step of the engine (a value below the minimum is never requested), \"fixed\" - the value of the key below (see requestedPeriodFrames).",
-                               "Какой буфер запрашивать: \"min\" - минимальный период устройства, \"fundamental\" - минимальный период, выровненный по базовому шагу движка (меньше минимального не запрашивается никогда), \"fixed\" - значение ключа ниже (requestedPeriodFrames)." },
-    { Str::CfgRequestedPeriodFrames, "Buffer size in frames for periodSelection = \"fixed\" (0 - decide automatically).",
-                                     "Размер буфера в кадрах для periodSelection = \"fixed\" (0 - решает приложение)." },
+    { Str::CfgPeriodSelection, "Which buffer to request: \"min\" - the smallest period of the device; \"fundamental\" - the same smallest period rounded up to the base step of the engine (the step itself is not a period, so a value below the minimum is never requested); \"fixed\" - exactly the number of frames written in requestedPeriodFrames.",
+                               "Какой буфер запрашивать: \"min\" - минимальный период устройства; \"fundamental\" - он же, выровненный по базовому шагу движка (сам шаг периодом не является, поэтому меньше минимального не запрашивается никогда); \"fixed\" - ровно столько кадров, сколько указано в requestedPeriodFrames." },
+    { Str::CfgRequestedPeriodFrames, "The buffer in frames that \"fixed\" asks for: it is rounded to the base step of the engine and kept inside the range the device supports (0 - the smallest period of the device).",
+                                     "Буфер в кадрах, который запрашивает \"fixed\": округляется по базовому шагу движка и удерживается в поддерживаемом устройством диапазоне (0 - минимальный период устройства)." },
     { Str::CfgAllowPeriodSnap, "true - if the buffer is already locked by another application, accept it instead of reporting an error.",
                                "true - если буфер уже зафиксирован другим приложением, принять его, а не сообщать об ошибке." },
     { Str::CfgReleaseOnExit, "true - release the audio stream on exit (the engine returns to 10 ms by itself).",

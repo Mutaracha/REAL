@@ -15,6 +15,23 @@ public:
     ComPtr(const ComPtr&) = delete;
     ComPtr& operator=(const ComPtr&) = delete;
 
+    // Moving is what makes the pointer usable inside containers (a list of the
+    // default endpoints, for example).
+    ComPtr(ComPtr&& other) noexcept:
+        m_pointer(other.m_pointer) {
+        other.m_pointer = nullptr;
+    }
+
+    ComPtr& operator=(ComPtr&& other) noexcept {
+        if (this != &other) {
+            Reset();
+            m_pointer = other.m_pointer;
+            other.m_pointer = nullptr;
+        }
+
+        return *this;
+    }
+
     T** GetAddressOf() {
         Reset();
         return &m_pointer;

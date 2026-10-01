@@ -196,21 +196,14 @@ tl::expected<uint32_t, WindowsError> MinimumLatencyAudioClient::GetCurrentPeriod
 }
 
 tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient::Start(
-    IMMDeviceEnumerator& enumerator,
+    IMMDevice& device,
     EDataFlow dataFlow,
     ERole role,
     PeriodSelection selection,
     uint32_t requestedPeriodFrames,
     bool allowPeriodSnap) {
-    ComPtr<IMMDevice> device;
-    HRESULT hr = enumerator.GetDefaultAudioEndpoint(dataFlow, role, device.GetAddressOf());
-    if (FAILED(hr)) {
-        return tl::make_unexpected(WindowsError(
-            DescribeEndpointError(miniant::Lang::Str::ErrOpenEndpoint, static_cast<long>(hr))));
-    }
-
     ComPtr<IAudioClient3> audioClient;
-    hr = device->Activate(
+    HRESULT hr = device.Activate(
         __uuidof(IAudioClient3),
         CLSCTX_ALL,
         nullptr,
@@ -234,13 +227,13 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
     AudioStreamInfo info;
     info.dataFlow = dataFlow;
     info.role = role;
-    info.deviceName = GetDeviceFriendlyName(device.Get());
+    info.deviceName = GetDeviceFriendlyName(&device);
     info.sampleRate = format->nSamplesPerSec;
     info.channels = format->nChannels;
     info.bitsPerSample = format->wBitsPerSample;
 
     LPWSTR deviceId = nullptr;
-    if (SUCCEEDED(device->GetId(&deviceId)) && deviceId != nullptr) {
+    if (SUCCEEDED(device.GetId(&deviceId)) && deviceId != nullptr) {
         info.deviceId = deviceId;
         ::CoTaskMemFree(deviceId);
     }

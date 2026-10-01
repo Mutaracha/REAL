@@ -30,14 +30,6 @@ EDataFlow ToDataFlow(miniant::Config::DataFlow flow) {
     }
 }
 
-ERole ToRole(miniant::Config::DeviceRole role) {
-    switch (role) {
-        case miniant::Config::DeviceRole::Multimedia: return eMultimedia;
-        case miniant::Config::DeviceRole::Communications: return eCommunications;
-        default: return eConsole;
-    }
-}
-
 PeriodSelection ToPeriodSelection(miniant::Config::PeriodSelection selection) {
     switch (selection) {
         case miniant::Config::PeriodSelection::Fundamental: return PeriodSelection::Fundamental;
@@ -63,6 +55,76 @@ std::wstring GetDeviceId(IMMDevice* device) {
     std::wstring result(id);
     ::CoTaskMemFree(id);
     return result;
+}
+
+// Windows keeps a separate default device for every role: the usual "default
+// device" that the Sound settings show is the console (and multimedia) role,
+// and next to it there is the "default communication device". The latency
+// reduction has to hold a stream on each of them, otherwise a program that
+// plays through the communication device would keep the large buffer.
+std::vector<ERole> AllRoles() {
+    return { eConsole, eMultimedia, eCommunications };
+}
+
+// An endpoint of the default devices: the device itself, its flow and the role
+// of the default device it was found by.
+struct DefaultEndpoint {
+    ComPtr<IMMDevice> device;
+    EDataFlow dataFlow = eRender;
+    ERole role = eConsole;
+    std::wstring deviceId;
+};
+
+// Adds the endpoint to the list unless the same device is already there: the
+// console and the multimedia roles almost always point at one device, and the
+// communication device may be the same one as well.
+void AddEndpoint(std::vector<DefaultEndpoint>& endpoints, IMMDeviceEnumerator& enumerator, EDataFlow flow, ERole role) {
+    ComPtr<IMMDevice> device;
+    if (FAILED(enumerator.GetDefaultAudioEndpoint(flow, role, device.GetAddressOf())) || !device) {
+        return;
+    }
+
+    const std::wstring id = GetDeviceId(device.Get());
+
+    for (const DefaultEndpoint& existing : endpoints) {
+        if (!id.empty() && existing.deviceId == id) {
+            return;
+        }
+    }
+
+    DefaultEndpoint endpoint;
+    endpoint.device = std::move(device);
+    endpoint.dataFlow = flow;
+    endpoint.role = role;
+    endpoint.deviceId = id;
+    endpoints.push_back(std::move(endpoint));
+}
+
+std::vector<DefaultEndpoint> GetDefaultEndpoints(IMMDeviceEnumerator& enumerator, const std::vector<EDataFlow>& flows) {
+    std::vector<DefaultEndpoint> endpoints;
+
+    for (EDataFlow flow : flows) {
+        for (ERole role : AllRoles()) {
+            AddEndpoint(endpoints, enumerator, flow, role);
+        }
+    }
+
+    return endpoints;
+}
+
+// The identifiers of the devices that are the default ones for the flow right
+// now, whatever role they are default for.
+std::vector<std::wstring> GetDefaultDeviceIds(IMMDeviceEnumerator& enumerator, EDataFlow flow) {
+    std::vector<std::wstring> ids;
+
+    for (ERole role : AllRoles()) {
+        ComPtr<IMMDevice> device;
+        if (SUCCEEDED(enumerator.GetDefaultAudioEndpoint(flow, role, device.GetAddressOf())) && device) {
+            ids.push_back(GetDeviceId(device.Get()));
+        }
+    }
+
+    return ids;
 }
 
 bool SameDevice(const std::wstring& left, const std::wstring& right) {
@@ -159,18 +221,23 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
     std::vector<std::string> errors;
     const std::vector<EDataFlow> flows = GetDataFlows(settings.audio.dataFlow);
 
-    for (EDataFlow flow : flows) {
+    // Every default device of the chosen flows: a program that plays through
+    // the default communication device gets the small buffer just like one that
+    // plays through the usual default device.
+    const std::vector<DefaultEndpoint> endpoints = GetDefaultEndpoints(*m_enumerator.Get(), flows);
+
+    for (const DefaultEndpoint& endpoint : endpoints) {
         auto stream = MinimumLatencyAudioClient::Start(
-            *m_enumerator.Get(),
-            flow,
-            ToRole(settings.audio.role),
+            *endpoint.device.Get(),
+            endpoint.dataFlow,
+            endpoint.role,
             ToPeriodSelection(settings.audio.periodSelection),
             settings.audio.requestedPeriodFrames,
             settings.audio.allowPeriodSnap);
 
         if (!stream) {
             const std::string message =
-                std::string(Lang::Utf8(flow == EDataFlow::eRender ? Lang::Str::FlowRender : Lang::Str::FlowCapture))
+                std::string(Lang::Utf8(endpoint.dataFlow == EDataFlow::eRender ? Lang::Str::FlowRender : Lang::Str::FlowCapture))
                 + ": " + stream.error().GetMessage();
             // The message is handed to the caller: the failure is reported
             // once, when the whole apply is over (see App::ApplyAudio).
@@ -279,15 +346,26 @@ tl::expected<void, WindowsError> AudioSession::Validate() {
 
         const AudioStreamInfo& info = m_streams[i].GetInfo();
 
-        ComPtr<IMMDevice> device;
-        const HRESULT hr = m_enumerator->GetDefaultAudioEndpoint(info.dataFlow, info.role, device.GetAddressOf());
-        if (FAILED(hr)) {
+        // The stream is valid while its device is one of the default devices of
+        // its flow: a change of any role (the usual default device or the
+        // communication one) means the stream has to be built again.
+        const std::vector<std::wstring> defaultIds = GetDefaultDeviceIds(*m_enumerator.Get(), info.dataFlow);
+
+        if (defaultIds.empty()) {
             return tl::make_unexpected(WindowsError(fmt::format(
-                Lang::Utf8(Lang::Str::ErrDefaultEndpointQuery), DescribeHResult(static_cast<long>(hr)))));
+                Lang::Utf8(Lang::Str::ErrDefaultEndpointQuery), DescribeHResult(static_cast<long>(E_POINTER)))));
         }
 
-        const std::wstring defaultDeviceId = GetDeviceId(device.Get());
-        if (!SameDevice(defaultDeviceId, info.deviceId)) {
+        bool isDefault = info.deviceId.empty();
+
+        for (const std::wstring& id : defaultIds) {
+            if (SameDevice(id, info.deviceId)) {
+                isDefault = true;
+                break;
+            }
+        }
+
+        if (!isDefault) {
             return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::ErrDefaultDeviceChanged)));
         }
     }

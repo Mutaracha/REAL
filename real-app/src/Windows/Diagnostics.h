@@ -18,7 +18,11 @@ struct EndpointInfo {
     std::wstring driverProvider;
     std::wstring driverVersion;
 
+    // Windows keeps a separate default device for every role: the usual one
+    // (console/multimedia) and the communication one. Both are marked in the
+    // report, because the latency reduction is applied to both.
     bool isDefault = false;
+    bool isCommunication = false;
     bool supportsAudioClient3 = false;
 
     uint32_t sampleRate = 0;

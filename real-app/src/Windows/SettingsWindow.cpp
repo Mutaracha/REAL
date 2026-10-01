@@ -63,7 +63,6 @@ enum class Id : int {
 
     AudioEnabledOnStartup,
     AudioDataFlow,
-    AudioRole,
     AudioPeriodSelection,
     AudioRequestedPeriodFrames,
     AudioAllowPeriodSnap,
@@ -168,12 +167,6 @@ const Choice<Config::DataFlow> DATA_FLOWS[] = {
     { Config::DataFlow::Render, Lang::Str::SettingsFlowRender },
     { Config::DataFlow::Capture, Lang::Str::SettingsFlowCapture },
     { Config::DataFlow::Both, Lang::Str::SettingsFlowBoth },
-};
-
-const Choice<Config::DeviceRole> DEVICE_ROLES[] = {
-    { Config::DeviceRole::Console, Lang::Str::SettingsRoleConsole },
-    { Config::DeviceRole::Multimedia, Lang::Str::SettingsRoleMultimedia },
-    { Config::DeviceRole::Communications, Lang::Str::SettingsRoleCommunications },
 };
 
 const Choice<Config::PeriodSelection> PERIODS[] = {
@@ -334,16 +327,6 @@ int AddHeader(Context& context, Lang::Str text, int y) {
 
     BindToPage(context, label);
     return y + HEADER_STEP;
-}
-
-// An explanation under a control: it belongs to the page like everything else
-// and takes as many rows as it has lines.
-int AddHint(Context& context, Lang::Str text, int lines, int y) {
-    BindToPage(context, CreateControl(
-        context, L"STATIC", Lang::Wide(text), SS_LEFT, static_cast<Id>(0),
-        MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, ROW_HEIGHT * lines));
-
-    return y + ROW_HEIGHT * lines;
 }
 
 int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y) {
@@ -572,9 +555,6 @@ int BuildAudioPage(Context& context) {
         settings.audio.enabledOnStartup, y);
     y = AddCombo(context, Id::AudioDataFlow, Lang::Str::SettingsDataFlow, Texts(DATA_FLOWS),
         IndexOf(DATA_FLOWS, settings.audio.dataFlow), y);
-    y = AddCombo(context, Id::AudioRole, Lang::Str::SettingsRole, Texts(DEVICE_ROLES),
-        IndexOf(DEVICE_ROLES, settings.audio.role), y);
-    y = AddHint(context, Lang::Str::SettingsRoleHint, 3, y);
     y = AddCombo(context, Id::AudioPeriodSelection, Lang::Str::SettingsPeriod, Texts(PERIODS),
         IndexOf(PERIODS, settings.audio.periodSelection), y);
     y = AddEdit(context, Id::AudioRequestedPeriodFrames, Lang::Str::SettingsRequestedPeriod,
@@ -784,7 +764,6 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
 
     updated.audio.enabledOnStartup = IsChecked(context, Id::AudioEnabledOnStartup);
     updated.audio.dataFlow = ValueAt(DATA_FLOWS, SelectedIndex(context, Id::AudioDataFlow));
-    updated.audio.role = ValueAt(DEVICE_ROLES, SelectedIndex(context, Id::AudioRole));
     updated.audio.periodSelection = ValueAt(PERIODS, SelectedIndex(context, Id::AudioPeriodSelection));
     updated.audio.allowPeriodSnap = IsChecked(context, Id::AudioAllowPeriodSnap);
     updated.audio.releaseOnExit = IsChecked(context, Id::AudioReleaseOnExit);

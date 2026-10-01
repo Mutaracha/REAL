@@ -141,14 +141,6 @@ bool FlowMatches(Config::DataFlow configured, EDataFlow changed) {
     return changed == EffectiveRenderFlow(configured);
 }
 
-ERole EffectiveRole(Config::DeviceRole role) {
-    switch (role) {
-        case Config::DeviceRole::Multimedia: return eMultimedia;
-        case Config::DeviceRole::Communications: return eCommunications;
-        default: return eConsole;
-    }
-}
-
 }
 
 App::App(HINSTANCE instance):
@@ -1246,15 +1238,16 @@ void App::OnTimer(UINT_PTR timerId) {
 void App::OnDeviceEvent(WPARAM wParam, LPARAM lParam) {
     const auto type = static_cast<Windows::DeviceEventType>(static_cast<int>(wParam));
     const EDataFlow flow = static_cast<EDataFlow>(LOWORD(lParam));
-    const ERole role = static_cast<ERole>(HIWORD(lParam));
 
     bool interesting = false;
 
     switch (type) {
         case Windows::DeviceEventType::DefaultDeviceChanged:
+            // Any role matters now: the program keeps a stream on the default
+            // device of every role, so a change of the usual default device and
+            // a change of the communication one are both worth re-applying.
             interesting = m_settings.audio.reinit.defaultDeviceChanged &&
-                FlowMatches(m_settings.audio.dataFlow, flow) &&
-                role == EffectiveRole(m_settings.audio.role);
+                FlowMatches(m_settings.audio.dataFlow, flow);
             break;
 
         case Windows::DeviceEventType::DeviceStateChanged:

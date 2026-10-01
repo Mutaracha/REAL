@@ -29,12 +29,6 @@ const std::pair<const char*, DataFlow> DATA_FLOW_MAP[] = {
     { "both", DataFlow::Both },
 };
 
-const std::pair<const char*, DeviceRole> DEVICE_ROLE_MAP[] = {
-    { "console", DeviceRole::Console },
-    { "multimedia", DeviceRole::Multimedia },
-    { "communications", DeviceRole::Communications },
-};
-
 const std::pair<const char*, PeriodSelection> PERIOD_SELECTION_MAP[] = {
     { "min", PeriodSelection::Minimum },
     { "fundamental", PeriodSelection::Fundamental },
@@ -195,14 +189,6 @@ const char* ToString(DataFlow value) {
     }
 }
 
-const char* ToString(DeviceRole value) {
-    switch (value) {
-        case DeviceRole::Multimedia: return "multimedia";
-        case DeviceRole::Communications: return "communications";
-        default: return "console";
-    }
-}
-
 const char* ToString(PeriodSelection value) {
     switch (value) {
         case PeriodSelection::Fundamental: return "fundamental";
@@ -316,7 +302,13 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
     if (const json* section = FindSection(root, "audio")) {
         ReadBool(*section, "enabledOnStartup", settings.audio.enabledOnStartup, result.warnings, "audio");
         ReadEnum(*section, "dataFlow", DATA_FLOW_MAP, settings.audio.dataFlow, result.warnings, "audio");
-        ReadEnum(*section, "role", DEVICE_ROLE_MAP, settings.audio.role, result.warnings, "audio");
+        // "role" was dropped when the small buffer began to be taken on the
+        // default device of every role ("console"/"multimedia" are the usual
+        // default device, "communications" is the default communication one): a
+        // file from an older version is accepted and the key is gone from the
+        // next written version.
+        std::string obsoleteRole;
+        ReadString(*section, "role", obsoleteRole, result.warnings, "audio");
         ReadEnum(*section, "periodSelection", PERIOD_SELECTION_MAP, settings.audio.periodSelection, result.warnings, "audio");
         ReadUnsigned(*section, "requestedPeriodFrames", settings.audio.requestedPeriodFrames, 0xFFFFFFFFu, result.warnings, "audio");
         ReadBool(*section, "allowPeriodSnap", settings.audio.allowPeriodSnap, result.warnings, "audio");
@@ -507,7 +499,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     json& audio = root["audio"];
     audio["enabledOnStartup"] = settings.audio.enabledOnStartup;
     audio["dataFlow"] = ToString(settings.audio.dataFlow);
-    audio["role"] = ToString(settings.audio.role);
     audio["periodSelection"] = ToString(settings.audio.periodSelection);
     audio["requestedPeriodFrames"] = settings.audio.requestedPeriodFrames;
     audio["allowPeriodSnap"] = settings.audio.allowPeriodSnap;
@@ -591,7 +582,6 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.SectionOpen(2, "audio", text(Str::CfgAudioSection));
     document.Key(4, "enabledOnStartup", settings.audio.enabledOnStartup, text(Str::CfgEnabledOnStartup), true);
     document.Key(4, "dataFlow", ToString(settings.audio.dataFlow), text(Str::CfgDataFlow), true);
-    document.Key(4, "role", ToString(settings.audio.role), text(Str::CfgRole), true);
     document.Key(4, "periodSelection", ToString(settings.audio.periodSelection), text(Str::CfgPeriodSelection), true);
     document.Key(4, "requestedPeriodFrames", settings.audio.requestedPeriodFrames, text(Str::CfgRequestedPeriodFrames), true);
     document.Key(4, "allowPeriodSnap", settings.audio.allowPeriodSnap, text(Str::CfgAllowPeriodSnap), true);
@@ -669,8 +659,7 @@ std::string miniant::Config::Describe(const Settings& settings) {
     std::string result;
     result += "dataFlow=";
     result += ToString(settings.audio.dataFlow);
-    result += ", role=";
-    result += ToString(settings.audio.role);
+    result += ", roles=default+communication";
     result += ", period=";
     result += ToString(settings.audio.periodSelection);
     result += ", priority=";

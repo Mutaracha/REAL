@@ -6,14 +6,15 @@
 namespace miniant::Config {
 
 // The layout of the settings file. The comments in it are written by the
-// program, so the number grows when the layout changes (6: logging.level is the
-// only logging parameter, "off" switches the file off; 5: the key
-// tray.menu.openSettings is gone - the settings window keeps the button that
-// opens the file; 4: application.theme is gone; 3: the theme of the windows was
-// a parameter of its own; 2: a comment sits in the same line as its value). A
-// file with an older number is rewritten once, with every value kept; a file of
-// the current number and a newer one are left as they are.
-inline constexpr int CONFIG_VERSION = 6;
+// program, so the number grows when the layout changes (7: audio.role is gone -
+// the small buffer is taken on the default device of every role; 6:
+// logging.level is the only logging parameter, "off" switches the file off; 5:
+// the key tray.menu.openSettings is gone - the settings window keeps the button
+// that opens the file; 4: application.theme is gone; 3: the theme of the windows
+// was a parameter of its own; 2: a comment sits in the same line as its value).
+// A file with an older number is rewritten once, with every value kept; a file
+// of the current number and a newer one are left as they are.
+inline constexpr int CONFIG_VERSION = 7;
 
 enum class CloseAction {
     Minimize,
@@ -24,12 +25,6 @@ enum class DataFlow {
     Render,
     Capture,
     Both,
-};
-
-enum class DeviceRole {
-    Console,
-    Multimedia,
-    Communications,
 };
 
 enum class PeriodSelection {
@@ -97,7 +92,6 @@ struct TraySettings {
 struct AudioSettings {
     bool enabledOnStartup = true;
     DataFlow dataFlow = DataFlow::Render;
-    DeviceRole role = DeviceRole::Console;
     PeriodSelection periodSelection = PeriodSelection::Minimum;
     unsigned int requestedPeriodFrames = 0;
     bool allowPeriodSnap = true;

@@ -67,8 +67,13 @@ public:
     // stream has been invalidated (device removed, audio service restarted).
     tl::expected<uint32_t, WindowsError> GetCurrentPeriod();
 
+    // The endpoint is given by the caller: Windows keeps a separate default
+    // device for every role (the usual "default device" and the "default
+    // communication device" that the Sound settings show), and the program
+    // takes the small buffer on each of them (see AudioSession::Apply). The
+    // role only travels into the record of the stream.
     static tl::expected<MinimumLatencyAudioClient, WindowsError> Start(
-        IMMDeviceEnumerator& enumerator,
+        IMMDevice& device,
         EDataFlow dataFlow,
         ERole role,
         PeriodSelection selection,

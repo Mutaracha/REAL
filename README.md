@@ -112,7 +112,7 @@ The most important options:
 ```jsonc
 {
   "application": { "minimizeToTray": true, "closeButtonAction": "minimize" },
-  "audio":       { "dataFlow": "render", "role": "console", "allowPeriodSnap": true },
+  "audio":       { "dataFlow": "render", "allowPeriodSnap": true },  // all default devices (default + communication)
   "updates":     { "checkOnStartup": false }, // one check at startup when true
   "logging":     { "level": "info" }          // "off" switches the log file off
 }
