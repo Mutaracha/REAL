@@ -32,7 +32,6 @@ public:
     void SetNotifyHandler(std::function<void()> handler);
     void Append(const std::string& text);
     std::vector<std::string> TakePending();
-    std::vector<std::string> Snapshot() const;
 
 private:
     mutable std::mutex m_mutex;
@@ -54,20 +53,17 @@ void SetFileSettings(const Config::LoggingSettings& logging);
 void Write(Level level, const std::string& message);
 
 // A message about an operation the user performs or watches: it is written to
-// the file and shown in the window, and it is the only kind of message that
-// reaches the console (the console would be unreadable otherwise).
+// the file and shown in the window.
 void WriteOperation(const std::string& message);
 
-// A hint for the user (hotkeys and other reminders): it is shown in the window
-// and in the console, but never written to the log file, which stays a record
-// of what the program did.
+// A hint for the user (hotkeys and other reminders): it is shown in the window,
+// but never written to the log file, which stays a record of what the program
+// did.
 void WriteHint(const std::string& message);
 
 // Writes everything that is still buffered to the sinks. A log line that is
 // followed by a crash is otherwise lost (the file sinks cache the output).
 void Flush();
-
-bool WriteSnapshotToFile(const std::wstring& path);
 
 // Logs an operation (see WriteOperation); the text is written in the language
 // of the interface.

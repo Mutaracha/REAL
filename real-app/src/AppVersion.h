@@ -31,7 +31,7 @@ inline constexpr const char* GITHUB_REPOSITORY = "Mutaracha/REAL";
 inline constexpr const char* PROJECT_URL = "https://github.com/Mutaracha/REAL";
 inline constexpr const char* UPSTREAM_URL = "https://github.com/miniant-git/REAL";
 
-// "v0.3.0 RC 39 (47d5109)": the version for the user, with the number of the CI
+// "v0.3.0 RC <run> (<commit>)": the version for the user, with the number of the CI
 // run and the commit the executable was built from. A local build of a checkout
 // shows the commit only, a build outside a repository - just the version.
 inline std::string DisplayVersion() {

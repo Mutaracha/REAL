@@ -543,7 +543,7 @@ void App::ApplyAudio() {
 
         if (firstFailure) {
             // One message and one balloon per outage; the retries only go to
-            // the file log, otherwise the console becomes unreadable.
+            // the file log, so that the window stays readable.
             m_failureSince = ::GetTickCount64();
 
             // The message already says that another attempt follows; the
@@ -660,25 +660,6 @@ void App::RefreshCommentsLanguage() {
     } else {
         Log::Error(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath));
     }
-}
-
-void App::ReloadSettings() {
-    const Config::LoadResult result = Config::Load(m_settingsPath);
-    if (result.parseFailed) {
-        Log::Error("{}", result.error);
-        return;
-    }
-
-    for (const auto& warning : result.warnings) {
-        Log::Warn("Settings: {}", warning);
-    }
-
-    const Config::Settings previous = m_settings;
-    m_settings = result.settings;
-
-    ApplySettings(previous);
-
-    Log::Operation(Lang::Utf8(Str::OpSettingsReloaded));
 }
 
 // Everything the program has to do after the settings have changed, no matter
@@ -1059,10 +1040,6 @@ void App::OnCommand(Command command) {
             break;
         }
 
-        case Command::ReloadSettings:
-            ReloadSettings();
-            break;
-
         case Command::ShowWindow:
             if (m_window != nullptr) {
                 m_window->Show();
@@ -1399,7 +1376,7 @@ int App::RunDiagnostics() {
         if (redirected) {
             std::cout << report;
             if (!path.empty()) {
-                std::cout << fmt::format(Lang::Utf8(Str::ConsoleReportWritten), Text::ToUtf8(path)) << std::endl;
+                std::cout << fmt::format(Lang::Utf8(Str::CliReportWritten), Text::ToUtf8(path)) << std::endl;
             }
 
             std::cout.flush();

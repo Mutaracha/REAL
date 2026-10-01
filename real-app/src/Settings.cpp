@@ -270,7 +270,11 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
 
     if (const json* section = FindSection(root, "tray")) {
         ReadBool(*section, "enabled", settings.tray.enabled, result.warnings, "tray");
-        ReadBool(*section, "showStatusInTooltip", settings.tray.showStatusInTooltip, result.warnings, "tray");
+        // "showStatusInTooltip" was dropped when the tooltip became the only
+        // place that shows the state: the value has no other use, so the
+        // tooltip always carries it now.
+        bool obsoleteShowStatusInTooltip = true;
+        ReadBool(*section, "showStatusInTooltip", obsoleteShowStatusInTooltip, result.warnings, "tray");
 
         if (const json* notifications = FindSection(*section, "notifications")) {
             ReadBool(*notifications, "onError", settings.tray.notifications.onError, result.warnings, "tray.notifications");
@@ -499,7 +503,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
 
     json& tray = root["tray"];
     tray["enabled"] = settings.tray.enabled;
-    tray["showStatusInTooltip"] = settings.tray.showStatusInTooltip;
 
     json& audio = root["audio"];
     audio["enabledOnStartup"] = settings.audio.enabledOnStartup;
@@ -564,7 +567,6 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
 
     document.SectionOpen(2, "tray", text(Str::CfgTraySection));
     document.Key(4, "enabled", settings.tray.enabled, text(Str::CfgTrayEnabled), true);
-    document.Key(4, "showStatusInTooltip", settings.tray.showStatusInTooltip, text(Str::CfgTrayTooltip), true);
     document.SectionOpen(4, "notifications", text(Str::CfgNotificationsSection));
     document.Key(6, "onError", settings.tray.notifications.onError, text(Str::CfgNotifyOnError), true);
     document.Key(6, "onDeviceChange", settings.tray.notifications.onDeviceChange, text(Str::CfgNotifyOnDeviceChange), true);

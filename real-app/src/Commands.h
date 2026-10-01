@@ -11,7 +11,6 @@ enum class Command {
     OpenLog,
     Diagnose,
     ToggleStartWithWindows,
-    ReloadSettings,
     ShowWindow,
     ToggleWindow,
     BalloonClicked,

@@ -85,13 +85,18 @@ used by the audio engine, for example `2.67 ms - Speakers (Realtek Audio)`.
 | `--log-level <level>` | `trace`, `debug`, `info`, `warn`, `error`, `off` |
 | `--multi-instance` | Do not reuse an already running instance |
 
-Commands for a running instance (forwarded to it, this process exits):
+Commands for a running instance (the command is passed to it and this process exits):
 
 | Option | Description |
 |---|---|
 | `--reinit` | Restart the activation: re-create the audio streams (scripts, shortcuts) |
 | `--enable` / `--disable` | Enable / disable the latency reduction |
 | `--exit` | Close the running instance |
+
+Commands that run in this process:
+
+| Option | Description |
+|---|---|
 | `--diagnose` | Write a report about the audio devices and drivers to `REAL-diagnostics.txt` |
 | `--help`, `-h`, `/?` | Show help |
 | `--version` | Show the version |
@@ -196,8 +201,8 @@ the periods of a device are listed one per line. The application log
 
 Every version the program shows (the About window, `--version`, the diagnostics
 report, the first line of the log) carries the build identification:
-`v0.3.0 RC 39 (47d5109)`, where `RC 39` is the number of the CI run and
-`47d5109` is the commit the executable was built from. A build made from a
+`v0.3.0 RC <run> (<commit>)`, where the number after `RC` is the number of the CI
+run and the value in brackets is the commit the executable was built from. A build made from a
 checkout shows the commit only.
 
 ### It says "the driver does not offer a period smaller than the default one"

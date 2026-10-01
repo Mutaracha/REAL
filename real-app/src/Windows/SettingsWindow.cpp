@@ -50,7 +50,6 @@ enum class Id : int {
     NotificationStateChange,
 
     TrayEnabled,
-    TrayTooltip,
     TrayMenuStatus,
     TrayMenuToggle,
     TrayMenuReinit,
@@ -96,6 +95,7 @@ enum class Id : int {
     Tabs,
     SettingsPath,
     OpenFile,
+    Reload,
     Cancel,
     Save,
 };
@@ -442,6 +442,27 @@ std::wstring ReadText(Context& context, Id id, const std::wstring& fallback) {
     return text.empty() ? fallback : text;
 }
 
+void SetChecked(Context& context, Id id, bool value) {
+    const HWND control = Get(context, id);
+    if (control != nullptr) {
+        ::SendMessageW(control, BM_SETCHECK, value ? BST_CHECKED : BST_UNCHECKED, 0);
+    }
+}
+
+void SetText(Context& context, Id id, const std::wstring& text) {
+    const HWND control = Get(context, id);
+    if (control != nullptr) {
+        ::SetWindowTextW(control, text.c_str());
+    }
+}
+
+void SetSelected(Context& context, Id id, int index) {
+    const HWND control = Get(context, id);
+    if (control != nullptr) {
+        ::SendMessageW(control, CB_SETCURSEL, static_cast<WPARAM>(index), 0);
+    }
+}
+
 // A number from an edit control. A value outside the allowed range, or a text
 // that is not a number at all, keeps the field as it was and is reported to the
 // user instead of being written to the file.
@@ -497,8 +518,6 @@ int BuildWindowPage(Context& context) {
     y += GROUP_GAP;
     y = AddHeader(context, Lang::Str::SettingsHeaderTray, y);
     y = AddCheck(context, Id::TrayEnabled, Lang::Str::SettingsTrayEnabled, settings.tray.enabled, y);
-    y = AddCheck(context, Id::TrayTooltip, Lang::Str::SettingsTrayTooltip,
-        settings.tray.showStatusInTooltip, y);
     y = AddCheck(context, Id::NotificationError, Lang::Str::SettingsNotifyError,
         settings.tray.notifications.onError, y);
     y = AddCheck(context, Id::NotificationDeviceChange, Lang::Str::SettingsNotifyDeviceChange,
@@ -691,17 +710,24 @@ void BuildFrame(Context& context) {
     CreateControl(
         context, L"STATIC", context.settingsPath, SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS,
         Id::SettingsPath, MARGIN + BUTTON_WIDTH + 44, buttonY,
-        WINDOW_WIDTH - 2 * MARGIN - 2 * BUTTON_WIDTH - 74, BUTTON_HEIGHT);
+        WINDOW_WIDTH - 2 * MARGIN - 3 * BUTTON_WIDTH - 82, BUTTON_HEIGHT);
 
     CreateControl(
         context, L"BUTTON", Lang::Wide(Lang::Str::SettingsSave),
         BS_DEFPUSHBUTTON | WS_TABSTOP, Id::Save,
         WINDOW_WIDTH - MARGIN - BUTTON_WIDTH, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
 
+    // Re-reads the file without closing the window: a value edited in a text
+    // editor gets in, and "Save" is still what writes and applies it.
+    CreateControl(
+        context, L"BUTTON", Lang::Wide(Lang::Str::SettingsReload),
+        BS_PUSHBUTTON | WS_TABSTOP, Id::Reload,
+        WINDOW_WIDTH - MARGIN - 2 * BUTTON_WIDTH - 8, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
+
     CreateControl(
         context, L"BUTTON", Lang::Wide(Lang::Str::SettingsCancel),
         BS_PUSHBUTTON | WS_TABSTOP, Id::Cancel,
-        WINDOW_WIDTH - MARGIN - 2 * BUTTON_WIDTH - 8, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
+        WINDOW_WIDTH - MARGIN - 3 * BUTTON_WIDTH - 16, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
 }
 
 Page PageOfIndex(int index) {
@@ -745,7 +771,6 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     updated.application.singleInstance = IsChecked(context, Id::SingleInstance);
 
     updated.tray.enabled = IsChecked(context, Id::TrayEnabled);
-    updated.tray.showStatusInTooltip = IsChecked(context, Id::TrayTooltip);
     updated.tray.notifications.onError = IsChecked(context, Id::NotificationError);
     updated.tray.notifications.onDeviceChange = IsChecked(context, Id::NotificationDeviceChange);
     updated.tray.notifications.onStateChange = IsChecked(context, Id::NotificationStateChange);
@@ -829,6 +854,140 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     return invalidFields.empty();
 }
 
+// Writes a settings object into the controls. The file is the source of truth,
+// so "Reload" brings its values into the window exactly like the page builder
+// does when the window opens.
+void ApplyToControls(Context& context, const Config::Settings& settings) {
+    SetSelected(context, Id::Language, LanguageIndex(settings.application.language));
+    SetChecked(context, Id::StartWithWindows, settings.application.startWithWindows);
+    SetChecked(context, Id::StartMinimizedToTray, settings.application.startMinimizedToTray);
+    SetChecked(context, Id::MinimizeToTray, settings.application.minimizeToTray);
+    SetSelected(context, Id::CloseButtonAction, IndexOf(CLOSE_ACTIONS, settings.application.closeButtonAction));
+    SetChecked(context, Id::SingleInstance, settings.application.singleInstance);
+
+    SetChecked(context, Id::TrayEnabled, settings.tray.enabled);
+    SetChecked(context, Id::NotificationError, settings.tray.notifications.onError);
+    SetChecked(context, Id::NotificationDeviceChange, settings.tray.notifications.onDeviceChange);
+    SetChecked(context, Id::NotificationStateChange, settings.tray.notifications.onStateChange);
+
+    SetChecked(context, Id::TrayMenuStatus, settings.tray.menu.showStatus);
+    SetChecked(context, Id::TrayMenuToggle, settings.tray.menu.toggleEnabled);
+    SetChecked(context, Id::TrayMenuReinit, settings.tray.menu.reinitialize);
+    SetChecked(context, Id::TrayMenuLog, settings.tray.menu.openLog);
+    SetChecked(context, Id::TrayMenuDiagnostics, settings.tray.menu.diagnostics);
+    SetChecked(context, Id::TrayMenuStartWithWindows, settings.tray.menu.startWithWindows);
+    SetChecked(context, Id::TrayMenuAbout, settings.tray.menu.about);
+    SetChecked(context, Id::TrayMenuExit, settings.tray.menu.exit);
+
+    SetChecked(context, Id::AudioEnabledOnStartup, settings.audio.enabledOnStartup);
+    SetSelected(context, Id::AudioDataFlow, IndexOf(DATA_FLOWS, settings.audio.dataFlow));
+    SetSelected(context, Id::AudioPeriodSelection, IndexOf(PERIODS, settings.audio.periodSelection));
+    SetText(context, Id::AudioRequestedPeriodFrames, std::to_wstring(settings.audio.requestedPeriodFrames));
+    SetChecked(context, Id::AudioAllowPeriodSnap, settings.audio.allowPeriodSnap);
+
+    SetChecked(context, Id::ReinitDefaultDevice, settings.audio.reinit.defaultDeviceChanged);
+    SetChecked(context, Id::ReinitDeviceState, settings.audio.reinit.deviceStateChanged);
+    SetChecked(context, Id::ReinitDeviceAdded, settings.audio.reinit.deviceAdded);
+    SetChecked(context, Id::ReinitDeviceRemoved, settings.audio.reinit.deviceRemoved);
+    SetChecked(context, Id::ReinitResumeFromSleep, settings.audio.reinit.resumeFromSleep);
+    SetChecked(context, Id::ReinitSessionUnlock, settings.audio.reinit.sessionUnlock);
+    SetChecked(context, Id::ReinitEnableWhenDisabled, settings.audio.reinit.enableWhenDisabled);
+    SetText(context, Id::ReinitFailureTimeout, std::to_wstring(settings.audio.reinit.failureTimeoutMs));
+    SetText(context, Id::ReinitDebounce, std::to_wstring(settings.audio.reinit.debounceMs));
+
+    SetSelected(context, Id::ProcessPriority, IndexOf(PRIORITIES, settings.performance.processPriority));
+    SetChecked(context, Id::DisablePowerThrottling, settings.performance.disablePowerThrottling);
+
+    SetChecked(context, Id::HotkeysEnabled, settings.hotkeys.enabled);
+    SetText(context, Id::HotkeyToggle, Text::ToWide(settings.hotkeys.toggleEnabled));
+    SetText(context, Id::HotkeyReinitialize, Text::ToWide(settings.hotkeys.reinitialize));
+
+    SetChecked(context, Id::UpdateCheckOnStartup, settings.updates.checkOnStartup);
+
+    SetSelected(context, Id::LogLevel, LogLevelIndex(settings.logging.level));
+    SetText(context, Id::LogFilePath, Text::ToWide(settings.logging.filePath));
+    SetText(context, Id::LogMaxFileSize, std::to_wstring(settings.logging.maxFileSizeMb));
+    SetText(context, Id::LogMaxFiles, std::to_wstring(settings.logging.maxFiles));
+}
+
+// A control whose value means nothing while its master switch is off is greyed
+// out instead of staying usable: an ignored field looks like a broken one.
+void UpdateEnabledStates(Context& context) {
+    const bool tray = IsChecked(context, Id::TrayEnabled);
+
+    const Id trayDependent[] = {
+        Id::NotificationError, Id::NotificationDeviceChange, Id::NotificationStateChange,
+        Id::TrayMenuStatus, Id::TrayMenuToggle, Id::TrayMenuReinit, Id::TrayMenuLog,
+        Id::TrayMenuDiagnostics, Id::TrayMenuStartWithWindows, Id::TrayMenuAbout, Id::TrayMenuExit,
+    };
+
+    for (const Id id : trayDependent) {
+        const HWND control = Get(context, id);
+        if (control != nullptr) {
+            ::EnableWindow(control, tray ? TRUE : FALSE);
+        }
+    }
+
+    const bool hotkeys = IsChecked(context, Id::HotkeysEnabled);
+    const bool fixedPeriod =
+        ValueAt(PERIODS, SelectedIndex(context, Id::AudioPeriodSelection)) == Config::PeriodSelection::Fixed;
+
+    const int levelIndex = SelectedIndex(context, Id::LogLevel);
+    const bool fileLog = levelIndex >= 0 && levelIndex < static_cast<int>(LOG_LEVEL_COUNT) &&
+        std::string(LOG_LEVELS[static_cast<size_t>(levelIndex)]) != "off";
+
+    const struct {
+        Id id;
+        bool enabled;
+    } STATES[] = {
+        { Id::HotkeyToggle, hotkeys },
+        { Id::HotkeyReinitialize, hotkeys },
+        { Id::AudioRequestedPeriodFrames, fixedPeriod },
+        { Id::LogFilePath, fileLog },
+        { Id::LogMaxFileSize, fileLog },
+        { Id::LogMaxFiles, fileLog },
+    };
+
+    for (const auto& state : STATES) {
+        const HWND control = Get(context, state.id);
+        if (control != nullptr) {
+            ::EnableWindow(control, state.enabled ? TRUE : FALSE);
+        }
+    }
+}
+
+// Re-reads the settings file into the window. Nothing is applied here: "Save"
+// is still the only button that writes the file and applies the settings.
+void OnReload(Context& context) {
+    const Config::LoadResult result = Config::Load(context.settingsPath);
+
+    if (!result.fileExists || result.parseFailed) {
+        std::wstring text = Lang::Wide(Lang::Str::SettingsReloadFailed);
+        const std::wstring placeholder = L"{0}";
+        const size_t position = text.find(placeholder);
+
+        if (position != std::wstring::npos) {
+            text.replace(position, placeholder.size(), context.settingsPath);
+        }
+
+        ::MessageBoxW(
+            context.window, text.c_str(), Lang::Wide(Lang::Str::SettingsWindowTitle).c_str(),
+            MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    Config::Settings loaded = result.settings;
+    // The layout of the window is the current one and the comments stay in the
+    // language the window writes them in; everything else comes from the file.
+    loaded.configVersion = Config::CONFIG_VERSION;
+    loaded.commentLanguage = context.settings->commentLanguage;
+
+    *context.settings = loaded;
+
+    ApplyToControls(context, loaded);
+    UpdateEnabledStates(context);
+}
+
 // "Check these values: {0}" without a formatting library: the text of the
 // message is the only place where a placeholder is filled by hand.
 std::wstring InvalidValuesText(const std::wstring& fields) {
@@ -895,6 +1054,11 @@ void OnCommand(Context& context, UINT id, UINT notification) {
         return;
     }
 
+    if (id == static_cast<UINT>(ControlId(Id::Reload))) {
+        OnReload(context);
+        return;
+    }
+
     if (id == static_cast<UINT>(ControlId(Id::Save))) {
         OnSave(context);
         return;
@@ -921,6 +1085,17 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 
             if (id == 0) {
                 break;
+            }
+
+            // The value of some controls decides whether the rest of their
+            // section can be used at all: the fields are greyed out accordingly.
+            if (notification == BN_CLICKED || notification == CBN_SELCHANGE) {
+                if (id == static_cast<UINT>(ControlId(Id::TrayEnabled)) ||
+                    id == static_cast<UINT>(ControlId(Id::HotkeysEnabled)) ||
+                    id == static_cast<UINT>(ControlId(Id::AudioPeriodSelection)) ||
+                    id == static_cast<UINT>(ControlId(Id::LogLevel))) {
+                    UpdateEnabledStates(*context);
+                }
             }
 
             if (notification == BN_CLICKED || id == IDOK || id == IDCANCEL) {
@@ -1064,6 +1239,10 @@ bool miniant::Windows::ShowSettingsWindow(
 
     ResetPageOffset(context);
     ShowPage(context, Page::Window);
+
+    // The dependent fields are greyed out before the window is shown, so that
+    // the first thing the user sees is the real state of the settings.
+    UpdateEnabledStates(context);
 
     // Modal for the main window: it takes no commands while the settings are
     // being edited, but the tray icon and the audio stream keep working.

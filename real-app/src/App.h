@@ -46,7 +46,6 @@ private:
     void UpdateStatus();
     void UpdateTrayMenuState();
     void SaveSettings();
-    void ReloadSettings();
     // The window edits a copy of the settings; a saved copy is written to the
     // file and applied exactly like a file that was changed by hand.
     void ShowSettingsDialog();

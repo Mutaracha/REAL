@@ -221,11 +221,6 @@ std::vector<std::string> LogBuffer::TakePending() {
     return result;
 }
 
-std::vector<std::string> LogBuffer::Snapshot() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    return std::vector<std::string>(m_lines.begin(), m_lines.end());
-}
-
 LogBuffer& miniant::Log::Buffer() {
     if (!g_buffer) {
         g_buffer = std::make_unique<LogBuffer>();
@@ -354,14 +349,4 @@ void miniant::Log::Flush() {
     if (g_logger != nullptr) {
         g_logger->flush();
     }
-}
-
-bool miniant::Log::WriteSnapshotToFile(const std::wstring& path) {
-    std::string content;
-    for (const auto& line : Buffer().Snapshot()) {
-        content += line;
-        content += "\r\n";
-    }
-
-    return Windows::Filesystem::WriteTextFileUtf8(path, content);
 }
