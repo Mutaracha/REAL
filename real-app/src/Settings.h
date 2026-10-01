@@ -5,6 +5,12 @@
 
 namespace miniant::Config {
 
+// The layout of the settings file. The comments in it are written by the
+// program, so the number grows when the layout changes (2: a comment sits in
+// the same line as its value). A file with an older number is rewritten once,
+// with every value kept; the number itself is not a setting the user changes.
+inline constexpr int CONFIG_VERSION = 2;
+
 enum class CloseAction {
     Minimize,
     Exit,
@@ -134,7 +140,7 @@ struct LoggingSettings {
 };
 
 struct Settings {
-    int configVersion = 1;
+    int configVersion = CONFIG_VERSION;
 
     // Language of the comments in the file. A service field: it only tells the
     // application whether the comments have to be rewritten after a language

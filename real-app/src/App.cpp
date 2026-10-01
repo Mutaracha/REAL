@@ -305,7 +305,11 @@ bool App::LoadSettings() {
                               << fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath))
                               << std::endl;
                 }
-            } else if (Config::PeekCommentLanguage(m_settingsPath) != commentLanguage) {
+            } else if (Config::PeekCommentLanguage(m_settingsPath) != commentLanguage ||
+                m_settings.configVersion < Config::CONFIG_VERSION) {
+                // A file of an older version is upgraded once: the comments of
+                // the current layout sit in the same line as the value.
+                m_settings.configVersion = Config::CONFIG_VERSION;
                 m_settings.commentLanguage = commentLanguage;
 
                 if (Config::Write(m_settings, m_settingsPath)) {
