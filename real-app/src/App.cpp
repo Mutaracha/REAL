@@ -13,6 +13,8 @@
 #include "Windows/Console.h"
 #include "Windows/Diagnostics.h"
 #include "Windows/Filesystem.h"
+#include "Windows/SettingsWindow.h"
+#include "Windows/Theme.h"
 
 #include <spdlog/fmt/fmt.h>
 
@@ -385,6 +387,10 @@ void App::LogBanner() {
 }
 
 bool App::InitializeUi() {
+    // The windows follow the setting before the first of them exists: the dark
+    // theme has to be known while the captions are created.
+    Windows::Theme::SetMode(m_settings.application.theme);
+
     auto window = Windows::MainWindow::Create(m_instance);
     if (!window) {
         Log::Error(Lang::Utf8(Str::LogWindowFailed), window.error().GetMessage());
@@ -689,6 +695,14 @@ void App::ReloadSettings() {
     const Config::Settings previous = m_settings;
     m_settings = result.settings;
 
+    ApplySettings(previous);
+
+    Log::Operation(Lang::Utf8(Str::OpSettingsReloaded));
+}
+
+// Everything the program has to do after the settings have changed, no matter
+// where the change came from (the window of the program or the file itself).
+void App::ApplySettings(const Config::Settings& previous) {
     if (previous.application.showConsole != m_settings.application.showConsole) {
         Log::Warn(Lang::Utf8(Str::LogConsoleRestart));
     }
@@ -711,14 +725,46 @@ void App::ReloadSettings() {
 
     Log::SetLevel(m_settings.logging.level);
 
+    Windows::Theme::SetMode(m_settings.application.theme);
+    if (m_window != nullptr) {
+        m_window->ApplyTheme();
+    }
+
     UnregisterHotkeys();
     RegisterHotkeys();
 
     if (m_audioEnabled) {
         ApplyAudio();
     }
+}
 
-    Log::Operation(Lang::Utf8(Str::OpSettingsReloaded));
+void App::ShowSettingsDialog() {
+    if (m_settingsWindowOpen) {
+        return;
+    }
+
+    m_settingsWindowOpen = true;
+
+    Config::Settings edited = m_settings;
+
+    const bool saved = Windows::ShowSettingsWindow(
+        m_window != nullptr ? m_window->GetHWindow() : nullptr,
+        m_instance,
+        edited,
+        m_settingsPath);
+
+    m_settingsWindowOpen = false;
+
+    if (!saved) {
+        return;
+    }
+
+    // The window writes the file: the same writer keeps the comments and the
+    // layout, so the file stays the source of truth.
+    const Config::Settings previous = m_settings;
+    m_settings = edited;
+    SaveSettings();
+    ApplySettings(previous);
 }
 
 void App::OpenSettingsFile() {
@@ -907,6 +953,10 @@ void App::OnCommand(Command command) {
             break;
 
         case Command::OpenSettings:
+            ShowSettingsDialog();
+            break;
+
+        case Command::OpenSettingsFile:
             OpenSettingsFile();
             break;
 

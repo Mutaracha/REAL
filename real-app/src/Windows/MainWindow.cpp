@@ -5,6 +5,7 @@
 #include "../Lang.h"
 #include "../Log.h"
 #include "../Text.h"
+#include "Theme.h"
 
 #include <algorithm>
 
@@ -41,15 +42,18 @@ const struct {
     miniant::Lang::Str text;
     miniant::Command command;
 } FILE_MENU_ITEMS[] = {
-    { 101, miniant::Lang::Str::ButtonSettings, miniant::Command::OpenSettings },
+    // The file itself is still reachable: the settings window is the way to
+    // change the parameters, the file is the way to look at them.
+    { 101, miniant::Lang::Str::ButtonSettingsFile, miniant::Command::OpenSettingsFile },
     { 102, miniant::Lang::Str::ButtonLog, miniant::Command::OpenLog },
     { 103, miniant::Lang::Str::ButtonDiagnostics, miniant::Command::Diagnose },
 };
 
-// "About" is an item of the menu bar itself: the menu of a window can hold a
-// plain item next to its popups, and a click on it sends the very same command
-// a drop-down entry would.
+// "About" and "Settings" are items of the menu bar itself: the menu of a
+// window can hold plain items next to its popups, and a click on one of them
+// sends the very same command a drop-down entry would.
 const UINT MENU_ABOUT_ID = 104;
+const UINT MENU_SETTINGS_ID = 105;
 
 constexpr size_t BUTTON_COUNT = sizeof(BUTTONS) / sizeof(BUTTONS[0]);
 constexpr size_t FILE_MENU_ITEM_COUNT = sizeof(FILE_MENU_ITEMS) / sizeof(FILE_MENU_ITEMS[0]);
@@ -163,6 +167,24 @@ void MainWindow::Toggle() {
     }
 }
 
+void MainWindow::ApplyTheme() {
+    if (m_window == nullptr) {
+        return;
+    }
+
+    Theme::ApplyToWindow(m_window);
+    Theme::ApplyToControl(m_status);
+    Theme::ApplyToControl(m_log);
+
+    for (const auto& button : m_buttons) {
+        Theme::ApplyToControl(button.first);
+    }
+
+    ::RedrawWindow(
+        m_window, nullptr, nullptr,
+        RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+}
+
 bool MainWindow::IsVisible() const {
     return m_window != nullptr && ::IsWindowVisible(m_window) != FALSE;
 }
@@ -207,10 +229,17 @@ void MainWindow::ApplyLanguage() {
             reinterpret_cast<UINT_PTR>(m_fileMenu),
             miniant::Lang::Wide(miniant::Lang::Str::ButtonFileMenu).c_str());
 
-        // The second position of the menu bar is the "About" item.
+        // The menu bar: "File", then the settings of the program, then "About".
         ::ModifyMenuW(
             m_menu,
             1,
+            MF_BYPOSITION | MF_STRING,
+            MENU_SETTINGS_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::ButtonSettings).c_str());
+
+        ::ModifyMenuW(
+            m_menu,
+            2,
             MF_BYPOSITION | MF_STRING,
             MENU_ABOUT_ID,
             miniant::Lang::Wide(miniant::Lang::Str::ButtonAbout).c_str());
@@ -381,6 +410,12 @@ void MainWindow::CreateControls() {
         ::AppendMenuW(
             m_menu,
             MF_STRING,
+            MENU_SETTINGS_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::ButtonSettings).c_str());
+
+        ::AppendMenuW(
+            m_menu,
+            MF_STRING,
             MENU_ABOUT_ID,
             miniant::Lang::Wide(miniant::Lang::Str::ButtonAbout).c_str());
 
@@ -503,6 +538,41 @@ LRESULT MainWindow::WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam) 
             LayoutControls();
             return 0;
 
+        case WM_ERASEBKGND: {
+            RECT client = {};
+            ::GetClientRect(m_window, &client);
+            ::FillRect(reinterpret_cast<HDC>(wParam), &client, Theme::BackgroundBrush());
+            return 1;
+        }
+
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN: {
+            // The status line and the buttons: a themed control paints itself,
+            // so the colours below matter to the classic look (or to an older
+            // Windows that knows nothing about the dark theme).
+            HDC dc = reinterpret_cast<HDC>(wParam);
+            ::SetTextColor(dc, Theme::TextColor());
+            ::SetBkColor(dc, Theme::BackgroundColor());
+            return reinterpret_cast<LRESULT>(Theme::BackgroundBrush());
+        }
+
+        case WM_CTLCOLOREDIT:
+        case WM_CTLCOLORLISTBOX: {
+            // The log: an edit box with the read-only style reports itself as a
+            // static control, but the colour is set here as well.
+            HDC dc = reinterpret_cast<HDC>(wParam);
+            ::SetTextColor(dc, Theme::TextColor());
+            ::SetBkColor(dc, Theme::EditBackgroundColor());
+            return reinterpret_cast<LRESULT>(Theme::EditBackgroundBrush());
+        }
+
+        case WM_SETTINGCHANGE:
+        case WM_THEMECHANGED:
+            // The colours of Windows have changed: "auto" follows them.
+            Theme::Refresh();
+            ApplyTheme();
+            return 0;
+
         case WM_COMMAND: {
             const UINT id = LOWORD(wParam);
             const UINT notification = HIWORD(wParam);
@@ -517,6 +587,11 @@ LRESULT MainWindow::WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam) 
             }
 
             if (notification == 0) {
+                if (id == MENU_SETTINGS_ID) {
+                    RaiseCommand(miniant::Command::OpenSettings);
+                    return 0;
+                }
+
                 if (id == MENU_ABOUT_ID) {
                     RaiseCommand(miniant::Command::About);
                     return 0;

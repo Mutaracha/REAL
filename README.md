@@ -17,7 +17,9 @@ that is still maintained and adds quality-of-life features:
   on device changes, sleep/resume and session unlock, manually via the tray menu,
   the window button or a hotkey
 * no forced update checks: checking is optional and never closes the application
-* external settings file next to the executable (`real.settings.json`)
+* external settings file next to the executable (`real.settings.json`), edited
+  either in the **Settings...** window of the program or in a text editor
+* the window follows the theme of Windows (dark/light) or a theme of your choice
 * Windows 11 tweaks (power throttling, informative HRESULT diagnostics)
 
 ## Features
@@ -99,10 +101,11 @@ Commands for a running instance (forwarded to it, this process exits):
 ## Configuration
 
 `real.settings.json` is created next to `REAL.exe` on the first run. It is plain
-JSON (`//` and `/* */` comments are allowed), every option is explained by a
-comment, and it is re-read when you use **Settings file** in the tray menu or
-`--config`. Command-line options override
-the file. A step-by-step guide in Russian is available in
+JSON (`//` and `/* */` comments are allowed) and every option is explained by a
+comment. **Settings...** in the menu bar (or in the tray menu) opens a window with
+the same parameters: it writes that very file, so the file stays the source of
+truth. **Open the settings file** in the *File* menu and `--config` keep the
+manual way available. Command-line options override the file. A step-by-step guide in Russian is available in
 [docs/usage.ru.md](docs/usage.ru.md). See [docs/CONFIG.md](docs/CONFIG.md) for the full reference and
 [docs/real.settings.example.json](docs/real.settings.example.json) for an
 annotated example.

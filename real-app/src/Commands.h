@@ -8,6 +8,7 @@ enum class Command {
     ToggleEnabled,
     Reinitialize,
     OpenSettings,
+    OpenSettingsFile,
     OpenLog,
     Diagnose,
     ToggleStartWithWindows,

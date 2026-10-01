@@ -46,6 +46,10 @@ private:
     void UpdateTrayMenuState();
     void SaveSettings();
     void ReloadSettings();
+    // The window edits a copy of the settings; a saved copy is written to the
+    // file and applied exactly like a file that was changed by hand.
+    void ShowSettingsDialog();
+    void ApplySettings(const Config::Settings& previous);
     void OpenSettingsFile();
     void OpenLogFile();
     void ShowAboutDialog();
@@ -99,6 +103,8 @@ private:
 
     HANDLE m_instanceMutex = nullptr;
     bool m_anotherInstanceRuns = false;
+    // The settings window is modal: a second one is never opened.
+    bool m_settingsWindowOpen = false;
 
     UINT m_signalShow = 0;
     UINT m_signalReinitialize = 0;

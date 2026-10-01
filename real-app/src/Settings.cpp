@@ -47,6 +47,12 @@ const std::pair<const char*, ProcessPriority> PROCESS_PRIORITY_MAP[] = {
     { "idle", ProcessPriority::Idle },
 };
 
+const std::pair<const char*, ThemeMode> THEME_MODE_MAP[] = {
+    { "auto", ThemeMode::Auto },
+    { "dark", ThemeMode::Dark },
+    { "light", ThemeMode::Light },
+};
+
 const std::pair<const char*, UpdatesMode> UPDATES_MODE_MAP[] = {
     { "off", UpdatesMode::Off },
     { "manual", UpdatesMode::Manual },
@@ -224,6 +230,14 @@ const char* ToString(ProcessPriority value) {
     }
 }
 
+const char* ToString(ThemeMode value) {
+    switch (value) {
+        case ThemeMode::Dark: return "dark";
+        case ThemeMode::Light: return "light";
+        default: return "auto";
+    }
+}
+
 const char* ToString(UpdatesMode value) {
     return value == UpdatesMode::Manual ? "manual" : "off";
 }
@@ -273,6 +287,7 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
 
     if (const json* section = FindSection(root, "application")) {
         ReadString(*section, "language", settings.application.language, result.warnings, "application");
+        ReadEnum(*section, "theme", THEME_MODE_MAP, settings.application.theme, result.warnings, "application");
         ReadBool(*section, "startMinimizedToTray", settings.application.startMinimizedToTray, result.warnings, "application");
         ReadBool(*section, "minimizeToTray", settings.application.minimizeToTray, result.warnings, "application");
         ReadEnum(*section, "closeButtonAction", CLOSE_ACTION_MAP, settings.application.closeButtonAction, result.warnings, "application");
@@ -280,7 +295,7 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
         ReadBool(*section, "singleInstance", settings.application.singleInstance, result.warnings, "application");
         ReadBool(*section, "startWithWindows", settings.application.startWithWindows, result.warnings, "application");
         WarnUnknownKeys(*section, "application",
-            { "language", "startMinimizedToTray", "minimizeToTray", "closeButtonAction", "showConsole", "singleInstance", "startWithWindows" },
+            { "language", "theme", "startMinimizedToTray", "minimizeToTray", "closeButtonAction", "showConsole", "singleInstance", "startWithWindows" },
             result.warnings);
     }
 
@@ -475,6 +490,7 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
 
     json& application = root["application"];
     application["language"] = settings.application.language;
+    application["theme"] = ToString(settings.application.theme);
     application["startMinimizedToTray"] = settings.application.startMinimizedToTray;
     application["minimizeToTray"] = settings.application.minimizeToTray;
     application["closeButtonAction"] = ToString(settings.application.closeButtonAction);
@@ -559,6 +575,7 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
 
     document.SectionOpen(2, "application", text(Str::CfgApplicationSection));
     document.Key(4, "language", settings.application.language, text(Str::CfgLanguage), true);
+    document.Key(4, "theme", ToString(settings.application.theme), text(Str::CfgTheme), true);
     document.Key(4, "startMinimizedToTray", settings.application.startMinimizedToTray, text(Str::CfgStartMinimizedToTray), true);
     document.Key(4, "minimizeToTray", settings.application.minimizeToTray, text(Str::CfgMinimizeToTray), true);
     document.Key(4, "closeButtonAction", ToString(settings.application.closeButtonAction), text(Str::CfgCloseButtonAction), true);

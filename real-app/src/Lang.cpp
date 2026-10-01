@@ -24,7 +24,8 @@ const Entry TABLE[] = {
     { Str::WindowTitle, "REAL - REduce Audio Latency", "REAL - REduce Audio Latency" },
     { Str::StatusStarting, "Starting...", "Запуск..." },
     { Str::ButtonReinitialize, "Activate", "Активировать" },
-    { Str::ButtonSettings, "Settings file...", "Файл настроек..." },
+    { Str::ButtonSettings, "Settings...", "Настройки..." },
+    { Str::ButtonSettingsFile, "Open the settings file...", "Открыть файл настроек..." },
     { Str::ButtonFileMenu, "File", "Файл" },
     { Str::ButtonAbout, "About", "О программе" },
     { Str::ButtonLog, "Log file...", "Файл журнала..." },
@@ -441,7 +442,7 @@ const Entry TABLE[] = {
       "  --help, -h, /?        Show this help\n"
       "  --version             Show the version\n"
       "\n"
-      "Settings: real.settings.json next to REAL.exe (created on the first run).\n"
+      "Settings: the \"Settings...\" item of the menu bar, or real.settings.json next to REAL.exe.\n"
       "Every parameter is explained by a comment inside that file, see also docs/CONFIG.md.\n",
       "{0} - {1} {2}\n"
       "\n"
@@ -468,11 +469,13 @@ const Entry TABLE[] = {
       "  --help, -h, /?        показать эту справку\n"
       "  --version             показать версию\n"
       "\n"
-      "Настройки: real.settings.json рядом с REAL.exe (создаётся при первом запуске).\n"
+      "Настройки: окно «Настройки...» в строке меню или файл real.settings.json рядом с REAL.exe.\n"
       "У каждого параметра есть комментарий прямо в файле, подробнее - docs/CONFIG.md.\n" },
 
     // Dialogs
     { Str::AboutTitle, "About REAL", "О программе REAL" },
+    // The system message box of "About": the version, the note about the
+    // program, the path of the settings file and the address of the project.
     { Str::AboutText,
       "REAL {0}\n"
       "While REAL is running, Windows uses the smallest buffer the driver of the default audio device supports.\n"
@@ -488,6 +491,7 @@ const Entry TABLE[] = {
       "\n"
       "Настройки: {1}\n"
       "Проект:  {2}" },
+
     { Str::DiagnosticsWriteFailed, "The diagnostics report could not be written to a file.",
                                    "Не удалось записать отчёт диагностики в файл." },
 
@@ -525,6 +529,92 @@ const Entry TABLE[] = {
     { Str::ValueOn, "on", "вкл" },
     { Str::ValueOff, "off", "выкл" },
 
+    // Settings window
+    { Str::SettingsWindowTitle, "REAL settings", "Настройки REAL" },
+    { Str::SettingsSave, "Save", "Сохранить" },
+    { Str::SettingsCancel, "Cancel", "Отмена" },
+    { Str::SettingsOpenFile, "Open the file", "Открыть файл" },
+    { Str::SettingsRestartHint, "The console and the tray icon change after a restart.",
+                                "Консоль и значок в трее изменятся после перезапуска." },
+    { Str::SettingsInvalidValues, "Check these values: {0}", "Проверьте значения: {0}" },
+    { Str::SettingsOpenFileFailed, "Could not open the settings file.", "Не удалось открыть файл настроек." },
+    { Str::SettingsTabWindow, "Window", "Окно" },
+    { Str::SettingsTabAudio, "Audio", "Звук" },
+    { Str::SettingsTabOther, "Other", "Прочее" },
+    { Str::SettingsHeaderApplication, "Application", "Приложение" },
+    { Str::SettingsHeaderTray, "Tray icon and its menu", "Значок в трее и его меню" },
+    { Str::SettingsHeaderMenu, "Tray menu items", "Пункты меню в трее" },
+    { Str::SettingsHeaderAudio, "Audio streams", "Аудиопотоки" },
+    { Str::SettingsHeaderReinit, "Reactivation", "Повторная активация" },
+    { Str::SettingsHeaderPerformance, "Performance", "Производительность" },
+    { Str::SettingsHeaderHotkeys, "Hotkeys", "Горячие клавиши" },
+    { Str::SettingsHeaderUpdates, "Updates", "Обновления" },
+    { Str::SettingsHeaderLog, "Log", "Журнал" },
+    { Str::SettingsLanguage, "Language", "Язык" },
+    { Str::SettingsLanguageAuto, "as in Windows", "как в Windows" },
+    { Str::SettingsLanguageEnglish, "English", "английский" },
+    { Str::SettingsLanguageRussian, "Russian", "русский" },
+    { Str::SettingsTheme, "Theme", "Тема" },
+    { Str::SettingsThemeAuto, "as in Windows", "как в Windows" },
+    { Str::SettingsThemeDark, "dark", "тёмная" },
+    { Str::SettingsThemeLight, "light", "светлая" },
+    { Str::SettingsStartWithWindows, "Start with Windows", "Запускать вместе с Windows" },
+    { Str::SettingsStartMinimized, "Start minimized to tray", "Запускать свёрнутым в трей" },
+    { Str::SettingsMinimizeToTray, "Minimize to tray", "Сворачивать в трей" },
+    { Str::SettingsCloseAction, "Close button", "Кнопка закрытия" },
+    { Str::SettingsCloseMinimize, "minimize to tray", "свернуть в трей" },
+    { Str::SettingsCloseExit, "exit", "завершить программу" },
+    { Str::SettingsShowConsole, "Show the console with the log", "Показывать консоль с журналом" },
+    { Str::SettingsSingleInstance, "One copy only", "Один экземпляр" },
+    { Str::SettingsTrayEnabled, "Show the tray icon", "Показывать значок в трее" },
+    { Str::SettingsTrayTooltip, "Show the status in the tooltip", "Показывать состояние в подсказке значка" },
+    { Str::SettingsNotifyError, "Notify about errors", "Уведомлять об ошибках" },
+    { Str::SettingsNotifyDeviceChange, "Notify about device changes", "Уведомлять о смене устройств" },
+    { Str::SettingsNotifyStateChange, "Notify about the mode switching", "Уведомлять о переключении режима" },
+    { Str::SettingsMenuStatus, "Status line", "Строка состояния" },
+    { Str::SettingsEnabledOnStartup, "Turn on at start-up", "Включать при запуске" },
+    { Str::SettingsDataFlow, "Streams", "Потоки" },
+    { Str::SettingsFlowRender, "playback (render)", "воспроизведение (render)" },
+    { Str::SettingsFlowCapture, "recording (capture)", "запись (capture)" },
+    { Str::SettingsFlowBoth, "playback and recording", "воспроизведение и запись" },
+    { Str::SettingsRole, "Device role", "Роль устройства" },
+    { Str::SettingsRoleConsole, "console", "консольное" },
+    { Str::SettingsRoleMultimedia, "multimedia", "мультимедиа" },
+    { Str::SettingsRoleCommunications, "communications", "связь" },
+    { Str::SettingsPeriod, "Period", "Период" },
+    { Str::SettingsPeriodMinimum, "minimum", "минимальный" },
+    { Str::SettingsPeriodFundamental, "fundamental", "основной" },
+    { Str::SettingsPeriodFixed, "fixed value", "фиксированный" },
+    { Str::SettingsRequestedPeriod, "Requested period, frames", "Запрашиваемый период, кадры" },
+    { Str::SettingsAllowPeriodSnap, "Let Windows adjust the period", "Разрешить Windows подбирать период" },
+    { Str::SettingsReleaseOnExit, "Release devices on exit", "Освобождать устройства при выходе" },
+    { Str::SettingsReinitDeviceChanged, "Default device changed", "Сменилось устройство по умолчанию" },
+    { Str::SettingsReinitDeviceState, "Device state changed", "Сменилось состояние устройства" },
+    { Str::SettingsReinitDeviceAdded, "Device added", "Устройство добавлено" },
+    { Str::SettingsReinitDeviceRemoved, "Device removed", "Устройство удалено" },
+    { Str::SettingsReinitResume, "Resume from sleep", "Выход из спящего режима" },
+    { Str::SettingsReinitUnlock, "Session unlock", "Разблокировка сеанса" },
+    { Str::SettingsReinitEnableWhenDisabled, "Enable when the driver resets the mode", "Включать, если драйвер сбросил режим" },
+    { Str::SettingsReinitFailureTimeout, "Pause after a failure, ms", "Пауза после сбоя, мс" },
+    { Str::SettingsReinitDebounce, "Delay before a repeat, ms", "Задержка перед повтором, мс" },
+    { Str::SettingsProcessPriority, "Process priority", "Приоритет процесса" },
+    { Str::SettingsPriorityNormal, "normal", "обычный" },
+    { Str::SettingsPriorityBelowNormal, "below normal", "ниже обычного" },
+    { Str::SettingsPriorityIdle, "idle", "простой" },
+    { Str::SettingsDisablePowerThrottling, "Disable power throttling", "Отключить энергосбережение" },
+    { Str::SettingsHotkeysEnabled, "Use hotkeys", "Использовать горячие клавиши" },
+    { Str::SettingsHotkeyToggle, "Enable / disable", "Включить / выключить" },
+    { Str::SettingsHotkeyReinitialize, "Activate again", "Активировать заново" },
+    { Str::SettingsUpdatesMode, "Check for updates", "Проверка обновлений" },
+    { Str::SettingsUpdatesOff, "off", "выключена" },
+    { Str::SettingsUpdatesOnStartup, "once at start-up", "один раз при запуске" },
+    { Str::SettingsCheckOnStartup, "Check on start-up", "Проверять при запуске" },
+    { Str::SettingsLogLevel, "Level", "Уровень" },
+    { Str::SettingsLogToFile, "Write to the file", "Писать в файл" },
+    { Str::SettingsLogFilePath, "File", "Файл" },
+    { Str::SettingsLogMaxFileSize, "Max size, MB", "Максимальный размер, МБ" },
+    { Str::SettingsLogMaxFiles, "Files to keep", "Хранить файлов" },
+
     // Settings file comments
     { Str::CfgFileHeader,
       "Settings of REAL. The file is created automatically and is read when the program starts or when the settings are reloaded. Comments can be removed.",
@@ -544,6 +634,8 @@ const Entry TABLE[] = {
                                 "true - автозапуск при входе в систему (запись REAL в HKCU Run)." },
     { Str::CfgLanguage, "Language of the interface, the log and these comments: \"auto\" (Windows), \"en\", \"ru\". When the language changes, the comments are rewritten on the next start, the values stay.",
                         "Язык интерфейса, журнала и этих комментариев: \"auto\" (язык Windows), \"en\", \"ru\". При смене языка комментарии перезаписываются при следующем запуске, значения сохраняются." },
+    { Str::CfgTheme, "Look of the window: \"auto\" (the Windows setting), \"dark\" or \"light\". The window itself, its texts and the list of the log follow it; the menus and the check boxes follow when Windows supports it.",
+                      "Оформление окна: \"auto\" (как в Windows), \"dark\" (тёмное) или \"light\" (светлое). Программа сама рисует фон, тексты и журнал, а меню и флажки подхватывают тему, если Windows это поддерживает." },
     { Str::CfgTraySection, "Icon in the notification area.", "Значок в системном трее." },
     { Str::CfgTrayEnabled, "true - show the tray icon (left click shows the window, right click opens the menu).",
                            "true - показывать значок в трее (левый клик - окно, правый - меню)." },

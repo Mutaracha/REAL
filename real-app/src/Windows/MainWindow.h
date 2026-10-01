@@ -48,6 +48,9 @@ public:
     // the language setting has changed).
     void ApplyLanguage();
 
+    // Repaints the window and its controls after the theme has changed.
+    void ApplyTheme();
+
     void SetStatusText(const std::wstring& text);
     void AppendLogLines(const std::vector<std::string>& lines);
     void Notify(const std::wstring& title, const std::wstring& text, bool error);
