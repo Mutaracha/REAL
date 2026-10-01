@@ -43,6 +43,10 @@ public:
     // Short status line, e.g. "2.67 ms - Speakers (Realtek Audio)".
     std::wstring GetStatusText() const;
 
+    // Technical description of the running stream for the log:
+    // "Speakers (Realtek Audio), 48000 Hz, 2 ch, 32 bit, period 336 frames (7.00 ms)".
+    std::string GetDetailsText() const;
+
     // Detects a stream that has been invalidated (device removed, audio service
     // restarted) or a default device that is not the one we are using anymore.
     tl::expected<void, Windows::WindowsError> Validate();

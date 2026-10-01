@@ -41,10 +41,14 @@ bool Console::Attach() {
     }
 
     // Share the console of the parent process when the application was started
-    // from one; only allocate a new console window when there is none.
-    if (::AttachConsole(ATTACH_PARENT_PROCESS) == FALSE) {
-        if (::AllocConsole() == FALSE) {
-            return false;
+    // from one; only allocate a new console window when there is none. Attaching
+    // or allocating fails when the process already owns a console, which is not
+    // an error here: the streams are reopened below in any case.
+    if (::GetConsoleWindow() == nullptr) {
+        if (::AttachConsole(ATTACH_PARENT_PROCESS) == FALSE) {
+            if (::AllocConsole() == FALSE) {
+                return false;
+            }
         }
     }
 
@@ -72,6 +76,10 @@ void Console::Detach() {
 
 bool Console::IsAttached() {
     return g_attached;
+}
+
+bool Console::HasConsole() {
+    return ::GetConsoleWindow() != nullptr;
 }
 
 bool Console::IsVisible() {

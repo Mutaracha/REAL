@@ -30,14 +30,25 @@ const struct {
     miniant::Command command;
 } BUTTONS[] = {
     { 1, miniant::Lang::Str::ButtonReinitialize, miniant::Command::Reinitialize },
-    { 2, miniant::Lang::Str::ButtonSettings, miniant::Command::OpenSettings },
-    { 3, miniant::Lang::Str::ButtonLog, miniant::Command::OpenLog },
-    { 4, miniant::Lang::Str::ButtonDiagnostics, miniant::Command::Diagnose },
-    { 5, miniant::Lang::Str::ButtonHideToTray, miniant::Command::HideToTray },
-    { 6, miniant::Lang::Str::ButtonExit, miniant::Command::Exit },
+    { 2, miniant::Lang::Str::ButtonHideToTray, miniant::Command::HideToTray },
+    { 3, miniant::Lang::Str::ButtonExit, miniant::Command::Exit },
+};
+
+// Everything that opens a file or a report sits in the menu bar; the bottom
+// row is left to the actions that change the state of the program.
+const struct {
+    UINT id;
+    miniant::Lang::Str text;
+    miniant::Command command;
+} FILE_MENU_ITEMS[] = {
+    { 101, miniant::Lang::Str::ButtonSettings, miniant::Command::OpenSettings },
+    { 102, miniant::Lang::Str::ButtonLog, miniant::Command::OpenLog },
+    { 103, miniant::Lang::Str::ButtonDiagnostics, miniant::Command::Diagnose },
+    { 104, miniant::Lang::Str::ButtonAbout, miniant::Command::About },
 };
 
 constexpr size_t BUTTON_COUNT = sizeof(BUTTONS) / sizeof(BUTTONS[0]);
+constexpr size_t FILE_MENU_ITEM_COUNT = sizeof(FILE_MENU_ITEMS) / sizeof(FILE_MENU_ITEMS[0]);
 
 }
 
@@ -171,6 +182,26 @@ void MainWindow::ApplyLanguage() {
                 break;
             }
         }
+    }
+
+    if (m_fileMenu != nullptr) {
+        for (size_t i = 0; i < FILE_MENU_ITEM_COUNT; ++i) {
+            ::ModifyMenuW(
+                m_fileMenu,
+                static_cast<UINT>(i),
+                MF_BYPOSITION | MF_STRING,
+                FILE_MENU_ITEMS[i].id,
+                miniant::Lang::Wide(FILE_MENU_ITEMS[i].text).c_str());
+        }
+    }
+
+    if (m_menu != nullptr && m_fileMenu != nullptr) {
+        ::ModifyMenuW(
+            m_menu,
+            0,
+            MF_BYPOSITION | MF_STRING | MF_POPUP,
+            reinterpret_cast<UINT_PTR>(m_fileMenu),
+            miniant::Lang::Wide(miniant::Lang::Str::ButtonFileMenu).c_str());
     }
 
     if (!m_statusTextSet && m_status != nullptr) {
@@ -317,6 +348,27 @@ void MainWindow::CreateControls() {
         m_buttons.emplace_back(button, BUTTONS[i].command);
     }
 
+    m_menu = ::CreateMenu();
+    m_fileMenu = ::CreatePopupMenu();
+
+    if (m_menu != nullptr && m_fileMenu != nullptr) {
+        for (size_t i = 0; i < FILE_MENU_ITEM_COUNT; ++i) {
+            ::AppendMenuW(
+                m_fileMenu,
+                MF_STRING,
+                FILE_MENU_ITEMS[i].id,
+                miniant::Lang::Wide(FILE_MENU_ITEMS[i].text).c_str());
+        }
+
+        ::AppendMenuW(
+            m_menu,
+            MF_POPUP,
+            reinterpret_cast<UINT_PTR>(m_fileMenu),
+            miniant::Lang::Wide(miniant::Lang::Str::ButtonFileMenu).c_str());
+
+        ::SetMenu(m_window, m_menu);
+    }
+
     if (m_uiFont != nullptr) {
         ::SendMessageW(m_status, WM_SETFONT, reinterpret_cast<WPARAM>(m_uiFont), TRUE);
 
@@ -365,6 +417,12 @@ void MainWindow::LayoutControls() {
 }
 
 void MainWindow::DestroyResources() {
+    if (m_menu != nullptr) {
+        ::DestroyMenu(m_menu);
+        m_menu = nullptr;
+        m_fileMenu = nullptr;
+    }
+
     if (m_uiFont != nullptr) {
         ::DeleteObject(m_uiFont);
         m_uiFont = nullptr;
@@ -435,6 +493,15 @@ LRESULT MainWindow::WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam) 
                 for (const auto& button : m_buttons) {
                     if (::GetDlgCtrlID(button.first) == static_cast<int>(id)) {
                         RaiseCommand(button.second);
+                        return 0;
+                    }
+                }
+            }
+
+            if (notification == 0) {
+                for (size_t i = 0; i < FILE_MENU_ITEM_COUNT; ++i) {
+                    if (FILE_MENU_ITEMS[i].id == id) {
+                        RaiseCommand(FILE_MENU_ITEMS[i].command);
                         return 0;
                     }
                 }

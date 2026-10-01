@@ -166,10 +166,6 @@ void InspectEndpoint(IMMDevice& device, EndpointInfo& info) {
     info.error = miniant::Lang::Utf8(miniant::Lang::Str::DiagNoAudioClient3Detail);
 }
 
-std::string FlowName(EDataFlow flow) {
-    return miniant::Lang::Utf8(flow == eRender ? miniant::Lang::Str::DiagFlowRender : miniant::Lang::Str::DiagFlowCapture);
-}
-
 std::string Milliseconds(uint32_t frames, uint32_t sampleRate) {
     if (sampleRate == 0) {
         return "-";
@@ -349,15 +345,26 @@ std::string miniant::Windows::Diagnostics::BuildReport(
                 miniant::Lang::Utf8(miniant::Lang::Str::DiagEnumeratorError), DescribeHResult(static_cast<long>(hr)));
             text += miniant::Lang::Utf8(miniant::Lang::Str::DiagAudiosrvHint);
         } else {
-            const EDataFlow flows[] = { eRender, eCapture };
+            // The same flows the latency reduction itself inspects: with
+            // dataFlow = "render" the report has nothing to say about the
+            // recording devices.
+            std::vector<EDataFlow> flows;
+            if (settings.audio.dataFlow != Config::DataFlow::Capture) {
+                flows.push_back(eRender);
+            }
+            if (settings.audio.dataFlow != Config::DataFlow::Render) {
+                flows.push_back(eCapture);
+            }
+
             for (EDataFlow flow : flows) {
-                text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagFlowHeader), FlowName(flow));
+                text += miniant::Lang::Utf8(
+                    flow == EDataFlow::eRender ? miniant::Lang::Str::DiagDevicesRender : miniant::Lang::Str::DiagDevicesCapture);
 
                 const std::vector<EndpointInfo> endpoints = EnumerateEndpoints(flow, *enumerator.Get());
                 Log::Info(
                     miniant::Lang::Utf8(miniant::Lang::Str::LogDiagEndpoints),
-                    endpoints.size(),
-                    miniant::Lang::Utf8(flow == EDataFlow::eRender ? miniant::Lang::Str::FlowRender : miniant::Lang::Str::FlowCapture));
+                    miniant::Lang::Utf8(flow == EDataFlow::eRender ? miniant::Lang::Str::FlowRender : miniant::Lang::Str::FlowCapture),
+                    endpoints.size());
                 Log::Flush();
 
                 if (endpoints.empty()) {
@@ -409,9 +416,10 @@ std::string miniant::Windows::Diagnostics::BuildReport(
                 }
             }
 
-            // What REAL itself is doing right now.
-            text += miniant::Lang::Utf8(miniant::Lang::Str::DiagSummaryHeader);
-            text += miniant::Lang::Utf8(miniant::Lang::Str::DiagSummary);
+            // What is worth knowing about the list above; the verdict for each
+            // device is already in its "result" line.
+            text += miniant::Lang::Utf8(miniant::Lang::Str::DiagNotesHeader);
+            text += miniant::Lang::Utf8(miniant::Lang::Str::DiagNotes);
         }
     }
 

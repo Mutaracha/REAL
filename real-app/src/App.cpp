@@ -1,5 +1,6 @@
 #include "App.h"
 
+#include <commctrl.h>
 #include <wtsapi32.h>
 
 #include <cwchar>
@@ -200,7 +201,7 @@ int App::Run() {
 
         if (NotifyRunningInstance(signal)) {
             if (m_options.action == CommandLine::Action::Run) {
-                std::cout << Lang::Utf8(Str::OpAlreadyRunning) << std::endl;
+                std::cout << "[info] " << Lang::Utf8(Str::OpAlreadyRunning) << std::endl;
             }
 
             return 0;
@@ -237,14 +238,23 @@ int App::Run() {
     ApplyPerformanceSettings();
     CleanupPreviousInstall();
 
+    // The about window uses the link control of the common controls library.
+    INITCOMMONCONTROLSEX commonControls = {};
+    commonControls.dwSize = sizeof(commonControls);
+    commonControls.dwICC = ICC_STANDARD_CLASSES | ICC_LINK_CLASS;
+    ::InitCommonControlsEx(&commonControls);
+
     if (!InitializeUi()) {
         Shutdown();
         return 1;
     }
 
+    // The reminder about the hotkeys belongs to the beginning of the session,
+    // right after the startup lines.
+    RegisterHotkeys();
+
     InitializeAudio();
     InitializeTray();
-    RegisterHotkeys();
 
     if (m_settings.updates.mode != Config::UpdatesMode::Off && m_settings.updates.checkOnStartup) {
         StartUpdateCheck();
@@ -281,11 +291,11 @@ bool App::LoadSettings() {
         const std::string commentLanguage = Lang::Code(Lang::Current());
 
         for (const auto& warning : result.warnings) {
-            std::cout << Lang::Utf8(Str::SettingsPrefix) << " " << warning << std::endl;
+            std::cout << "[warn] " << Lang::Utf8(Str::SettingsPrefix) << " " << warning << std::endl;
         }
 
         if (result.parseFailed) {
-            std::cout << Lang::Utf8(Str::SettingsPrefix) << " " << result.error << std::endl;
+            std::cout << "[error] " << Lang::Utf8(Str::SettingsPrefix) << " " << result.error << std::endl;
         }
 
         if (!result.parseFailed) {
@@ -293,19 +303,22 @@ bool App::LoadSettings() {
                 m_settings.commentLanguage = commentLanguage;
 
                 if (Config::Write(m_settings, m_settingsPath)) {
-                    std::cout << Lang::Utf8(Str::OpSettingsCreated) << ": " << Text::ToUtf8(m_settingsPath) << std::endl;
+                    std::cout << "[info] " << Lang::Utf8(Str::OpSettingsCreated) << ": "
+                              << Text::ToUtf8(m_settingsPath) << std::endl;
                 } else {
-                    std::cout << fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath))
+                    std::cout << "[error] "
+                              << fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath))
                               << std::endl;
                 }
-            } else if (m_settings.commentLanguage != commentLanguage) {
+            } else if (Config::PeekCommentLanguage(m_settingsPath) != commentLanguage) {
                 m_settings.commentLanguage = commentLanguage;
 
                 if (Config::Write(m_settings, m_settingsPath)) {
                     // Logging is not available yet, the line is written below.
                     m_commentsRewritten = commentLanguage;
                 } else {
-                    std::cout << fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath))
+                    std::cout << "[error] "
+                              << fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath))
                               << std::endl;
                 }
             }
@@ -338,13 +351,18 @@ bool App::LoadSettings() {
 }
 
 bool App::InitializeLogging() {
-    bool consoleAttached = false;
+    // The console mirrors the operations whenever it exists; a window is created
+    // only for showConsole/--console, so a normal GUI start stays windowless.
+    bool consoleAttached = Windows::Console::HasConsole();
 
     if (m_settings.application.showConsole) {
-        consoleAttached = Windows::Console::Attach();
-        if (!consoleAttached) {
-            std::cout << Lang::Utf8(Str::ErrConsoleAttach) << std::endl;
+        const bool attached = Windows::Console::Attach();
+
+        if (!attached && !consoleAttached) {
+            std::cout << "[error] " << Lang::Utf8(Str::ErrConsoleAttach) << std::endl;
         }
+
+        consoleAttached = consoleAttached || attached;
     }
 
     Log::Initialize(m_settings, consoleAttached);
@@ -361,13 +379,9 @@ void App::LogBanner() {
 
     Log::Operation(Lang::Utf8(Str::OpSettingsFile), Text::ToUtf8(m_settingsPath));
 
-    Log::Info(
-        Lang::Utf8(Str::LogBanner),
-        AppInfo::PROJECT_URL,
-        Text::ToUtf8(AppInfo::DESCRIPTION),
-        AppInfo::VERSION.ToString());
-    Log::Info(Lang::Utf8(Str::LogUpstream), AppInfo::UPSTREAM_URL);
-    Log::Info(Lang::Utf8(Str::LogLanguage), Lang::Code(Lang::Current()), m_settings.application.language);
+    // The configuration that takes part in the latency reduction: this is what a
+    // diagnostics report needs. The version is in the started line above, the
+    // remaining settings are in the settings file.
     Log::Info("{}", Config::Describe(m_settings));
 }
 
@@ -539,8 +553,6 @@ void App::ApplyAudio() {
         return;
     }
 
-    Log::Operation(Lang::Utf8(Str::OpApplying));
-
     auto result = m_audio.Apply(m_settings);
     if (!result) {
         const bool firstFailure = m_failureSince == 0;
@@ -550,8 +562,9 @@ void App::ApplyAudio() {
             // the file log, otherwise the console becomes unreadable.
             m_failureSince = ::GetTickCount64();
 
+            // The message already says that another attempt follows; the
+            // retries themselves stay quiet (see ScheduleAudioRetry).
             Log::Error("{}", result.error().GetMessage());
-            Log::Info(Lang::Utf8(Str::OpReportHint));
 
             if (m_settings.tray.notifications.onError) {
                 m_window->Notify(
@@ -576,7 +589,13 @@ void App::ApplyAudio() {
     m_audioSuspended = false;
     CancelAudioRetry();
 
-    Log::Operation(Lang::Utf8(Str::OpApplied), Text::ToUtf8(m_audio.GetStatusText()));
+    // One line per apply: the technical result, or the reason why nothing has
+    // to be held open (the driver has no smaller buffer than its default one).
+    if (m_audio.IsActive()) {
+        Log::Operation(Lang::Utf8(Str::OpApplied), m_audio.GetDetailsText());
+    } else {
+        Log::Operation(Lang::Utf8(Str::OpDriverMinimum), m_audio.GetDetailsText());
+    }
 
     // One balloon per action, and only about what the settings allow: a device
     // change, a recovery from an outage, or a plain switch on/off.
@@ -745,20 +764,9 @@ void App::OpenLogFile() {
 }
 
 void App::ShowAboutDialog() {
-    const std::string formatted = fmt::format(
-        Lang::Utf8(Str::AboutText),
-        AppInfo::VERSION.ToString(),
-        Text::ToUtf8(m_settingsPath),
-        AppInfo::PROJECT_URL);
-
-    const std::wstring text = Text::ToWide(formatted);
-    const std::wstring title = Lang::Wide(Str::AboutTitle);
-
-    ::MessageBoxW(
-        m_window != nullptr ? m_window->GetHWindow() : nullptr,
-        text.c_str(),
-        title.c_str(),
-        MB_OK | MB_ICONINFORMATION);
+    if (m_window != nullptr) {
+        Windows::ShowAboutDialog(m_window->GetHWindow(), m_window->GetInstance());
+    }
 }
 
 void App::StartUpdateCheck() {
@@ -779,9 +787,8 @@ void App::StartUpdateCheck() {
     }
 
     Log::Operation(Lang::Utf8(Str::OpUpdateChecking));
-    Log::Info(Lang::Utf8(Str::LogRepository), m_settings.updates.repository);
 
-    const std::string repository = m_settings.updates.repository;
+    const std::string repository = AppInfo::GITHUB_REPOSITORY;
     const HWND windowHandle = m_window != nullptr ? m_window->GetHWindow() : nullptr;
 
     m_updateThread = std::thread([this, repository, windowHandle]() {
@@ -882,7 +889,6 @@ void App::OnCommand(Command command) {
             m_failureSince = 0;
             m_lastApplyFailed = false;
 
-            Log::Operation(Lang::Utf8(Str::OpReinitialising));
             CancelAudioRetry();
             ApplyAudio();
             break;
@@ -1063,7 +1069,8 @@ void App::OnTimer(UINT_PTR timerId) {
             return;
         }
 
-        Log::Debug("{}", Lang::Utf8(Str::OpRetry));
+        // The attempt itself does not need a line: ScheduleAudioRetry() wrote
+        // the delay, and the result follows from ApplyAudio().
         ApplyAudio();
         return;
     }
@@ -1180,6 +1187,7 @@ void App::GiveUpOnDevice() {
     m_audio.Stop();
 
     Log::Operation(Lang::Utf8(Str::OpGaveUp), (limit + 999) / 1000);
+    Log::Operation(Lang::Utf8(Str::OpDiagHint));
 
     if (m_settings.tray.notifications.onError) {
         m_window->Notify(
@@ -1286,7 +1294,7 @@ void App::ShowDiagnostics() {
         return;
     }
 
-    Log::Info(Lang::Utf8(Str::OpDiagnostics), Text::ToUtf8(path));
+    Log::Operation(Lang::Utf8(Str::OpDiagnostics), Text::ToUtf8(path));
     ::ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
@@ -1341,7 +1349,8 @@ void App::RegisterHotkeys() {
     }
 
     if (toggleRegistered || reinitializeRegistered) {
-        Log::Operation(
+        // A reminder for the user, not a record for the log file.
+        Log::Hint(
             Lang::Utf8(Str::OpHotkeys),
             toggleRegistered ? m_settings.hotkeys.toggleEnabled : std::string("-"),
             reinitializeRegistered ? m_settings.hotkeys.reinitialize : std::string("-"));

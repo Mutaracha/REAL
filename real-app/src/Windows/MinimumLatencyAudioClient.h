@@ -83,4 +83,9 @@ private:
 
 std::string DescribeStreamWin32(const AudioStreamInfo& info);
 
+// The same data without the data flow: this is what the result line of the log
+// ("Latency reduction is active: ...") is built from, the flow belongs to the
+// per-stream record instead.
+std::string DescribeStreamForStatus(const AudioStreamInfo& info);
+
 }

@@ -16,6 +16,8 @@ public:
     static void Detach();
 
     static bool IsAttached();
+    // True when the process already has a console (started from one).
+    static bool HasConsole();
     static bool IsVisible();
 
     static void Show();

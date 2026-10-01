@@ -72,6 +72,9 @@ private:
     HWND m_window = nullptr;
     HINSTANCE m_instance = nullptr;
 
+    HMENU m_menu = nullptr;
+    HMENU m_fileMenu = nullptr;
+
     HWND m_status = nullptr;
     HWND m_log = nullptr;
     std::vector<std::pair<HWND, miniant::Command>> m_buttons;

@@ -3,6 +3,7 @@
 #include "AudioSession.h"
 #include "CommandLine.h"
 #include "Commands.h"
+#include "Windows/AboutDialog.h"
 #include "Settings.h"
 #include "Windows/MainWindow.h"
 

@@ -56,6 +56,11 @@ void Write(Level level, const std::string& message);
 // reaches the console (the console would be unreadable otherwise).
 void WriteOperation(const std::string& message);
 
+// A hint for the user (hotkeys and other reminders): it is shown in the window
+// and in the console, but never written to the log file, which stays a record
+// of what the program did.
+void WriteHint(const std::string& message);
+
 // Writes everything that is still buffered to the sinks. A log line that is
 // followed by a crash is otherwise lost (the file sinks cache the output).
 void Flush();
@@ -67,6 +72,11 @@ bool WriteSnapshotToFile(const std::wstring& path);
 template <typename... Args>
 void Operation(const char* format, const Args&... args) {
     WriteOperation(fmt::format(format, args...));
+}
+
+template <typename... Args>
+void Hint(const char* format, const Args&... args) {
+    WriteHint(fmt::format(format, args...));
 }
 
 template <typename... Args>

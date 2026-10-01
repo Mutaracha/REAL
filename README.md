@@ -9,10 +9,13 @@ application that uses that device.
 This is a fork of [miniant-git/REAL](https://github.com/miniant-git/REAL) (v0.2.0, 2019)
 that is still maintained and adds quality-of-life features:
 
-* proper window that can be closed/minimised to the system tray
-* tray menu: enable/disable, re-initialise, settings, log, updates, autostart, exit
-* re-initialisation without restarting the application — automatically on device
-  changes, sleep/resume and session unlock, manually via the tray menu or a hotkey
+* proper window that can be closed/minimised to the system tray, with a menu bar
+  (settings file, log file, diagnostics, about) and only the state-changing
+  buttons at the bottom
+* tray menu: enable/disable, activate, settings, log, diagnostics, autostart, exit
+* activation of the audio streams without restarting the application — automatically
+  on device changes, sleep/resume and session unlock, manually via the tray menu,
+  the window button or a hotkey
 * no forced update checks: checking is optional and never closes the application
 * external settings file next to the executable (`real.settings.json`)
 * Windows 11 tweaks (power throttling, informative HRESULT diagnostics)
@@ -27,10 +30,10 @@ that is still maintained and adds quality-of-life features:
   added/removed, after resume from sleep or after the audio service restarts;
   the mode is switched back on when it was off (`reinit.enableWhenDisabled`)
 * Minimises to the system tray; the tray icon survives an `explorer.exe` restart
-* Global hotkeys (default `Ctrl+Alt+L` — toggle, `Ctrl+Alt+R` — re-initialise)
+* Global hotkeys (default `Ctrl+Alt+L` — toggle, `Ctrl+Alt+R` — activate)
 * Optional autostart with Windows
 * Optional update check at startup only (off by default, never installed
-  silently, no runtime requests)
+  silently, no runtime requests; the repository is fixed in the build)
 * Interface and log in English or Russian, picked from the Windows UI language
   on the first run (`application.language`: `auto`, `en`, `ru`)
 * Settings in a plain JSON file that documents every option with comments
@@ -97,7 +100,7 @@ Commands for a running instance (forwarded to it, this process exits):
 
 `real.settings.json` is created next to `REAL.exe` on the first run. It is plain
 JSON (`//` and `/* */` comments are allowed), every option is explained by a
-comment, and it is re-read when you use **Settings file…** in the tray menu or
+comment, and it is re-read when you use **Settings file** in the tray menu or
 `--config`. Command-line options override
 the file. A step-by-step guide in Russian is available in
 [docs/usage.ru.md](docs/usage.ru.md). See [docs/CONFIG.md](docs/CONFIG.md) for the full reference and
@@ -182,10 +185,12 @@ and disabling power throttling (`performance.disablePowerThrottling`).
 
 ### How do I report a problem?
 
-Press **Diagnostics** in the window (or run `REAL.exe --diagnose`). It writes
-`REAL-diagnostics.txt` next to the executable with your Windows version, every
-active audio endpoint, its driver version and the periods it supports, so the
-reason is visible without guesswork. The application log (`REAL.log`) is written
+Press **Diagnostics** in the window (or *File → Diagnostics...*, or run
+`REAL.exe --diagnose`). It writes
+`REAL-diagnostics.txt` next to the executable with your Windows version, the
+active audio endpoints of the direction selected by `audio.dataFlow`, their
+driver version and the periods they support, so the reason is visible without
+guesswork. The application log (`REAL.log`) is written
 next to the executable as well.
 
 ### It says "the driver does not offer a period smaller than the default one"
@@ -202,14 +207,16 @@ device add/remove, resume from sleep, session unlock, audio service restart, plu
 a check every 30 seconds). The limits are configurable in `audio.reinit`. If the
 device does not answer, the retries back off and a single balloon is shown; after
 `reinit.failureTimeoutMs` the mode is switched off and the device is not polled
-until it appears again. To force it manually: tray menu → **Reinitialize now**,
-press `Ctrl+Alt+R`, or run `REAL.exe --reinit` — this also switches the mode back
-on when it was off.
+until it appears again. To force it manually: tray menu → **Activate now**,
+press `Ctrl+Alt+R`, the **Activate** button in the window, or run
+`REAL.exe --reinit` — this also switches the mode back on when it was off.
 
 ### Where are the logs?
 
-`REAL.log` next to the executable (configurable in `logging`). Use
-**Open log** in the tray menu to open it, or the *Open log* button in the window.
+`REAL.log` next to the executable (configurable in `logging`; the console is not
+part of these settings — whenever it is shown it mirrors the operations at the
+`info` level). Use **Log file** in the tray menu, or *File → Log file...* in the
+window.
 HRESULT failures are reported with their symbolic name, e.g.
 `AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890008)`.
 

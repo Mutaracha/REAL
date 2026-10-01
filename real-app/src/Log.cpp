@@ -9,6 +9,7 @@
 #include <spdlog/sinks/stdout_sinks.h>
 #include <spdlog/spdlog.h>
 
+#include <ctime>
 #include <exception>
 #include <filesystem>
 #include <memory>
@@ -163,12 +164,15 @@ void miniant::Log::Initialize(const Config::Settings& settings, bool consoleAtta
     std::vector<spdlog::sink_ptr> sinks;
 
     auto bufferSink = std::make_shared<BufferSink>(g_buffer.get());
-    bufferSink->set_pattern("[%H:%M:%S] %v");
+    bufferSink->set_pattern("[%H:%M:%S] [%l] %v");
     sinks.push_back(bufferSink);
 
-    if (settings.logging.toConsole && consoleAttached) {
+    // The console is not part of the logging settings: whenever it is shown, it
+    // mirrors the operations at the info level, so that the user always sees
+    // what the program is doing. Only the log file is configurable.
+    if (consoleAttached) {
         auto consoleSink = std::make_shared<spdlog::sinks::stdout_sink_mt>();
-        consoleSink->set_pattern("%v");
+        consoleSink->set_pattern("[%l] %v");
         g_consoleLogger = std::make_shared<spdlog::logger>("console", consoleSink);
         g_consoleLogger->set_level(spdlog::level::info);
     }
@@ -218,6 +222,23 @@ void miniant::Log::WriteOperation(const std::string& message) {
     if (g_consoleLogger != nullptr) {
         g_consoleLogger->info(message);
     }
+}
+
+void miniant::Log::WriteHint(const std::string& message) {
+    if (g_consoleLogger != nullptr) {
+        g_consoleLogger->info(message);
+    }
+
+    // The window shows the hints as well, so the file is the only place they
+    // are left out of. The timestamp matches the pattern of the buffer sink.
+    const std::time_t now = std::time(nullptr);
+    std::tm local = {};
+    ::localtime_s(&local, &now);
+
+    char timestamp[16] = {};
+    std::strftime(timestamp, sizeof(timestamp), "%H:%M:%S", &local);
+
+    Buffer().Append(fmt::format("[{}] [info] {}\n", timestamp, message));
 }
 
 void miniant::Log::Write(Level level, const std::string& message) {

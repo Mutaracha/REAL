@@ -135,7 +135,7 @@ jobs:
 
             # The startup banner also contains "Settings: <path>", so only
             # warnings and errors about the settings file count as a problem.
-            $bad = Select-String -Path $settingsLog -Pattern "\[(warn|error)\].*[Ss]ettings|Could not parse the settings file"
+            $bad = Select-String -Path $settingsLog -Pattern "\[(warn|warning|error)\].*[Ss]ettings|Could not parse the settings file"
             if ($bad) {
               $bad | ForEach-Object { Add-Log "unexpected settings message: $($_.Line)" }
               throw "the generated settings file does not load cleanly"

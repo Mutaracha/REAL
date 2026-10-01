@@ -319,14 +319,32 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
     return std::move(result);
 }
 
-std::string miniant::Windows::WasapiLatency::DescribeStreamWin32(const AudioStreamInfo& info) {
-    return fmt::format(
-        "{}, {}, {} Hz, {} ch, {} bit, period {} frames ({:.2f} ms)",
-        Text::ToUtf8(info.deviceName.empty() ? std::wstring(L"<unknown device>") : info.deviceName),
-        info.dataFlow == eRender ? "render" : "capture",
+namespace {
+
+std::string DescribeStream(const AudioStreamInfo& info, bool withFlow) {
+    std::string text = Text::ToUtf8(info.deviceName.empty() ? std::wstring(L"<unknown device>") : info.deviceName);
+
+    if (withFlow) {
+        text += info.dataFlow == eRender ? ", render" : ", capture";
+    }
+
+    text += fmt::format(
+        ", {} Hz, {} ch, {} bit, period {} frames ({:.2f} ms)",
         info.sampleRate,
         info.channels,
         info.bitsPerSample,
         info.currentPeriod,
         info.PeriodMilliseconds(info.currentPeriod));
+
+    return text;
+}
+
+}
+
+std::string miniant::Windows::WasapiLatency::DescribeStreamWin32(const AudioStreamInfo& info) {
+    return DescribeStream(info, true);
+}
+
+std::string miniant::Windows::WasapiLatency::DescribeStreamForStatus(const AudioStreamInfo& info) {
+    return DescribeStream(info, false);
 }

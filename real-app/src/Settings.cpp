@@ -350,8 +350,13 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
 
     if (const json* section = FindSection(root, "updates")) {
         ReadEnum(*section, "mode", UPDATES_MODE_MAP, settings.updates.mode, result.warnings, "updates");
-        ReadString(*section, "repository", settings.updates.repository, result.warnings, "updates");
         ReadBool(*section, "checkOnStartup", settings.updates.checkOnStartup, result.warnings, "updates");
+
+        // "repository" was dropped when the releases were pinned to the project
+        // repository; a file from an older version is accepted and the key is
+        // gone from the next written version.
+        std::string obsoleteRepository;
+        ReadString(*section, "repository", obsoleteRepository, result.warnings, "updates");
         WarnUnknownKeys(*section, "updates", { "mode", "repository", "checkOnStartup" }, result.warnings);
     }
 
@@ -364,12 +369,18 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
 
     if (const json* section = FindSection(root, "logging")) {
         ReadString(*section, "level", settings.logging.level, result.warnings, "logging");
-        ReadBool(*section, "toConsole", settings.logging.toConsole, result.warnings, "logging");
         ReadBool(*section, "toFile", settings.logging.toFile, result.warnings, "logging");
         ReadString(*section, "filePath", settings.logging.filePath, result.warnings, "logging");
         ReadInt(*section, "maxFileSizeMb", settings.logging.maxFileSizeMb, 1, 1024, result.warnings, "logging");
         ReadInt(*section, "maxFiles", settings.logging.maxFiles, 1, 100, result.warnings, "logging");
-        WarnUnknownKeys(*section, "logging", { "level", "toConsole", "toFile", "filePath", "maxFileSizeMb", "maxFiles" }, result.warnings);
+
+        // "toConsole" is obsolete: the console always mirrors the operations and
+        // is not part of the logging settings anymore.
+        bool obsoleteToConsole = false;
+        ReadBool(*section, "toConsole", obsoleteToConsole, result.warnings, "logging");
+        WarnUnknownKeys(*section, "logging",
+            { "level", "toConsole", "toFile", "filePath", "maxFileSizeMb", "maxFiles" },
+            result.warnings);
     }
 
     return result;
@@ -413,6 +424,12 @@ public:
 
     void Line(int indent, const std::string& line) {
         m_text += std::string(static_cast<size_t>(indent), ' ') + line + "\n";
+    }
+
+    // A key without a comment: service fields that the user must not change.
+    template <typename T>
+    void PlainKey(int indent, const char* name, const T& value, bool comma = true) {
+        Line(indent, std::string("\"") + name + "\": " + JsonValue(value) + (comma ? "," : ""));
     }
 
     template <typename T>
@@ -501,7 +518,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
 
     json& updates = root["updates"];
     updates["mode"] = ToString(settings.updates.mode);
-    updates["repository"] = settings.updates.repository;
     updates["checkOnStartup"] = settings.updates.checkOnStartup;
 
     json& hotkeys = root["hotkeys"];
@@ -511,7 +527,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
 
     json& logging = root["logging"];
     logging["level"] = settings.logging.level;
-    logging["toConsole"] = settings.logging.toConsole;
     logging["toFile"] = settings.logging.toFile;
     logging["filePath"] = settings.logging.filePath;
     logging["maxFileSizeMb"] = settings.logging.maxFileSizeMb;
@@ -527,8 +542,9 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
 
     document.Comment(0, text(Str::CfgFileHeader));
     document.Line(0, "{");
-    document.Key(2, "configVersion", settings.configVersion, text(Str::CfgConfigVersion), true);
-    document.Key(2, "commentLanguage", settings.commentLanguage, text(Str::CfgCommentLanguage), true);
+    // Service fields: documented in CONFIG.md, not next to the value.
+    document.PlainKey(2, "configVersion", settings.configVersion, true);
+    document.PlainKey(2, "commentLanguage", settings.commentLanguage, true);
     document.Blank();
 
     document.SectionOpen(2, "application", text(Str::CfgApplicationSection));
@@ -594,7 +610,6 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
 
     document.SectionOpen(2, "updates", text(Str::CfgUpdatesSection));
     document.Key(4, "mode", ToString(settings.updates.mode), text(Str::CfgUpdatesMode), true);
-    document.Key(4, "repository", settings.updates.repository, text(Str::CfgUpdatesRepository), true);
     document.Key(4, "checkOnStartup", settings.updates.checkOnStartup, text(Str::CfgUpdatesCheckOnStartup), false);
     document.SectionClose(2, true);
     document.Blank();
@@ -608,7 +623,6 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
 
     document.SectionOpen(2, "logging", text(Str::CfgLoggingSection));
     document.Key(4, "level", settings.logging.level, text(Str::CfgLoggingLevel), true);
-    document.Key(4, "toConsole", settings.logging.toConsole, text(Str::CfgLoggingToConsole), true);
     document.Key(4, "toFile", settings.logging.toFile, text(Str::CfgLoggingToFile), true);
     document.Key(4, "filePath", settings.logging.filePath, text(Str::CfgLoggingFilePath), true);
     document.Key(4, "maxFileSizeMb", settings.logging.maxFileSizeMb, text(Str::CfgLoggingMaxFileSize), true);
@@ -644,24 +658,43 @@ bool miniant::Config::Write(const Settings& settings, const std::wstring& path) 
 }
 
 std::string miniant::Config::Describe(const Settings& settings) {
+    // Only the values that take part in the latency reduction: window and tray
+    // settings do not change what the application does with the audio.
     std::string result;
-    result += "tray=";
-    result += settings.tray.enabled ? "on" : "off";
-    result += ", minimizeToTray=";
-    result += settings.application.minimizeToTray ? "on" : "off";
-    result += ", startMinimized=";
-    result += settings.application.startMinimizedToTray ? "on" : "off";
-    result += ", closeButton=";
-    result += ToString(settings.application.closeButtonAction);
-    result += ", dataFlow=";
+    result += "dataFlow=";
     result += ToString(settings.audio.dataFlow);
     result += ", role=";
     result += ToString(settings.audio.role);
     result += ", period=";
     result += ToString(settings.audio.periodSelection);
-    result += ", updates=";
-    result += ToString(settings.updates.mode);
     result += ", priority=";
     result += ToString(settings.performance.processPriority);
     return result;
+}
+
+std::string miniant::Config::PeekCommentLanguage(const std::wstring& path) {
+    bool readSucceeded = false;
+    const std::string content = Windows::Filesystem::ReadTextFileUtf8(path, &readSucceeded);
+    if (!readSucceeded) {
+        return {};
+    }
+
+    std::string text = Text::StripUtf8Bom(content);
+    text = Text::StripJsonComments(text);
+
+    try {
+        const json root = json::parse(text);
+        if (!root.is_object()) {
+            return {};
+        }
+
+        const auto it = root.find("commentLanguage");
+        if (it != root.end() && it->is_string()) {
+            return it->get<std::string>();
+        }
+    } catch (const json::exception&) {
+        return {};
+    }
+
+    return {};
 }

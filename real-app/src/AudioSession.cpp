@@ -181,17 +181,16 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
 
         if (!stream->IsActive()) {
             // The driver has nothing smaller than the default buffer, so no
-            // stream is held (see MinimumLatencyAudioClient::Start).
+            // stream is held (see MinimumLatencyAudioClient::Start); the result
+            // line of the log reports it.
             m_streamsInfo.push_back(info);
-            Log::Warn(
-                Lang::Utf8(Lang::Str::LogDriverMinimum),
-                Text::ToUtf8(info.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : info.deviceName),
-                info.defaultPeriod,
-                info.PeriodMilliseconds(info.defaultPeriod));
             continue;
         }
 
-        Log::Info(Lang::Utf8(Lang::Str::LogLowLatencyStarted), DescribeStreamWin32(info));
+        // Detail level: the result line of the log already reports the device,
+        // the format and the buffer size; the flow is only needed when looking
+        // into a specific problem.
+        Log::Debug(Lang::Utf8(Lang::Str::LogLowLatencyStarted), DescribeStreamWin32(info));
 
         if (info.acceptedLockedPeriod) {
             Log::Info(Lang::Utf8(Lang::Str::LogPeriodLocked), info.requestedPeriod);
@@ -214,6 +213,14 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
     }
 
     return {};
+}
+
+std::string AudioSession::GetDetailsText() const {
+    if (m_streamsInfo.empty()) {
+        return Lang::Utf8(Lang::Str::StatusNotActive);
+    }
+
+    return Windows::WasapiLatency::DescribeStreamForStatus(m_streamsInfo.front());
 }
 
 std::wstring AudioSession::GetStatusText() const {

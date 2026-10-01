@@ -111,9 +111,9 @@ struct UpdateSettings {
     // Off by default: no network request at all unless the user asks for it.
     // In "manual" mode a single check happens at startup when checkOnStartup is
     // enabled; the application never checks again while it is running and never
-    // installs anything by itself.
+    // installs anything by itself. The releases are read from the project this
+    // build belongs to, so there is no repository setting.
     UpdatesMode mode = UpdatesMode::Off;
-    std::string repository = "Mutaracha/REAL";
     bool checkOnStartup = false;
 };
 
@@ -124,8 +124,9 @@ struct HotkeySettings {
 };
 
 struct LoggingSettings {
+    // These settings describe the log file only: the console always mirrors the
+    // operations at the info level (see Log::Initialize).
     std::string level = "info";
-    bool toConsole = false;
     bool toFile = true;
     std::string filePath = "REAL.log";
     int maxFileSizeMb = 1;
@@ -167,5 +168,11 @@ std::string ToJsonString(const Settings& settings);
 // the settings file, so that the file itself is the reference.
 std::string ToDocumentedJsonString(const Settings& settings);
 std::string Describe(const Settings& settings);
+
+// The "commentLanguage" field of a file on disk, read without touching the
+// rest: the application compares it with the current language and rewrites the
+// settings file only when they differ (a value that cannot be read means "the
+// file has to be rewritten").
+std::string PeekCommentLanguage(const std::wstring& path);
 
 }
