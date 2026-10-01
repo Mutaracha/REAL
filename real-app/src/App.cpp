@@ -872,7 +872,7 @@ bool App::NeedsRestart(const Config::Settings& previous) const {
 void App::AskForRestart() {
     HWND owner = m_window != nullptr ? m_window->GetHWindow() : nullptr;
 
-    Log::Hint("%s", Lang::Utf8(Str::RestartNeededHint));
+    Log::Hint("{}", Lang::Utf8(Str::RestartNeededHint));
 
     const int answer = ::MessageBoxW(
         owner,
@@ -881,7 +881,7 @@ void App::AskForRestart() {
         MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1);
 
     if (answer != IDYES) {
-        Log::Hint("%s", Lang::Utf8(Str::RestartLaterHint));
+        Log::Hint("{}", Lang::Utf8(Str::RestartLaterHint));
         return;
     }
 
@@ -939,7 +939,7 @@ void App::RestartApplication() {
         &process);
 
     if (started == FALSE) {
-        Log::Error(Lang::Utf8(Str::ErrRestartFailed), Windows::DescribeLastError());
+        Log::Error(Lang::Utf8(Str::LogRestartFailed), Windows::DescribeLastError());
 
         ::MessageBoxW(
             m_window != nullptr ? m_window->GetHWindow() : nullptr,
@@ -999,7 +999,7 @@ void App::ReportLogUnavailable(Lang::Str reason) {
 
     // The window shows the line in its log view, and the user is told about the
     // reason the way the program tells about everything else.
-    Log::Hint("%s", Lang::Utf8(reason));
+    Log::Hint("{}", Lang::Utf8(reason));
 
     if (m_window != nullptr) {
         m_window->Notify(Lang::Wide(Str::NotifyTitle), text, false);

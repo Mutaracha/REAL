@@ -83,6 +83,7 @@ enum class Str {
     RestartNeededHint,
     RestartLaterHint,
     ErrRestartFailed,
+    LogRestartFailed,
     OpRestarting,
     LogLanguageChanged,
     LogFileOff,
