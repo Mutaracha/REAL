@@ -309,14 +309,18 @@ bool App::LoadSettings() {
                 }
             } else if (Config::PeekCommentLanguage(m_settingsPath) != commentLanguage ||
                 m_settings.configVersion < Config::CONFIG_VERSION) {
-                // A file of an older version is upgraded once: the comments of
-                // the current layout sit in the same line as the value.
+                // A file of an older layout is upgraded once, with every value
+                // kept; a file of another comment language is rewritten with the
+                // comments in the current one. The very same write does both.
+                const bool languageChanged = Config::PeekCommentLanguage(m_settingsPath) != commentLanguage;
+
                 m_settings.configVersion = Config::CONFIG_VERSION;
                 m_settings.commentLanguage = commentLanguage;
 
                 if (Config::Write(m_settings, m_settingsPath)) {
                     // Logging is not available yet, the line is written below.
                     m_commentsRewritten = commentLanguage;
+                    m_layoutUpgraded = !languageChanged;
                 } else {
                     std::cout << "[error] "
                               << fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath))
@@ -373,10 +377,14 @@ bool App::InitializeLogging() {
 void App::LogBanner() {
     Log::Operation(Lang::Utf8(Str::OpStarted), AppInfo::DisplayVersion());
 
-    if (!m_commentsRewritten.empty()) {
+    if (m_layoutUpgraded) {
+        Log::Operation(Lang::Utf8(Str::OpSettingsUpgraded));
+    } else if (!m_commentsRewritten.empty()) {
         Log::Operation(Lang::Utf8(Str::OpCommentsRewritten), m_commentsRewritten);
-        m_commentsRewritten.clear();
     }
+
+    m_commentsRewritten.clear();
+    m_layoutUpgraded = false;
 
     Log::Operation(Lang::Utf8(Str::OpSettingsFile), Text::ToUtf8(m_settingsPath));
 
@@ -641,7 +649,6 @@ void App::UpdateTrayMenuState() {
     state.statusText = m_audioEnabled ? m_audio.GetStatusText() : CurrentOffStatusText();
     state.toggleEnabled = m_settings.tray.menu.toggleEnabled;
     state.reinitialize = m_settings.tray.menu.reinitialize;
-    state.openSettings = m_settings.tray.menu.openSettings;
     state.openLog = m_settings.tray.menu.openLog;
     state.diagnostics = m_settings.tray.menu.diagnostics;
     state.startWithWindows = m_settings.tray.menu.startWithWindows;
@@ -650,6 +657,9 @@ void App::UpdateTrayMenuState() {
     state.exit = m_settings.tray.menu.exit;
 
     m_window->SetTrayMenuState(state);
+
+    // The same two states are shown by the menu of the window itself.
+    m_window->SetMenuChecks(m_audioEnabled, m_settings.application.startWithWindows);
 }
 
 void App::SaveSettings() {
@@ -758,46 +768,45 @@ void App::ShowSettingsDialog() {
     ApplySettings(previous);
 }
 
-void App::OpenSettingsFile() {
-    if (!Windows::Filesystem::IsFile(m_settingsPath)) {
-        SaveSettings();
+void App::OpenLogFile() {
+    // The journal is opened only when it is switched on and exists: an item that
+    // silently writes a snapshot somewhere else is worse than a message that
+    // says why there is nothing to open.
+    if (!m_settings.logging.toFile) {
+        ReportLogUnavailable(Str::LogFileOff);
+        return;
     }
 
-    const HINSTANCE result = ::ShellExecuteW(
-        nullptr,
-        L"open",
-        m_settingsPath.c_str(),
-        nullptr,
-        nullptr,
-        SW_SHOWNORMAL);
-
-    if (reinterpret_cast<INT_PTR>(result) <= 32) {
-        const std::wstring parameters = L"\"" + m_settingsPath + L"\"";
-        ::ShellExecuteW(nullptr, L"open", L"notepad.exe", parameters.c_str(), nullptr, SW_SHOWNORMAL);
+    std::wstring path = Text::ToWide(m_settings.logging.filePath);
+    if (path.empty()) {
+        path = L"REAL.log";
     }
+
+    if (!std::filesystem::path(path).is_absolute()) {
+        path = Windows::Filesystem::JoinPath(Windows::Filesystem::GetExecutableDirectory(), path);
+    }
+
+    if (!Windows::Filesystem::IsFile(path)) {
+        ReportLogUnavailable(Str::LogFileMissing);
+        return;
+    }
+
+    Log::Operation(Lang::Utf8(Str::OpLogOpened), Text::ToUtf8(path));
+    ::ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-void App::OpenLogFile() {
-    std::wstring path;
+void App::ReportLogUnavailable(Lang::Str reason) {
+    const std::wstring text = Lang::Wide(reason);
 
-    if (m_settings.logging.toFile && !m_settings.logging.filePath.empty()) {
-        const std::wstring configured = Text::ToWide(m_settings.logging.filePath);
-        path = configured.empty() ? L"" : configured;
+    // The window shows the line in its log view, and the user is told about the
+    // reason the way the program tells about everything else.
+    Log::Hint("%s", Lang::Utf8(reason));
 
-        if (!path.empty() && !std::filesystem::path(path).is_absolute()) {
-            path = Windows::Filesystem::JoinPath(Windows::Filesystem::GetExecutableDirectory(), path);
-        }
+    if (m_window != nullptr) {
+        m_window->Notify(Lang::Wide(Str::NotifyTitle), text, false);
+    } else {
+        ::MessageBoxW(nullptr, text.c_str(), Lang::Wide(Str::NotifyTitle).c_str(), MB_OK | MB_ICONINFORMATION);
     }
-
-    if (path.empty() || !Windows::Filesystem::IsFile(path)) {
-        path = Windows::Filesystem::JoinPath(Windows::Filesystem::GetTempDirectory(), L"REAL.log");
-        if (!Log::WriteSnapshotToFile(path)) {
-            Log::Error(Lang::Utf8(Str::LogLogSnapshotFailed), Text::ToUtf8(path));
-            return;
-        }
-    }
-
-    ::ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 void App::ShowAboutDialog() {
@@ -938,10 +947,6 @@ void App::OnCommand(Command command) {
             ShowSettingsDialog();
             break;
 
-        case Command::OpenSettingsFile:
-            OpenSettingsFile();
-            break;
-
         case Command::OpenLog:
             OpenLogFile();
             break;
@@ -988,13 +993,6 @@ void App::OnCommand(Command command) {
 
         case Command::About:
             ShowAboutDialog();
-            break;
-
-        case Command::HideToTray:
-            if (m_window != nullptr) {
-                m_window->Hide();
-            }
-
             break;
 
         case Command::Exit:
@@ -1274,10 +1272,14 @@ int App::RunDiagnostics() {
     LoadSettings();
     InitializeLogging();
 
-    if (!m_commentsRewritten.empty()) {
+    if (m_layoutUpgraded) {
+        Log::Operation(Lang::Utf8(Str::OpSettingsUpgraded));
+    } else if (!m_commentsRewritten.empty()) {
         Log::Operation(Lang::Utf8(Str::OpCommentsRewritten), m_commentsRewritten);
-        m_commentsRewritten.clear();
     }
+
+    m_commentsRewritten.clear();
+    m_layoutUpgraded = false;
 
     // One line about the diagnostics: the steps of the report stay at the
     // debug level, otherwise a single key press fills the log with four lines.

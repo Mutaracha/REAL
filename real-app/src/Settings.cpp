@@ -301,12 +301,14 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
             ReadBool(*menu, "showStatus", settings.tray.menu.showStatus, result.warnings, "tray.menu");
             ReadBool(*menu, "toggleEnabled", settings.tray.menu.toggleEnabled, result.warnings, "tray.menu");
             ReadBool(*menu, "reinitialize", settings.tray.menu.reinitialize, result.warnings, "tray.menu");
-            ReadBool(*menu, "openSettings", settings.tray.menu.openSettings, result.warnings, "tray.menu");
             ReadBool(*menu, "openLog", settings.tray.menu.openLog, result.warnings, "tray.menu");
             ReadBool(*menu, "diagnostics", settings.tray.menu.diagnostics, result.warnings, "tray.menu");
             ReadBool(*menu, "startWithWindows", settings.tray.menu.startWithWindows, result.warnings, "tray.menu");
             ReadBool(*menu, "about", settings.tray.menu.about, result.warnings, "tray.menu");
             ReadBool(*menu, "exit", settings.tray.menu.exit, result.warnings, "tray.menu");
+            // "openSettings" belonged to version 4 of the layout and opened the
+            // settings file from the tray menu: the settings window keeps that
+            // button itself, so the key is not used any more.
             WarnUnknownKeys(*menu, "tray.menu",
                 { "showStatus", "toggleEnabled", "reinitialize", "openSettings", "openLog", "diagnostics", "startWithWindows", "about", "exit" },
                 result.warnings);
@@ -493,7 +495,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     menu["showStatus"] = settings.tray.menu.showStatus;
     menu["toggleEnabled"] = settings.tray.menu.toggleEnabled;
     menu["reinitialize"] = settings.tray.menu.reinitialize;
-    menu["openSettings"] = settings.tray.menu.openSettings;
     menu["openLog"] = settings.tray.menu.openLog;
     menu["diagnostics"] = settings.tray.menu.diagnostics;
     menu["startWithWindows"] = settings.tray.menu.startWithWindows;
@@ -582,7 +583,6 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.Key(6, "showStatus", settings.tray.menu.showStatus, text(Str::CfgMenuShowStatus), true);
     document.Key(6, "toggleEnabled", settings.tray.menu.toggleEnabled, text(Str::CfgMenuToggle), true);
     document.Key(6, "reinitialize", settings.tray.menu.reinitialize, text(Str::CfgMenuReinitialize), true);
-    document.Key(6, "openSettings", settings.tray.menu.openSettings, text(Str::CfgMenuSettings), true);
     document.Key(6, "openLog", settings.tray.menu.openLog, text(Str::CfgMenuLog), true);
     document.Key(6, "diagnostics", settings.tray.menu.diagnostics, text(Str::CfgMenuDiagnostics), true);
     document.Key(6, "startWithWindows", settings.tray.menu.startWithWindows, text(Str::CfgMenuStartWithWindows), true);

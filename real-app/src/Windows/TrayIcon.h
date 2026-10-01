@@ -20,7 +20,6 @@ struct TrayMenuState {
 
     bool toggleEnabled = true;
     bool reinitialize = true;
-    bool openSettings = true;
     bool openLog = true;
     bool diagnostics = true;
     bool startWithWindows = true;

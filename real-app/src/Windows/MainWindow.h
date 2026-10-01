@@ -48,6 +48,10 @@ public:
     // the language setting has changed).
     void ApplyLanguage();
 
+    // Marks the menu items that show a state: the latency reduction and the
+    // autostart. The labels themselves come from the language table.
+    void SetMenuChecks(bool latencyEnabled, bool startWithWindows);
+
     void SetStatusText(const std::wstring& text);
     void AppendLogLines(const std::vector<std::string>& lines);
     void Notify(const std::wstring& title, const std::wstring& text, bool error);
@@ -74,6 +78,9 @@ private:
 
     HMENU m_menu = nullptr;
     HMENU m_fileMenu = nullptr;
+    HMENU m_diagnosticsMenu = nullptr;
+    bool m_latencyEnabled = true;
+    bool m_startWithWindows = false;
 
     HWND m_status = nullptr;
     HWND m_log = nullptr;

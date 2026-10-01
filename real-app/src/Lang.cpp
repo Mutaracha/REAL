@@ -24,19 +24,16 @@ const Entry TABLE[] = {
     { Str::WindowTitle, "REAL - REduce Audio Latency", "REAL - REduce Audio Latency" },
     { Str::StatusStarting, "Starting...", "Запуск..." },
     { Str::ButtonReinitialize, "Activate", "Активировать" },
-    { Str::ButtonSettings, "Settings...", "Настройки..." },
-    { Str::ButtonSettingsFile, "Open the settings file...", "Открыть файл настроек..." },
+    { Str::ButtonOptions, "Options", "Опции" },
     { Str::ButtonFileMenu, "File", "Файл" },
     { Str::ButtonAbout, "About", "О программе" },
-    { Str::ButtonLog, "Log file...", "Файл журнала..." },
     { Str::ButtonDiagnostics, "Diagnostics", "Диагностика" },
-    { Str::ButtonHideToTray, "Hide to tray", "Свернуть в трей" },
+    { Str::ButtonOpenLog, "Open the log", "Открыть журнал" },
     { Str::ButtonExit, "Exit", "Выход" },
 
     // Tray menu
     { Str::TrayToggleEnabled, "Latency reduction enabled", "Снижение задержки включено" },
     { Str::TrayReinitialize, "Activate now", "Активировать" },
-    { Str::TraySettings, "Settings file", "Файл настроек" },
     { Str::TrayLog, "Log file", "Файл журнала" },
     { Str::TrayDiagnostics, "Diagnostics", "Диагностика" },
     { Str::TrayStartWithWindows, "Start with Windows", "Запускать с Windows" },
@@ -121,6 +118,9 @@ const Entry TABLE[] = {
     { Str::LogConsoleRestart,
       "The console setting (showConsole) is applied after a restart.",
       "Настройка консоли (showConsole) применяется после перезапуска." },
+    { Str::ConsoleTitle, "REAL - operations log", "REAL - журнал операций" },
+    { Str::LogFileOff, "The log file is switched off in the options.", "Файл журнала выключен в опциях." },
+    { Str::LogFileMissing, "There is no log file yet.", "Файла журнала пока нет." },
     { Str::LogLanguageChanged,
       "Language changed to {0}.",
       "Язык изменён на {0}." },
@@ -481,8 +481,10 @@ const Entry TABLE[] = {
     // The note of the About window: one sentence, in the language of the
     // interface; "{}" is the version and is drawn by the window itself.
     { Str::AboutText,
-      "While REAL is running, Windows uses the smallest buffer the driver of the default audio device supports.",
-      "Пока REAL запущен, Windows использует минимальный буфер, который поддерживает драйвер устройства по умолчанию." },
+      "While REAL is running, Windows uses the smallest buffer\n"
+      "that the driver of the default audio device supports.",
+      "Пока REAL запущен, Windows использует минимальный буфер,\n"
+      "который поддерживает драйвер устройства по умолчанию." },
 
     { Str::DiagnosticsWriteFailed, "The diagnostics report could not be written to a file.",
                                    "Не удалось записать отчёт диагностики в файл." },
@@ -494,8 +496,11 @@ const Entry TABLE[] = {
     { Str::OpSettingsReloaded, "Settings reloaded", "Настройки перечитаны" },
     { Str::OpCommentsRewritten, "Settings file rewritten with comments in {} (every value is kept)",
                                 "Файл настроек перезаписан с комментариями на языке {} (значения сохранены)" },
+    { Str::OpSettingsUpgraded, "Settings file rewritten in the current layout (every value is kept)",
+                               "Файл настроек перезаписан в текущем оформлении (значения сохранены)" },
     { Str::OpAlreadyRunning, "REAL is already running; the command was passed to it",
                              "REAL уже запущен, команда передана ему" },
+    { Str::OpLogOpened, "Log opened: {}", "Открыт журнал: {}" },
     { Str::OpApplied, "Latency reduction is active: {}", "Снижение задержки активно: {}" },
     { Str::OpDriverMinimum, "The driver already keeps the smallest buffer, nothing has to be held open: {}",
                            "Драйвер уже отдаёт минимальный буфер, держать поток открытым не нужно: {}" },
@@ -522,7 +527,7 @@ const Entry TABLE[] = {
     { Str::ValueOff, "off", "выкл" },
 
     // Settings window
-    { Str::SettingsWindowTitle, "REAL settings", "Настройки REAL" },
+    { Str::SettingsWindowTitle, "REAL options", "Опции REAL" },
     { Str::SettingsSave, "Save", "Сохранить" },
     { Str::SettingsCancel, "Cancel", "Отмена" },
     { Str::SettingsOpenFile, "Open the file", "Открыть файл" },
@@ -641,7 +646,6 @@ const Entry TABLE[] = {
                           "Пункт включения и выключения режима." },
     { Str::CfgMenuReinitialize, "Item that re-initialises the audio streams without a restart.",
                                 "Пункт активации без перезапуска." },
-    { Str::CfgMenuSettings, "Item that opens this settings file.", "Пункт открытия этого файла настроек." },
     { Str::CfgMenuLog, "Item that opens the log.", "Пункт открытия журнала." },
     { Str::CfgMenuDiagnostics, "Item that writes a report about the audio devices.",
                                "Пункт создания отчёта об аудиоустройствах." },

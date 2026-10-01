@@ -3,6 +3,7 @@
 #include "AudioSession.h"
 #include "CommandLine.h"
 #include "Commands.h"
+#include "Lang.h"
 #include "Settings.h"
 #include "Windows/MainWindow.h"
 
@@ -50,7 +51,8 @@ private:
     // file and applied exactly like a file that was changed by hand.
     void ShowSettingsDialog();
     void ApplySettings(const Config::Settings& previous);
-    void OpenSettingsFile();
+    // Tells the user why the log cannot be opened right now.
+    void ReportLogUnavailable(Lang::Str reason);
     void OpenLogFile();
     void ShowAboutDialog();
     void StartUpdateCheck();
@@ -70,6 +72,8 @@ private:
 
     // Language of the comments after the settings file was rewritten.
     std::string m_commentsRewritten;
+    // The file was rewritten because its layout was older than the current one.
+    bool m_layoutUpgraded = false;
 
     // Text shown while the latency reduction is not applied.
     std::wstring CurrentOffStatusText() const;

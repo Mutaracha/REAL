@@ -1,5 +1,7 @@
 #include "Console.h"
 
+#include "../Lang.h"
+
 #include <Windows.h>
 
 #include <cstdio>
@@ -59,6 +61,9 @@ bool Console::Attach() {
 
     ::SetConsoleOutputCP(CP_UTF8);
     ::SetConsoleCtrlHandler(ConsoleControlHandler, TRUE);
+
+    // The window has to be recognisable: it can outlive a hidden tray icon.
+    ::SetConsoleTitleW(miniant::Lang::Wide(miniant::Lang::Str::ConsoleTitle).c_str());
 
     g_attached = true;
     return true;

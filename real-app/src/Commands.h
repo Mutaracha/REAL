@@ -8,7 +8,6 @@ enum class Command {
     ToggleEnabled,
     Reinitialize,
     OpenSettings,
-    OpenSettingsFile,
     OpenLog,
     Diagnose,
     ToggleStartWithWindows,
@@ -17,7 +16,6 @@ enum class Command {
     ToggleWindow,
     BalloonClicked,
     About,
-    HideToTray,
     Exit,
 };
 

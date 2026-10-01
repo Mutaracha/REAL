@@ -6,12 +6,13 @@
 namespace miniant::Config {
 
 // The layout of the settings file. The comments in it are written by the
-// program, so the number grows when the layout changes (4: the key
-// application.theme is gone; 3: the theme of the windows was a parameter of its
-// own; 2: a comment sits in the same line as its value). A file with an older
-// number is rewritten once, with every value kept; a file of the current number
-// and a newer one are left as they are.
-inline constexpr int CONFIG_VERSION = 4;
+// program, so the number grows when the layout changes (5: the key
+// tray.menu.openSettings is gone - the settings window keeps the button that
+// opens the file; 4: application.theme is gone; 3: the theme of the windows was
+// a parameter of its own; 2: a comment sits in the same line as its value). A
+// file with an older number is rewritten once, with every value kept; a file of
+// the current number and a newer one are left as they are.
+inline constexpr int CONFIG_VERSION = 5;
 
 enum class CloseAction {
     Minimize,
@@ -84,7 +85,6 @@ struct TrayMenuSettings {
     bool showStatus = true;
     bool toggleEnabled = true;
     bool reinitialize = true;
-    bool openSettings = true;
     bool openLog = true;
     bool diagnostics = true;
     bool startWithWindows = true;

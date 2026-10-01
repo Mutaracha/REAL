@@ -14,7 +14,6 @@ namespace {
 enum MenuId : UINT {
     MENU_ID_TOGGLE = 1001,
     MENU_ID_REINITIALIZE = 1002,
-    MENU_ID_SETTINGS = 1003,
     MENU_ID_LOG = 1004,
     MENU_ID_DIAGNOSTICS = 1005,
     MENU_ID_START_WITH_WINDOWS = 1006,
@@ -221,10 +220,6 @@ void TrayIcon::ShowContextMenu(const POINT& anchor) {
 
     ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 
-    if (m_state.openSettings) {
-        ::AppendMenuW(menu, MF_STRING, MENU_ID_SETTINGS, Wide(Str::TraySettings).c_str());
-    }
-
     if (m_state.openLog) {
         ::AppendMenuW(menu, MF_STRING, MENU_ID_LOG, Wide(Str::TrayLog).c_str());
     }
@@ -275,9 +270,6 @@ void TrayIcon::ShowContextMenu(const POINT& anchor) {
             break;
         case MENU_ID_REINITIALIZE:
             m_handler(miniant::Command::Reinitialize);
-            break;
-        case MENU_ID_SETTINGS:
-            m_handler(miniant::Command::OpenSettings);
             break;
         case MENU_ID_LOG:
             m_handler(miniant::Command::OpenLog);

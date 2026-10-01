@@ -24,38 +24,38 @@ const int MARGIN = 8;
 
 const size_t MAX_LOG_LENGTH = 200000;
 
+// The bottom row holds the two actions a user needs most: activate the audio
+// streams and close the program. The window is hidden to the tray by its close
+// button, so a button for that is not needed.
 const struct {
     UINT id;
     miniant::Lang::Str text;
-    miniant::Command command;
+    bool left = false;
+    miniant::Command command = miniant::Command::Reinitialize;
 } BUTTONS[] = {
-    { 1, miniant::Lang::Str::ButtonReinitialize, miniant::Command::Reinitialize },
-    { 2, miniant::Lang::Str::ButtonHideToTray, miniant::Command::HideToTray },
-    { 3, miniant::Lang::Str::ButtonExit, miniant::Command::Exit },
+    { 1, miniant::Lang::Str::ButtonReinitialize, true, miniant::Command::Reinitialize },
+    { 3, miniant::Lang::Str::ButtonExit, false, miniant::Command::Exit },
 };
 
-// Everything that opens a file or a report sits in the menu bar; the bottom
-// row is left to the actions that change the state of the program.
-const struct {
-    UINT id;
-    miniant::Lang::Str text;
-    miniant::Command command;
-} FILE_MENU_ITEMS[] = {
-    // The file itself is still reachable: the settings window is the way to
-    // change the parameters, the file is the way to look at them.
-    { 101, miniant::Lang::Str::ButtonSettingsFile, miniant::Command::OpenSettingsFile },
-    { 102, miniant::Lang::Str::ButtonLog, miniant::Command::OpenLog },
-    { 103, miniant::Lang::Str::ButtonDiagnostics, miniant::Command::Diagnose },
-};
+// The "File" menu: the states of the program and the exit. The items that open
+// a file are in the "Diagnostics" menu, the parameters are in "Options".
+const UINT MENU_FILE_TOGGLE_ID = 101;
+const UINT MENU_FILE_START_WITH_WINDOWS_ID = 102;
+const UINT MENU_FILE_EXIT_ID = 103;
 
-// "About" and "Settings" are items of the menu bar itself: the menu of a
-// window can hold plain items next to its popups, and a click on one of them
-// sends the very same command a drop-down entry would.
-const UINT MENU_ABOUT_ID = 104;
-const UINT MENU_SETTINGS_ID = 105;
+// The sub-menu of "Diagnostics": the report itself and the log file.
+const UINT MENU_DIAGNOSTICS_REPORT_ID = 105;
+const UINT MENU_DIAGNOSTICS_LOG_ID = 106;
+
+// "Options" and "About" are items of the menu bar itself: the menu of a window
+// can hold plain items next to its popups, and a click on one of them sends the
+// very same command a drop-down entry would.
+const UINT MENU_OPTIONS_ID = 107;
+const UINT MENU_ABOUT_ID = 108;
 
 constexpr size_t BUTTON_COUNT = sizeof(BUTTONS) / sizeof(BUTTONS[0]);
-constexpr size_t FILE_MENU_ITEM_COUNT = sizeof(FILE_MENU_ITEMS) / sizeof(FILE_MENU_ITEMS[0]);
+
+const int BUTTON_WIDTH = 190;
 
 }
 
@@ -192,17 +192,32 @@ void MainWindow::ApplyLanguage() {
     }
 
     if (m_fileMenu != nullptr) {
-        for (size_t i = 0; i < FILE_MENU_ITEM_COUNT; ++i) {
-            ::ModifyMenuW(
-                m_fileMenu,
-                static_cast<UINT>(i),
-                MF_BYPOSITION | MF_STRING,
-                FILE_MENU_ITEMS[i].id,
-                miniant::Lang::Wide(FILE_MENU_ITEMS[i].text).c_str());
-        }
+        // The two states carry a check mark: it is redrawn right away, because
+        // ModifyMenu drops it.
+        ::ModifyMenuW(
+            m_fileMenu, 0, MF_BYPOSITION | MF_STRING | (m_latencyEnabled ? MF_CHECKED : MF_UNCHECKED),
+            MENU_FILE_TOGGLE_ID, miniant::Lang::Wide(miniant::Lang::Str::TrayToggleEnabled).c_str());
+
+        ::ModifyMenuW(
+            m_fileMenu, 1, MF_BYPOSITION | MF_STRING | (m_startWithWindows ? MF_CHECKED : MF_UNCHECKED),
+            MENU_FILE_START_WITH_WINDOWS_ID, miniant::Lang::Wide(miniant::Lang::Str::TrayStartWithWindows).c_str());
+
+        ::ModifyMenuW(
+            m_fileMenu, 3, MF_BYPOSITION | MF_STRING | MF_UNCHECKED,
+            MENU_FILE_EXIT_ID, miniant::Lang::Wide(miniant::Lang::Str::ButtonExit).c_str());
     }
 
-    if (m_menu != nullptr && m_fileMenu != nullptr) {
+    if (m_diagnosticsMenu != nullptr) {
+        ::ModifyMenuW(
+            m_diagnosticsMenu, 0, MF_BYPOSITION | MF_STRING | MF_UNCHECKED,
+            MENU_DIAGNOSTICS_REPORT_ID, miniant::Lang::Wide(miniant::Lang::Str::ButtonDiagnostics).c_str());
+
+        ::ModifyMenuW(
+            m_diagnosticsMenu, 1, MF_BYPOSITION | MF_STRING | MF_UNCHECKED,
+            MENU_DIAGNOSTICS_LOG_ID, miniant::Lang::Wide(miniant::Lang::Str::ButtonOpenLog).c_str());
+    }
+
+    if (m_menu != nullptr && m_fileMenu != nullptr && m_diagnosticsMenu != nullptr) {
         ::ModifyMenuW(
             m_menu,
             0,
@@ -210,17 +225,24 @@ void MainWindow::ApplyLanguage() {
             reinterpret_cast<UINT_PTR>(m_fileMenu),
             miniant::Lang::Wide(miniant::Lang::Str::ButtonFileMenu).c_str());
 
-        // The menu bar: "File", then the settings of the program, then "About".
+        // The menu bar: "File", "Options", "Diagnostics", "About".
         ::ModifyMenuW(
             m_menu,
             1,
             MF_BYPOSITION | MF_STRING,
-            MENU_SETTINGS_ID,
-            miniant::Lang::Wide(miniant::Lang::Str::ButtonSettings).c_str());
+            MENU_OPTIONS_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::ButtonOptions).c_str());
 
         ::ModifyMenuW(
             m_menu,
             2,
+            MF_BYPOSITION | MF_STRING | MF_POPUP,
+            reinterpret_cast<UINT_PTR>(m_diagnosticsMenu),
+            miniant::Lang::Wide(miniant::Lang::Str::ButtonDiagnostics).c_str());
+
+        ::ModifyMenuW(
+            m_menu,
+            3,
             MF_BYPOSITION | MF_STRING,
             MENU_ABOUT_ID,
             miniant::Lang::Wide(miniant::Lang::Str::ButtonAbout).c_str());
@@ -231,6 +253,18 @@ void MainWindow::ApplyLanguage() {
     }
 
     LayoutControls();
+}
+
+void MainWindow::SetMenuChecks(bool latencyEnabled, bool startWithWindows) {
+    m_latencyEnabled = latencyEnabled;
+    m_startWithWindows = startWithWindows;
+
+    if (m_fileMenu != nullptr) {
+        ::CheckMenuItem(m_fileMenu, MENU_FILE_TOGGLE_ID, MF_BYCOMMAND | (m_latencyEnabled ? MF_CHECKED : MF_UNCHECKED));
+        ::CheckMenuItem(
+            m_fileMenu, MENU_FILE_START_WITH_WINDOWS_ID,
+            MF_BYCOMMAND | (m_startWithWindows ? MF_CHECKED : MF_UNCHECKED));
+    }
 }
 
 void MainWindow::SetStatusText(const std::wstring& text) {
@@ -374,32 +408,47 @@ void MainWindow::CreateControls() {
 
     m_menu = ::CreateMenu();
     m_fileMenu = ::CreatePopupMenu();
+    m_diagnosticsMenu = ::CreatePopupMenu();
 
-    if (m_menu != nullptr && m_fileMenu != nullptr) {
-        for (size_t i = 0; i < FILE_MENU_ITEM_COUNT; ++i) {
-            ::AppendMenuW(
-                m_fileMenu,
-                MF_STRING,
-                FILE_MENU_ITEMS[i].id,
-                miniant::Lang::Wide(FILE_MENU_ITEMS[i].text).c_str());
-        }
+    if (m_menu != nullptr && m_fileMenu != nullptr && m_diagnosticsMenu != nullptr) {
+        // "File": the state of the latency reduction, the autostart and the exit.
+        ::AppendMenuW(
+            m_fileMenu, MF_STRING | MF_CHECKED, MENU_FILE_TOGGLE_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::TrayToggleEnabled).c_str());
 
         ::AppendMenuW(
-            m_menu,
-            MF_POPUP,
-            reinterpret_cast<UINT_PTR>(m_fileMenu),
+            m_fileMenu, MF_STRING, MENU_FILE_START_WITH_WINDOWS_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::TrayStartWithWindows).c_str());
+
+        ::AppendMenuW(m_fileMenu, MF_SEPARATOR, 0, nullptr);
+
+        ::AppendMenuW(
+            m_fileMenu, MF_STRING, MENU_FILE_EXIT_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::ButtonExit).c_str());
+
+        // "Diagnostics": the report and the log file.
+        ::AppendMenuW(
+            m_diagnosticsMenu, MF_STRING, MENU_DIAGNOSTICS_REPORT_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::ButtonDiagnostics).c_str());
+
+        ::AppendMenuW(
+            m_diagnosticsMenu, MF_STRING, MENU_DIAGNOSTICS_LOG_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::ButtonOpenLog).c_str());
+
+        ::AppendMenuW(
+            m_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(m_fileMenu),
             miniant::Lang::Wide(miniant::Lang::Str::ButtonFileMenu).c_str());
 
         ::AppendMenuW(
-            m_menu,
-            MF_STRING,
-            MENU_SETTINGS_ID,
-            miniant::Lang::Wide(miniant::Lang::Str::ButtonSettings).c_str());
+            m_menu, MF_STRING, MENU_OPTIONS_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::ButtonOptions).c_str());
 
         ::AppendMenuW(
-            m_menu,
-            MF_STRING,
-            MENU_ABOUT_ID,
+            m_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(m_diagnosticsMenu),
+            miniant::Lang::Wide(miniant::Lang::Str::ButtonDiagnostics).c_str());
+
+        ::AppendMenuW(
+            m_menu, MF_STRING, MENU_ABOUT_ID,
             miniant::Lang::Wide(miniant::Lang::Str::ButtonAbout).c_str());
 
         ::SetMenu(m_window, m_menu);
@@ -442,16 +491,15 @@ void MainWindow::LayoutControls() {
 
     ::MoveWindow(m_log, MARGIN, logTop, width - 2 * MARGIN, logHeight, TRUE);
 
-    const int buttonCount = static_cast<int>(m_buttons.size());
-    if (buttonCount > 0) {
-        const int totalMargin = MARGIN * (buttonCount + 1);
-        const int buttonWidth = std::max(60, (width - totalMargin) / buttonCount);
+    // "Activate" is aligned to the left edge of the window, "Exit" to the
+    // right one; the middle of the row stays empty.
+    const int buttonWidth = std::min(BUTTON_WIDTH, std::max(80, (width - 3 * MARGIN) / 2));
 
-        int x = MARGIN;
-        for (auto& button : m_buttons) {
-            ::MoveWindow(button.first, x, buttonsTop, buttonWidth, BUTTON_HEIGHT, TRUE);
-            x += buttonWidth + MARGIN;
-        }
+    for (size_t i = 0; i < m_buttons.size() && i < BUTTON_COUNT; ++i) {
+        const bool left = BUTTONS[i].left;
+        const int x = left ? MARGIN : width - MARGIN - buttonWidth;
+
+        ::MoveWindow(m_buttons[i].first, x, buttonsTop, buttonWidth, BUTTON_HEIGHT, TRUE);
     }
 }
 
@@ -460,6 +508,7 @@ void MainWindow::DestroyResources() {
         ::DestroyMenu(m_menu);
         m_menu = nullptr;
         m_fileMenu = nullptr;
+        m_diagnosticsMenu = nullptr;
     }
 
     if (m_uiFont != nullptr) {
@@ -538,7 +587,7 @@ LRESULT MainWindow::WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam) 
             }
 
             if (notification == 0) {
-                if (id == MENU_SETTINGS_ID) {
+                if (id == MENU_OPTIONS_ID) {
                     RaiseCommand(miniant::Command::OpenSettings);
                     return 0;
                 }
@@ -548,11 +597,29 @@ LRESULT MainWindow::WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam) 
                     return 0;
                 }
 
-                for (size_t i = 0; i < FILE_MENU_ITEM_COUNT; ++i) {
-                    if (FILE_MENU_ITEMS[i].id == id) {
-                        RaiseCommand(FILE_MENU_ITEMS[i].command);
+                switch (id) {
+                    case MENU_FILE_TOGGLE_ID:
+                        RaiseCommand(miniant::Command::ToggleEnabled);
                         return 0;
-                    }
+
+                    case MENU_FILE_START_WITH_WINDOWS_ID:
+                        RaiseCommand(miniant::Command::ToggleStartWithWindows);
+                        return 0;
+
+                    case MENU_FILE_EXIT_ID:
+                        RaiseCommand(miniant::Command::Exit);
+                        return 0;
+
+                    case MENU_DIAGNOSTICS_REPORT_ID:
+                        RaiseCommand(miniant::Command::Diagnose);
+                        return 0;
+
+                    case MENU_DIAGNOSTICS_LOG_ID:
+                        RaiseCommand(miniant::Command::OpenLog);
+                        return 0;
+
+                    default:
+                        break;
                 }
             }
 

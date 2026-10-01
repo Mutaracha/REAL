@@ -17,7 +17,7 @@ namespace {
 const wchar_t ABOUT_CLASS_NAME[] = L"REAL.AboutWindow";
 
 const int WINDOW_WIDTH = 560;
-const int WINDOW_HEIGHT = 300;
+const int WINDOW_HEIGHT = 264;
 
 const int MARGIN = 16;
 const int ICON_SIZE = 48;
@@ -35,18 +35,18 @@ const int LINK_LABEL_FIRST_ID = 2010;
 const int LINK_FIRST_ID = 2020;
 const int LINK_COUNT = 3;
 
-// The documentation and the project: the same files and the same repository the
-// rest of the program points at.
+// The project first, then the documentation: the same files and the same
+// repository the rest of the program points at.
 const char* const LINK_URLS[LINK_COUNT] = {
+    "https://github.com/Mutaracha/REAL",
     "https://github.com/Mutaracha/REAL/blob/master/docs/usage.ru.md",
     "https://github.com/Mutaracha/REAL/blob/master/docs/CONFIG.md",
-    "https://github.com/Mutaracha/REAL",
 };
 
 const Lang::Str LINK_LABELS[LINK_COUNT] = {
+    Lang::Str::AboutProject,
     Lang::Str::AboutUsage,
     Lang::Str::AboutConfig,
-    Lang::Str::AboutProject,
 };
 
 // The text of a link: the address is cut down to the file name (or to the name
@@ -54,8 +54,8 @@ const Lang::Str LINK_LABELS[LINK_COUNT] = {
 // whole address.
 std::wstring LinkText(int index) {
     switch (index) {
-        case 0: return L"docs/usage.ru.md";
-        case 1: return L"docs/CONFIG.md";
+        case 1: return L"docs/usage.ru.md";
+        case 2: return L"docs/CONFIG.md";
         default: return L"github.com/Mutaracha/REAL";
     }
 }
@@ -294,11 +294,12 @@ void miniant::Windows::ShowAboutWindow(HWND owner, HINSTANCE instance, const std
 
     int y = MARGIN + ICON_SIZE + 22;
 
-    // The sentence about the program, in the language of the interface.
+    // The sentence about the program, in the language of the interface: two
+    // lines, the break is a part of the text itself.
     CreateControl(context, L"STATIC", Lang::Wide(Lang::Str::AboutText),
-        SS_LEFT | SS_CENTERIMAGE, 0, MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, ROW_HEIGHT, context.font);
+        SS_LEFT, 0, MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, 2 * LINE_HEIGHT, context.font);
 
-    y += ROW_HEIGHT + 10;
+    y += 2 * LINE_HEIGHT + 8;
 
     for (int i = 0; i < LINK_COUNT; ++i) {
         CreateControl(context, L"STATIC", Lang::Wide(LINK_LABELS[i]), SS_LEFT | SS_CENTERIMAGE,

@@ -5,9 +5,10 @@
 #include "Text.h"
 #include "Windows/Filesystem.h"
 
+#include <Windows.h>
+
 #include <spdlog/sinks/base_sink.h>
 #include <spdlog/sinks/rotating_file_sink.h>
-#include <spdlog/sinks/stdout_sinks.h>
 #include <spdlog/spdlog.h>
 
 #include <ctime>
@@ -39,8 +40,49 @@ private:
     LogBuffer* m_buffer;
 };
 
+// Writes a line to the console window the way a console program does: the
+// standard handle is asked for on every line (the window may appear after the
+// logger was created), the text goes through WriteConsoleW so that the
+// Cyrillic letters are shown as letters, and a redirected output is written as
+// UTF-8 bytes. It never throws and never fails: a console that is not there
+// simply means there is nothing to write to.
+void WriteToConsole(const std::string& text) {
+    const HANDLE handle = ::GetStdHandle(STD_OUTPUT_HANDLE);
+    if (handle == nullptr || handle == INVALID_HANDLE_VALUE) {
+        return;
+    }
+
+    DWORD written = 0;
+    DWORD mode = 0;
+
+    if (::GetConsoleMode(handle, &mode) != FALSE) {
+        const std::wstring wide = Text::ToWide(text);
+        if (!wide.empty()) {
+            ::WriteConsoleW(handle, wide.c_str(), static_cast<DWORD>(wide.size()), &written, nullptr);
+        }
+
+        return;
+    }
+
+    ::WriteFile(handle, text.data(), static_cast<DWORD>(text.size()), &written, nullptr);
+}
+
+// The console mirror: every line the program writes at the info level and above
+// goes through it, no matter what the settings say about the log file.
+class ConsoleSink: public spdlog::sinks::base_sink<std::mutex> {
+protected:
+    void sink_it_(const spdlog::details::log_msg& message) override {
+        fmt::memory_buffer formatted;
+        formatter_->format(message, formatted);
+        WriteToConsole(std::string(formatted.data(), formatted.size()));
+    }
+
+    void flush_() override {}
+};
+
 std::shared_ptr<spdlog::logger> g_logger;
-// Console output is a separate logger: it carries the operations only.
+// Console output is a separate logger: it mirrors the program at the info level
+// and is never switched off from the settings.
 std::shared_ptr<spdlog::logger> g_consoleLogger;
 std::unique_ptr<LogBuffer> g_buffer;
 std::wstring g_logFilePath;
@@ -64,10 +106,20 @@ void WriteToLoggers(Level level, const std::string& message) {
         return;
     }
 
-    // Failures are worth seeing in the console as well, everything else is
-    // written to the file and shown in the window only.
-    if (level == Level::Error && g_consoleLogger != nullptr) {
-        g_consoleLogger->error(message);
+    // The console shows everything at the info level and above; the file keeps
+    // what the settings allow, so the two never depend on each other.
+    if (g_consoleLogger != nullptr && level != Level::Trace && level != Level::Debug) {
+        switch (level) {
+            case Level::Warn:
+                g_consoleLogger->warn(message);
+                break;
+            case Level::Error:
+                g_consoleLogger->error(message);
+                break;
+            default:
+                g_consoleLogger->info(message);
+                break;
+        }
     }
 
     switch (level) {
@@ -246,13 +298,14 @@ void miniant::Log::Initialize(const Config::Settings& settings, bool consoleAtta
     sinks.push_back(bufferSink);
 
     // The console is not part of the logging settings: whenever it is shown, it
-    // mirrors the operations at the info level, so that the user always sees
-    // what the program is doing. Only the log file is configurable.
+    // mirrors everything the program reports at the info level, so that the user
+    // always sees what is going on. Only the log file is configurable.
     if (consoleAttached) {
-        auto consoleSink = std::make_shared<spdlog::sinks::stdout_sink_mt>();
+        auto consoleSink = std::make_shared<ConsoleSink>();
         consoleSink->set_pattern("[%l] %v");
         g_consoleLogger = std::make_shared<spdlog::logger>("console", consoleSink);
         g_consoleLogger->set_level(spdlog::level::info);
+        g_consoleLogger->flush_on(spdlog::level::info);
     }
 
     if (settings.logging.toFile) {
@@ -296,11 +349,9 @@ void miniant::Log::SetLevel(const std::string& level) {
 }
 
 void miniant::Log::WriteOperation(const std::string& message) {
+    // An operation is an ordinary line at the info level: the console mirror is
+    // a part of the way every line is written.
     Write(Level::Info, message);
-
-    if (g_consoleLogger != nullptr) {
-        g_consoleLogger->info(message);
-    }
 }
 
 void miniant::Log::WriteHint(const std::string& message) {

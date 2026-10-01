@@ -4,6 +4,7 @@
 #include "../Lang.h"
 #include "../Text.h"
 
+#include <commctrl.h>
 #include <shellapi.h>
 
 #include <string>
@@ -18,7 +19,7 @@ namespace {
 const wchar_t SETTINGS_CLASS_NAME[] = L"REAL.SettingsWindow";
 
 const int WINDOW_WIDTH = 680;
-const int WINDOW_HEIGHT = 640;
+const int WINDOW_HEIGHT = 660;
 
 const int MARGIN = 14;
 const int ROW_HEIGHT = 24;
@@ -30,7 +31,6 @@ const int FIELD_WIDTH = 220;
 const int PAGE_TOP = 62;
 const int BUTTON_HEIGHT = 30;
 const int BUTTON_WIDTH = 120;
-const int TAB_WIDTH = 110;
 
 // Every control of the window has a number: the values are read back by it, so
 // a control that is not on screen at the moment (another page is open) keeps
@@ -53,7 +53,6 @@ enum class Id : int {
     TrayMenuStatus,
     TrayMenuToggle,
     TrayMenuReinit,
-    TrayMenuSettings,
     TrayMenuLog,
     TrayMenuDiagnostics,
     TrayMenuStartWithWindows,
@@ -96,11 +95,9 @@ enum class Id : int {
     LogMaxFileSize,
     LogMaxFiles,
 
-    // The frame of the window: the tabs and the buttons belong to no page, they
-    // stay on screen all the time.
-    TabWindow,
-    TabAudio,
-    TabOther,
+    // The frame of the window: the tab control and the buttons belong to no
+    // page, they stay on screen all the time.
+    Tabs,
     SettingsPath,
     OpenFile,
     Cancel,
@@ -122,6 +119,13 @@ struct Context {
     std::vector<std::pair<HWND, Page>> pageControls;
     Page page = Page::Window;
 
+    // The system tab control and the offset of a page inside it: every control
+    // of a page is created with this offset, so the pages sit in the display
+    // area of the tabs and never overlap them.
+    HWND tabs = nullptr;
+    int offsetX = 0;
+    int offsetY = 0;
+
     bool saved = false;
     bool done = false;
 
@@ -131,6 +135,22 @@ struct Context {
 
 int ControlId(Id id) {
     return static_cast<int>(id);
+}
+
+// The tab control lives in comctl32: it has to be asked for before the first
+// control of that library is created.
+void InitCommonControlsOnce() {
+    static bool ready = false;
+
+    if (ready) {
+        return;
+    }
+
+    INITCOMMONCONTROLSEX settings = {};
+    settings.dwSize = sizeof(settings);
+    settings.dwICC = ICC_TAB_CLASSES | ICC_STANDARD_CLASSES;
+
+    ready = ::InitCommonControlsEx(&settings) != FALSE;
 }
 
 // A pair "value of the settings - text of the window": the lists below are read
@@ -284,8 +304,8 @@ HWND CreateControl(
         className,
         text.c_str(),
         style | WS_CHILD | WS_VISIBLE,
-        x,
-        y,
+        x + context.offsetX,
+        y + context.offsetY,
         width,
         height,
         context.window,
@@ -496,7 +516,6 @@ int BuildWindowPage(Context& context) {
         { Id::TrayMenuStatus, Lang::Str::SettingsMenuStatus, settings.tray.menu.showStatus },
         { Id::TrayMenuToggle, Lang::Str::TrayToggleEnabled, settings.tray.menu.toggleEnabled },
         { Id::TrayMenuReinit, Lang::Str::TrayReinitialize, settings.tray.menu.reinitialize },
-        { Id::TrayMenuSettings, Lang::Str::TraySettings, settings.tray.menu.openSettings },
         { Id::TrayMenuLog, Lang::Str::TrayLog, settings.tray.menu.openLog },
         { Id::TrayMenuDiagnostics, Lang::Str::TrayDiagnostics, settings.tray.menu.diagnostics },
         { Id::TrayMenuStartWithWindows, Lang::Str::TrayStartWithWindows, settings.tray.menu.startWithWindows },
@@ -617,28 +636,61 @@ int BuildOtherPage(Context& context) {
     return y;
 }
 
-// The frame of the window: the tabs at the top and the buttons at the bottom.
-void BuildFrame(Context& context) {
+// The tab control of the system: it draws the tabs itself, so they can never
+// overlap each other or the page. The pages are ordinary controls of the window
+// that are placed inside the display area of the tabs and are shown one page at
+// a time.
+void CreateTabs(Context& context) {
     const struct {
-        Id id;
         Lang::Str text;
-    } TABS[] = {
-        { Id::TabWindow, Lang::Str::SettingsTabWindow },
-        { Id::TabAudio, Lang::Str::SettingsTabAudio },
-        { Id::TabOther, Lang::Str::SettingsTabOther },
+    } ITEMS[] = {
+        { Lang::Str::SettingsTabWindow },
+        { Lang::Str::SettingsTabAudio },
+        { Lang::Str::SettingsTabOther },
     };
 
-    for (size_t i = 0; i < sizeof(TABS) / sizeof(TABS[0]); ++i) {
-        const HWND tab = CreateControl(
-            context, L"BUTTON", Lang::Wide(TABS[i].text),
-            BS_AUTORADIOBUTTON | WS_TABSTOP | (i == 0 ? WS_GROUP : 0L), TABS[i].id,
-            MARGIN + static_cast<int>(i) * (TAB_WIDTH + 4), MARGIN, TAB_WIDTH, ROW_HEIGHT + 2);
+    const int top = MARGIN;
+    const int bottom = WINDOW_HEIGHT - MARGIN - BUTTON_HEIGHT - 8;
 
-        if (tab != nullptr) {
-            ::SendMessageW(tab, BM_SETCHECK, i == 0 ? BST_CHECKED : BST_UNCHECKED, 0);
-        }
+    context.tabs = CreateControl(
+        context, WC_TABCONTROLW, L"",
+        WS_TABSTOP | TCS_TABS, Id::Tabs,
+        MARGIN, top, WINDOW_WIDTH - 2 * MARGIN, bottom - top);
+
+    if (context.tabs == nullptr) {
+        return;
     }
 
+    for (size_t i = 0; i < sizeof(ITEMS) / sizeof(ITEMS[0]); ++i) {
+        const std::wstring text = Lang::Wide(ITEMS[i].text);
+
+        TCITEMW item = {};
+        item.mask = TCIF_TEXT;
+        item.pszText = const_cast<wchar_t*>(text.c_str());
+
+        ::SendMessageW(context.tabs, TCM_INSERTITEMW, static_cast<WPARAM>(i), reinterpret_cast<LPARAM>(&item));
+    }
+
+    // The display area of the tabs: the pages are built in its coordinates.
+    RECT display = {};
+    ::GetClientRect(context.tabs, &display);
+    ::SendMessageW(context.tabs, TCM_ADJUSTRECT, FALSE, reinterpret_cast<LPARAM>(&display));
+
+    context.offsetX = display.left;
+    context.offsetY = top + display.top - PAGE_TOP;
+
+    // Two pixels of air between the frame of the tabs and the first control.
+    context.offsetX += 2;
+    context.offsetY += 2;
+}
+
+void ResetPageOffset(Context& context) {
+    context.offsetX = 0;
+    context.offsetY = 0;
+}
+
+// The frame of the window: the buttons at the bottom.
+void BuildFrame(Context& context) {
     const int buttonY = WINDOW_HEIGHT - MARGIN - BUTTON_HEIGHT;
 
     CreateControl(
@@ -662,6 +714,14 @@ void BuildFrame(Context& context) {
         WINDOW_WIDTH - MARGIN - 2 * BUTTON_WIDTH - 8, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
 }
 
+Page PageOfIndex(int index) {
+    switch (index) {
+        case 1: return Page::Audio;
+        case 2: return Page::Other;
+        default: return Page::Window;
+    }
+}
+
 void ShowPage(Context& context, Page page) {
     context.page = page;
 
@@ -671,19 +731,13 @@ void ShowPage(Context& context, Page page) {
         }
     }
 
-    const struct {
-        Id id;
-        Page page;
-    } TABS[] = {
-        { Id::TabWindow, Page::Window },
-        { Id::TabAudio, Page::Audio },
-        { Id::TabOther, Page::Other },
-    };
+    if (context.tabs != nullptr) {
+        const int index = page == Page::Audio ? 1 : (page == Page::Other ? 2 : 0);
 
-    for (const auto& tab : TABS) {
-        const HWND control = Get(context, tab.id);
-        if (control != nullptr) {
-            ::SendMessageW(control, BM_SETCHECK, tab.page == page ? BST_CHECKED : BST_UNCHECKED, 0);
+        // Setting the selection does not send TCN_SELCHANGE, so the pages do not
+        // switch back and forth.
+        if (static_cast<int>(::SendMessageW(context.tabs, TCM_GETCURSEL, 0, 0)) != index) {
+            ::SendMessageW(context.tabs, TCM_SETCURSEL, static_cast<WPARAM>(index), 0);
         }
     }
 }
@@ -710,7 +764,6 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     updated.tray.menu.showStatus = IsChecked(context, Id::TrayMenuStatus);
     updated.tray.menu.toggleEnabled = IsChecked(context, Id::TrayMenuToggle);
     updated.tray.menu.reinitialize = IsChecked(context, Id::TrayMenuReinit);
-    updated.tray.menu.openSettings = IsChecked(context, Id::TrayMenuSettings);
     updated.tray.menu.openLog = IsChecked(context, Id::TrayMenuLog);
     updated.tray.menu.diagnostics = IsChecked(context, Id::TrayMenuDiagnostics);
     updated.tray.menu.startWithWindows = IsChecked(context, Id::TrayMenuStartWithWindows);
@@ -852,21 +905,6 @@ void OnCommand(Context& context, UINT id, UINT notification) {
         return;
     }
 
-    if (id == static_cast<UINT>(ControlId(Id::TabWindow))) {
-        ShowPage(context, Page::Window);
-        return;
-    }
-
-    if (id == static_cast<UINT>(ControlId(Id::TabAudio))) {
-        ShowPage(context, Page::Audio);
-        return;
-    }
-
-    if (id == static_cast<UINT>(ControlId(Id::TabOther))) {
-        ShowPage(context, Page::Other);
-        return;
-    }
-
     if (id == static_cast<UINT>(ControlId(Id::OpenFile))) {
         OnOpenFile(context);
         return;
@@ -902,6 +940,20 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 
             if (notification == BN_CLICKED || id == IDOK || id == IDCANCEL) {
                 OnCommand(*context, id, notification);
+                return 0;
+            }
+
+            break;
+        }
+
+        case WM_NOTIFY: {
+            const auto* header = reinterpret_cast<const NMHDR*>(lParam);
+
+            if (header != nullptr && header->hwndFrom == context->tabs && header->code == TCN_SELCHANGE) {
+                const int selected = static_cast<int>(
+                    ::SendMessageW(context->tabs, TCM_GETCURSEL, 0, 0));
+
+                ShowPage(*context, PageOfIndex(selected));
                 return 0;
             }
 
@@ -1004,10 +1056,19 @@ bool miniant::Windows::ShowSettingsWindow(
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
         DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
 
+    // The frame is built first (it is not inside the tabs), then the tab
+    // control, and only after it the pages, which are placed inside its display
+    // area by the offset it reports.
     BuildFrame(context);
+
+    InitCommonControlsOnce();
+
+    CreateTabs(context);
     BuildWindowPage(context);
     BuildAudioPage(context);
     BuildOtherPage(context);
+
+    ResetPageOffset(context);
     ShowPage(context, Page::Window);
 
     // Modal for the main window: it takes no commands while the settings are

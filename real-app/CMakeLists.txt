@@ -74,6 +74,8 @@ target_include_directories(real-app PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/deps/spdlog/include")
 
 target_link_libraries(real-app PRIVATE
+    # The tab control of the settings window lives in comctl32.
+    comctl32
     winhttp
     ole32
     oleaut32
