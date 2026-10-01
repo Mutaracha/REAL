@@ -6,6 +6,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <spdlog/fmt/fmt.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <initializer_list>
@@ -41,6 +43,12 @@ const std::pair<const char*, ProcessPriority> PROCESS_PRIORITY_MAP[] = {
     { "idle", ProcessPriority::Idle },
 };
 
+// "audio.dataFlow" for a parameter of a section, "configVersion" for one of the
+// root object (its section name is empty).
+std::string KeyName(const std::string& sectionName, const std::string& key) {
+    return sectionName.empty() ? key : sectionName + "." + key;
+}
+
 template <typename T, size_t N>
 void ReadEnum(
     const json& section,
@@ -55,7 +63,7 @@ void ReadEnum(
     }
 
     if (!it->is_string()) {
-        warnings.push_back(sectionName + "." + key + ": expected a string value, using default");
+        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnString), KeyName(sectionName, key)));
         return;
     }
 
@@ -76,7 +84,8 @@ void ReadEnum(
         allowed += table[i].first;
     }
 
-    warnings.push_back(sectionName + "." + key + ": unknown value '" + value + "' (allowed: " + allowed + "), using default");
+    warnings.push_back(
+        fmt::format(Lang::Utf8(Str::CfgWarnUnknownValue), KeyName(sectionName, key), value, allowed));
 }
 
 void ReadBool(const json& section, const char* key, bool& target, std::vector<std::string>& warnings, const std::string& sectionName) {
@@ -86,7 +95,7 @@ void ReadBool(const json& section, const char* key, bool& target, std::vector<st
     }
 
     if (!it->is_boolean()) {
-        warnings.push_back(sectionName + "." + key + ": expected true/false, using default");
+        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnBool), KeyName(sectionName, key)));
         return;
     }
 
@@ -100,13 +109,13 @@ void ReadInt(const json& section, const char* key, int& target, int minValue, in
     }
 
     if (!it->is_number_integer()) {
-        warnings.push_back(sectionName + "." + key + ": expected an integer, using default");
+        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnInteger), KeyName(sectionName, key)));
         return;
     }
 
     const int value = it->get<int>();
     if (value < minValue || value > maxValue) {
-        warnings.push_back(sectionName + "." + key + ": value out of range, using default");
+        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnRange), KeyName(sectionName, key)));
         return;
     }
 
@@ -120,13 +129,13 @@ void ReadUnsigned(const json& section, const char* key, unsigned int& target, un
     }
 
     if (!it->is_number_integer()) {
-        warnings.push_back(sectionName + "." + key + ": expected an integer, using default");
+        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnInteger), KeyName(sectionName, key)));
         return;
     }
 
     const int value = it->get<int>();
     if (value < 0 || static_cast<unsigned int>(value) > maxValue) {
-        warnings.push_back(sectionName + "." + key + ": value out of range, using default");
+        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnRange), KeyName(sectionName, key)));
         return;
     }
 
@@ -140,7 +149,7 @@ void ReadString(const json& section, const char* key, std::string& target, std::
     }
 
     if (!it->is_string()) {
-        warnings.push_back(sectionName + "." + key + ": expected a string, using default");
+        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnString), KeyName(sectionName, key)));
         return;
     }
 
@@ -163,7 +172,7 @@ void WarnUnknownKeys(
         }
 
         if (!found) {
-            warnings.push_back(sectionName + "." + key + ": unknown option (ignored)");
+            warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnUnknownKey), KeyName(sectionName, key)));
         }
     }
 }
@@ -222,7 +231,15 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
     bool readSucceeded = false;
     std::string content = Windows::Filesystem::ReadTextFileUtf8(path, &readSucceeded);
     if (!readSucceeded) {
-        result.fileExists = false;
+        // A file that exists but cannot be read is not the same as no file at
+        // all: the program says so and starts on the defaults without touching
+        // the file of the user.
+        result.fileExists = Windows::Filesystem::IsFile(path);
+        if (result.fileExists) {
+            result.parseFailed = true;
+            result.error = Lang::Utf8(Str::CfgErrRead);
+        }
+
         return result;
     }
 
@@ -235,21 +252,21 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
         root = json::parse(content);
     } catch (const json::exception& error) {
         result.parseFailed = true;
-        result.error = std::string("Could not parse the settings file: ") + error.what();
+        result.error = fmt::format(Lang::Utf8(Str::CfgErrParse), error.what());
         return result;
     }
 
     if (!root.is_object()) {
         result.parseFailed = true;
-        result.error = "The settings file must contain a JSON object.";
+        result.error = Lang::Utf8(Str::CfgErrNotObject);
         return result;
     }
 
     Settings& settings = result.settings;
 
-    ReadInt(root, "configVersion", settings.configVersion, 1, 1000, result.warnings, "configVersion");
-    ReadString(root, "commentLanguage", settings.commentLanguage, result.warnings, "commentLanguage");
-    WarnUnknownKeys(root, "root",
+    ReadInt(root, "configVersion", settings.configVersion, 1, 1000, result.warnings, "");
+    ReadString(root, "commentLanguage", settings.commentLanguage, result.warnings, "");
+    WarnUnknownKeys(root, "",
         { "configVersion", "commentLanguage", "application", "tray", "audio", "performance", "updates", "hotkeys", "logging" },
         result.warnings);
 
@@ -261,20 +278,12 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
         ReadBool(*section, "singleInstance", settings.application.singleInstance, result.warnings, "application");
         ReadBool(*section, "startWithWindows", settings.application.startWithWindows, result.warnings, "application");
         WarnUnknownKeys(*section, "application",
-            // "theme" (version 3) and "showConsole" (version 5) are not used
-            // any more: a file of an older version loads without a word about
-            // them.
-            { "language", "theme", "startMinimizedToTray", "minimizeToTray", "closeButtonAction", "showConsole", "singleInstance", "startWithWindows" },
+            { "language", "startMinimizedToTray", "minimizeToTray", "closeButtonAction", "singleInstance", "startWithWindows" },
             result.warnings);
     }
 
     if (const json* section = FindSection(root, "tray")) {
         ReadBool(*section, "enabled", settings.tray.enabled, result.warnings, "tray");
-        // "showStatusInTooltip" was dropped when the tooltip became the only
-        // place that shows the state: the value has no other use, so the
-        // tooltip always carries it now.
-        bool obsoleteShowStatusInTooltip = true;
-        ReadBool(*section, "showStatusInTooltip", obsoleteShowStatusInTooltip, result.warnings, "tray");
 
         if (const json* notifications = FindSection(*section, "notifications")) {
             ReadBool(*notifications, "onError", settings.tray.notifications.onError, result.warnings, "tray.notifications");
@@ -292,36 +301,20 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
             ReadBool(*menu, "startWithWindows", settings.tray.menu.startWithWindows, result.warnings, "tray.menu");
             ReadBool(*menu, "about", settings.tray.menu.about, result.warnings, "tray.menu");
             ReadBool(*menu, "exit", settings.tray.menu.exit, result.warnings, "tray.menu");
-            // "openSettings" belonged to version 4 of the layout and opened the
-            // settings file from the tray menu: the settings window keeps that
-            // button itself, so the key is not used any more.
             WarnUnknownKeys(*menu, "tray.menu",
-                { "showStatus", "toggleEnabled", "reinitialize", "openSettings", "openLog", "diagnostics", "startWithWindows", "about", "exit" },
+                { "showStatus", "toggleEnabled", "reinitialize", "openLog", "diagnostics", "startWithWindows", "about", "exit" },
                 result.warnings);
         }
 
-        WarnUnknownKeys(*section, "tray", { "enabled", "showStatusInTooltip", "notifications", "menu" }, result.warnings);
+        WarnUnknownKeys(*section, "tray", { "enabled", "notifications", "menu" }, result.warnings);
     }
 
     if (const json* section = FindSection(root, "audio")) {
         ReadBool(*section, "enabledOnStartup", settings.audio.enabledOnStartup, result.warnings, "audio");
         ReadEnum(*section, "dataFlow", DATA_FLOW_MAP, settings.audio.dataFlow, result.warnings, "audio");
-        // "role" was dropped when the small buffer began to be taken on the
-        // default device of every role ("console"/"multimedia" are the usual
-        // default device, "communications" is the default communication one): a
-        // file from an older version is accepted and the key is gone from the
-        // next written version.
-        std::string obsoleteRole;
-        ReadString(*section, "role", obsoleteRole, result.warnings, "audio");
         ReadEnum(*section, "periodSelection", PERIOD_SELECTION_MAP, settings.audio.periodSelection, result.warnings, "audio");
         ReadUnsigned(*section, "requestedPeriodFrames", settings.audio.requestedPeriodFrames, 0xFFFFFFFFu, result.warnings, "audio");
         ReadBool(*section, "allowPeriodSnap", settings.audio.allowPeriodSnap, result.warnings, "audio");
-        // "releaseOnExit" was dropped when it turned out to change nothing:
-        // the streams are closed on exit in any case, and the engine returns
-        // to its default period by itself. A file from an older version is
-        // accepted and the key is gone from the next written version.
-        bool obsoleteReleaseOnExit = true;
-        ReadBool(*section, "releaseOnExit", obsoleteReleaseOnExit, result.warnings, "audio");
 
         if (const json* reinit = FindSection(*section, "reinit")) {
             ReadBool(*reinit, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged, result.warnings, "audio.reinit");
@@ -339,7 +332,7 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
         }
 
         WarnUnknownKeys(*section, "audio",
-            { "enabledOnStartup", "dataFlow", "role", "periodSelection", "requestedPeriodFrames", "allowPeriodSnap", "releaseOnExit", "reinit" },
+            { "enabledOnStartup", "dataFlow", "periodSelection", "requestedPeriodFrames", "allowPeriodSnap", "reinit" },
             result.warnings);
     }
 
@@ -351,16 +344,7 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
 
     if (const json* section = FindSection(root, "updates")) {
         ReadBool(*section, "checkOnStartup", settings.updates.checkOnStartup, result.warnings, "updates");
-
-        // "repository" was dropped when the releases were pinned to the project
-        // repository and "mode" was dropped when the check at startup became the
-        // only setting; a file from an older version is accepted and the keys
-        // are gone from the next written version.
-        std::string obsoleteRepository;
-        ReadString(*section, "repository", obsoleteRepository, result.warnings, "updates");
-        std::string obsoleteMode;
-        ReadString(*section, "mode", obsoleteMode, result.warnings, "updates");
-        WarnUnknownKeys(*section, "updates", { "mode", "repository", "checkOnStartup" }, result.warnings);
+        WarnUnknownKeys(*section, "updates", { "checkOnStartup" }, result.warnings);
     }
 
     if (const json* section = FindSection(root, "hotkeys")) {
@@ -375,16 +359,8 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
         ReadString(*section, "filePath", settings.logging.filePath, result.warnings, "logging");
         ReadInt(*section, "maxFileSizeMb", settings.logging.maxFileSizeMb, 1, 1024, result.warnings, "logging");
         ReadInt(*section, "maxFiles", settings.logging.maxFiles, 1, 100, result.warnings, "logging");
-
-        // "toConsole" and "toFile" are obsolete: the window of the program
-        // always shows the operations, and the file is switched on and off by
-        // the level itself ("off" means no file at all).
-        bool obsoleteToConsole = false;
-        ReadBool(*section, "toConsole", obsoleteToConsole, result.warnings, "logging");
-        bool obsoleteToFile = true;
-        ReadBool(*section, "toFile", obsoleteToFile, result.warnings, "logging");
         WarnUnknownKeys(*section, "logging",
-            { "level", "toConsole", "toFile", "filePath", "maxFileSizeMb", "maxFiles" },
+            { "level", "filePath", "maxFileSizeMb", "maxFiles" },
             result.warnings);
     }
 
@@ -655,7 +631,7 @@ bool miniant::Config::Write(const Settings& settings, const std::wstring& path) 
         content = ToJsonString(copy);
     }
 
-    return Windows::Filesystem::WriteTextFileUtf8(path, content + "\n");
+    return Windows::Filesystem::WriteTextFileUtf8Atomic(path, content + "\n");
 }
 
 std::string miniant::Config::Describe(const Settings& settings) {
@@ -664,15 +640,24 @@ std::string miniant::Config::Describe(const Settings& settings) {
     std::string result;
     result += "dataFlow=";
     result += ToString(settings.audio.dataFlow);
-    result += ", roles=default+communication";
-    result += ", period=";
+    result += ", periodSelection=";
     result += ToString(settings.audio.periodSelection);
-    result += ", priority=";
+
+    if (settings.audio.periodSelection == PeriodSelection::Fixed) {
+        result += ", requestedPeriodFrames=";
+        result += std::to_string(settings.audio.requestedPeriodFrames);
+    }
+
+    result += ", processPriority=";
     result += ToString(settings.performance.processPriority);
     return result;
 }
 
-std::string miniant::Config::PeekCommentLanguage(const std::wstring& path) {
+namespace {
+
+// One string field of the file, read without touching the rest of it. The
+// section is empty for a field of the root object.
+std::string PeekString(const std::wstring& path, const char* section, const char* key) {
     bool readSucceeded = false;
     const std::string content = Windows::Filesystem::ReadTextFileUtf8(path, &readSucceeded);
     if (!readSucceeded) {
@@ -688,8 +673,19 @@ std::string miniant::Config::PeekCommentLanguage(const std::wstring& path) {
             return {};
         }
 
-        const auto it = root.find("commentLanguage");
-        if (it != root.end() && it->is_string()) {
+        const json* object = &root;
+
+        if (section != nullptr) {
+            const auto sectionIt = root.find(section);
+            if (sectionIt == root.end() || !sectionIt->is_object()) {
+                return {};
+            }
+
+            object = &(*sectionIt);
+        }
+
+        const auto it = object->find(key);
+        if (it != object->end() && it->is_string()) {
             return it->get<std::string>();
         }
     } catch (const json::exception&) {
@@ -697,4 +693,14 @@ std::string miniant::Config::PeekCommentLanguage(const std::wstring& path) {
     }
 
     return {};
+}
+
+}
+
+std::string miniant::Config::PeekCommentLanguage(const std::wstring& path) {
+    return PeekString(path, nullptr, "commentLanguage");
+}
+
+std::string miniant::Config::PeekLanguage(const std::wstring& path) {
+    return PeekString(path, "application", "language");
 }

@@ -4,6 +4,8 @@
 
 #include <Windows.h>
 
+#include <spdlog/fmt/fmt.h>
+
 #include <cctype>
 #include <cstddef>
 #include <iterator>
@@ -60,6 +62,9 @@ const Entry TABLE[] = {
     { Str::NotifyUpdateFailed, "Update check failed", "Проверка обновлений не удалась" },
     { Str::NotifyUpdateClick, "Click to open the release page", "Нажмите, чтобы открыть страницу релиза" },
     { Str::NotifyReportFailed, "Could not write the report", "Не удалось записать отчёт" },
+    { Str::NotifySettingsUnreadable,
+      "The settings file could not be read, the defaults are used",
+      "Файл настроек не прочитан, работают значения по умолчанию" },
 
     { Str::StatusSuspended,
       "disabled: the device does not answer",
@@ -67,6 +72,11 @@ const Entry TABLE[] = {
     { Str::StatusActive,
       "{:.2f} ms - {}",
       "{:.2f} мс - {}" },
+    // The technical part of a stream in the journal: the format of the device
+    // and the buffer it runs with ({1} and {3} come with their nouns).
+    { Str::StreamDetails,
+      ", {0} Hz, {1}, {2} bit, period {3} ({4})",
+      ", {0} Гц, {1}, {2} бит, период {3} ({4})" },
     { Str::UnknownDevice,
       "<unknown device>",
       "<неизвестное устройство>" },
@@ -76,6 +86,15 @@ const Entry TABLE[] = {
     { Str::FlowCapture,
       "input",
       "ввод" },
+    { Str::LogUnknownArgument,
+      "Unknown command line option: {0} (ignored).",
+      "Неизвестный ключ командной строки: {0} (игнорируется)." },
+    { Str::LogAudioSettings,
+      "Latency reduction settings: {0} (the default and the default communication devices).",
+      "Параметры снижения задержки: {0} (устройства по умолчанию и устройства связи по умолчанию)." },
+    { Str::LogTrayForeignEvent,
+      "Tray event 0x{0:04X} for the icon {1}, this icon is {2}.",
+      "Событие значка 0x{0:04X} для значка {1}, а это значок {2}." },
     { Str::LogMutexFailed,
       "Could not create the single instance mutex: {0}",
       "Не удалось создать мьютекс единственного экземпляра: {0}" },
@@ -83,8 +102,11 @@ const Entry TABLE[] = {
       "Another instance seems to be running but did not answer; starting a new one.",
       "Другая копия, похоже, запущена, но не отвечает; запускаем новую." },
     { Str::LogSettingsUnreadable,
-      "The settings file could not be read; built-in default settings are used.",
-      "Файл настроек не удалось прочитать; используются встроенные значения." },
+      "Built-in default settings are used; the settings file is left as it is.",
+      "Используются встроенные значения настроек; файл настроек не изменён." },
+    { Str::LogSettingsBackup,
+      "The settings file that could not be read is kept as {0}.",
+      "Файл настроек, который не удалось прочитать, сохранён как {0}." },
     { Str::LogComFailed,
       "Could not initialise COM: {0}",
       "Не удалось инициализировать COM: {0}" },
@@ -142,9 +164,6 @@ const Entry TABLE[] = {
     { Str::LogReinitInvalid,
       "The audio streams are no longer valid, activating again: {0}",
       "Аудиопотоки недействительны, активирую заново: {0}" },
-    { Str::LogApplyRetry,
-      "The latency reduction could not be applied earlier; trying again.",
-      "Ранее не удалось применить снижение задержки; пробуем снова." },
     { Str::LogResumeApply,
       "The system reported {0}; re-applying the low latency mode.",
       "Система сообщила {0}; применяем режим заново." },
@@ -176,8 +195,8 @@ const Entry TABLE[] = {
       "Low latency stream started: {0}",
       "Поток с низкой задержкой запущен: {0}" },
     { Str::LogPeriodLocked,
-      "Another application has already locked the audio engine period; snapped to {0} frames.",
-      "Другое приложение уже зафиксировало период аудиодвижка; выбран ближайший размер {0} кадров." },
+      "Another application has already locked the audio engine period; the nearest one is used: {0}.",
+      "Другое приложение уже зафиксировало период аудиодвижка; выбран ближайший период: {0}." },
     { Str::LogDiagCollected,
       "Diagnostics: location and configuration collected.",
       "Диагностика: расположение и настройки собраны." },
@@ -206,6 +225,12 @@ const Entry TABLE[] = {
       "Could not create the main window.",
       "Не удалось создать главное окно." },
 
+    { Str::ErrUnhandledException,
+      "Unhandled exception ({0}). REAL will exit.",
+      "Необработанное исключение ({0}). REAL завершит работу." },
+    { Str::ErrUnhandledExceptionUnknown,
+      "Unhandled exception of an unknown type. REAL will exit.",
+      "Необработанное исключение неизвестного типа. REAL завершит работу." },
     { Str::ErrAudioEnumeratorFailed,
       "Could not create the audio device enumerator: {0}",
       "Не удалось создать перечислитель аудиоустройств: {0}" },
@@ -233,9 +258,6 @@ const Entry TABLE[] = {
     { Str::ErrStreamNotRunning,
       "The audio stream is not running.",
       "Аудиопоток не запущен." },
-    { Str::ErrEndpointTransient,
-      ": the audio endpoint is not available at the moment (device change or audio service restart); another attempt will be made automatically",
-      ": аудиоустройство сейчас недоступно (смена устройства или перезапуск службы звука); попытка будет повторена автоматически" },
     { Str::ErrNoAudioClient3,
       "The device does not support IAudioClient3, so small buffers are not available for it (typical for Bluetooth and some virtual/vendor drivers).",
       "Устройство не поддерживает IAudioClient3, поэтому малые буферы для него недоступны (обычно это Bluetooth и некоторые виртуальные драйверы)." },
@@ -364,8 +386,8 @@ const Entry TABLE[] = {
       "    driver:   {0} {1}\n",
       "    драйвер:  {0} {1}\n" },
     { Str::DiagFormat,
-      "    format:   {0} Hz, {1} channels, {2} bit\n",
-      "    формат:   {0} Гц, каналов {1}, бит {2}\n" },
+      "    format:   {0} Hz, {1}, {2} bit\n",
+      "    формат:   {0} Гц, {1}, {2} бит\n" },
     { Str::DiagPeriods,
       "    periods:  {0}\n",
       "    периоды:  {0}\n" },
@@ -392,7 +414,7 @@ const Entry TABLE[] = {
       "The base step is the amount by which the engine can change its period: any value between the minimum and the maximum with that step is allowed. The step itself is not a period, so a value like \"step of 1 frame\" cannot be requested; REAL never asks for a period below the minimum.\n"
       "The small buffer is taken on both default devices of the chosen direction: the usual default device and the default communication device (Settings - System - Sound).\n",
       "Устройство подходит для снижения задержки, если его минимальный период меньше стандартного (см. «итог»). Обычные исключения: Bluetooth (10 мс по замыслу), приёмники HDMI/DisplayPort, некоторые драйверы производителей (Realtek, Nahimic, ACX) и виртуальные устройства.\n"
-      "Базовый шаг — это ступень, с которой движок меняет период: допустимы значения от минимального до максимального с этим шагом. Сам шаг периодом не является, поэтому значение вида «шаг 1 кадр» использовать нельзя — программа запрашивает период не меньше минимального.\n"
+      "Базовый шаг — это ступень, с которой движок меняет период: допустимы значения от минимального до максимального с этим шагом. Сам шаг периодом не является, поэтому значение вида «шаг 1 фрейм» использовать нельзя — программа запрашивает период не меньше минимального.\n"
       "Малый буфер берётся на обоих устройствах по умолчанию выбранного направления: на обычном устройстве по умолчанию и на устройстве связи по умолчанию («Параметры → Система → Звук»).\n" },
 
     { Str::DiagPeriodsNoClient3,
@@ -424,6 +446,33 @@ const Entry TABLE[] = {
       "не удалось создать аудиоклиент: {0}" },
 
     { Str::SettingsPrefix, "Settings:", "Настройки:" },
+    { Str::CfgErrNotObject,
+      "the file must contain a JSON object",
+      "файл должен содержать объект JSON" },
+    { Str::CfgErrParse,
+      "the file could not be parsed: {0}",
+      "файл не удалось разобрать: {0}" },
+    { Str::CfgErrRead,
+      "the file exists but could not be read (it may be locked by another program)",
+      "файл есть, но прочитать его не удалось (возможно, он занят другой программой)" },
+    { Str::CfgWarnString,
+      "{0}: expected a string, the default value is used",
+      "{0}: ожидалась строка, взято значение по умолчанию" },
+    { Str::CfgWarnBool,
+      "{0}: expected true or false, the default value is used",
+      "{0}: ожидалось true или false, взято значение по умолчанию" },
+    { Str::CfgWarnInteger,
+      "{0}: expected an integer, the default value is used",
+      "{0}: ожидалось целое число, взято значение по умолчанию" },
+    { Str::CfgWarnRange,
+      "{0}: the value is out of the allowed range, the default value is used",
+      "{0}: значение вне допустимого диапазона, взято значение по умолчанию" },
+    { Str::CfgWarnUnknownKey,
+      "{0}: unknown option, ignored",
+      "{0}: неизвестный параметр, игнорируется" },
+    { Str::CfgWarnUnknownValue,
+      "{0}: unknown value \"{1}\" (allowed: {2}), the default value is used",
+      "{0}: неизвестное значение «{1}» (допустимо: {2}), взято значение по умолчанию" },
 
     // Command line help
     { Str::HelpText,
@@ -440,7 +489,7 @@ const Entry TABLE[] = {
       "  --multi-instance      Do not reuse an already running instance\n"
       "\n"
       "Commands for a running instance (the command is passed to it and this process exits):\n"
-      "  --reinit              Re-initialise the audio streams and enable the mode again\n"
+      "  --reinit              Restart: activate again (re-create the audio streams), the mode is enabled\n"
       "  --enable              Enable the latency reduction\n"
       "  --disable             Disable the latency reduction (the engine returns to its default)\n"
       "  --exit                Close the running instance\n"
@@ -466,7 +515,7 @@ const Entry TABLE[] = {
       "  --multi-instance      не переиспользовать уже запущенную копию\n"
       "\n"
       "Команды для работающей копии (передаются ей, этот процесс завершается):\n"
-      "  --reinit              переинициализировать потоки и включить режим заново\n"
+      "  --reinit              перезапустить: активировать заново (пересоздать потоки), режим включается\n"
       "  --enable              включить снижение задержки\n"
       "  --disable             выключить снижение задержки (движок вернётся к 10 мс)\n"
       "  --exit                закрыть работающую копию\n"
@@ -578,7 +627,7 @@ const Entry TABLE[] = {
     { Str::SettingsPeriodMinimum, "Minimum", "Минимальный" },
     { Str::SettingsPeriodFundamental, "By the base step", "По базовому шагу" },
     { Str::SettingsPeriodFixed, "Fixed value", "Фиксированный" },
-    { Str::SettingsRequestedPeriod, "Requested period, frames", "Запрашиваемый период, кадры" },
+    { Str::SettingsRequestedPeriod, "Requested period, frames", "Запрашиваемый период, фреймы" },
     { Str::SettingsAllowPeriodSnap, "Let Windows adjust the period", "Разрешить Windows подбирать период" },
     { Str::SettingsReinitDeviceChanged, "Default device changed", "Сменилось устройство по умолчанию" },
     { Str::SettingsReinitDeviceState, "Device state changed", "Сменилось состояние устройства" },
@@ -649,13 +698,13 @@ const Entry TABLE[] = {
     { Str::CfgDataFlow, "Devices to process: \"render\" (playback), \"capture\" (recording), \"both\".",
                         "Какие устройства обрабатывать: \"render\" (воспроизведение), \"capture\" (запись), \"both\"." },
     { Str::CfgPeriodSelection, "Which buffer to request: \"min\" - the smallest period of the device; \"fundamental\" - the same smallest period rounded up to the base step of the engine (the step itself is not a period, so a value below the minimum is never requested); \"fixed\" - exactly the number of frames written in requestedPeriodFrames.",
-                               "Какой буфер запрашивать: \"min\" - минимальный период устройства; \"fundamental\" - он же, выровненный по базовому шагу движка (сам шаг периодом не является, поэтому меньше минимального не запрашивается никогда); \"fixed\" - ровно столько кадров, сколько указано в requestedPeriodFrames." },
+                               "Какой буфер запрашивать: \"min\" - минимальный период устройства; \"fundamental\" - он же, выровненный по базовому шагу движка (сам шаг периодом не является, поэтому меньше минимального не запрашивается никогда); \"fixed\" - ровно столько фреймов, сколько указано в requestedPeriodFrames." },
     { Str::CfgRequestedPeriodFrames, "The buffer in frames that \"fixed\" asks for: it is rounded to the base step of the engine and kept inside the range the device supports (0 - the smallest period of the device).",
-                                     "Буфер в кадрах, который запрашивает \"fixed\": округляется по базовому шагу движка и удерживается в поддерживаемом устройством диапазоне (0 - минимальный период устройства)." },
+                                     "Буфер во фреймах, который запрашивает \"fixed\": округляется по базовому шагу движка и удерживается в поддерживаемом устройством диапазоне (0 - минимальный период устройства)." },
     { Str::CfgAllowPeriodSnap, "true - if the buffer is already locked by another application, accept it instead of reporting an error.",
                                "true - если буфер уже зафиксирован другим приложением, принять его, а не сообщать об ошибке." },
-    { Str::CfgReinitSection, "When to re-initialise the streams automatically.",
-                             "Когда переинициализировать потоки автоматически." },
+    { Str::CfgReinitSection, "When to activate again automatically (the streams are re-created).",
+                             "Когда активировать заново автоматически (потоки создаются заново)." },
     { Str::CfgReinitDeviceChanged, "The default device changed (the main case).",
                                    "Сменилось устройство по умолчанию (основной случай)." },
     { Str::CfgReinitDeviceState, "A device became active or inactive (headphones switched on).",
@@ -695,6 +744,12 @@ const Entry TABLE[] = {
 };
 
 constexpr size_t TABLE_SIZE = sizeof(TABLE) / sizeof(TABLE[0]);
+
+// Every identifier has to have a row, and no row may belong to nothing: the
+// list and the table cannot drift apart without the build failing.
+static_assert(
+    TABLE_SIZE == static_cast<size_t>(Str::Count),
+    "Every Str identifier needs a row in TABLE and the other way round (see Lang.h).");
 
 // Indexed by Str, built once in Initialize().
 const char* g_text[static_cast<size_t>(Str::Count)] = {};
@@ -787,4 +842,55 @@ const char* miniant::Lang::Utf8(Str id) {
 
 std::wstring miniant::Lang::Wide(Str id) {
     return miniant::Text::ToWide(Pick(id));
+}
+
+namespace {
+
+// The form of a Russian noun after a number: 1 фрейм, 2 фрейма, 5 фреймов,
+// 11 фреймов, 21 фрейм, 1344 фрейма.
+const char* RussianForm(unsigned int count, const char* one, const char* few, const char* many) {
+    const unsigned int lastTwo = count % 100;
+    const unsigned int last = count % 10;
+
+    if (lastTwo >= 11 && lastTwo <= 14) {
+        return many;
+    }
+
+    if (last == 1) {
+        return one;
+    }
+
+    if (last >= 2 && last <= 4) {
+        return few;
+    }
+
+    return many;
+}
+
+std::string Counted(
+    unsigned int count,
+    const char* englishOne,
+    const char* englishMany,
+    const char* russianOne,
+    const char* russianFew,
+    const char* russianMany) {
+    const char* noun = miniant::Lang::Current() == Language::Russian
+        ? RussianForm(count, russianOne, russianFew, russianMany)
+        : (count == 1 ? englishOne : englishMany);
+
+    return std::to_string(count) + " " + noun;
+}
+
+}
+
+std::string miniant::Lang::Frames(unsigned int count) {
+    return Counted(count, "frame", "frames", "фрейм", "фрейма", "фреймов");
+}
+
+std::string miniant::Lang::Channels(unsigned int count) {
+    return Counted(count, "channel", "channels", "канал", "канала", "каналов");
+}
+
+std::string miniant::Lang::Milliseconds(double value) {
+    return fmt::format(Current() == Language::Russian ? "{:.2f} мс" : "{:.2f} ms", value);
 }

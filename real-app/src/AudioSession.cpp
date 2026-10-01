@@ -261,7 +261,7 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
         Log::Debug(Lang::Utf8(Lang::Str::LogLowLatencyStarted), DescribeStreamWin32(info));
 
         if (info.acceptedLockedPeriod) {
-            Log::Info(Lang::Utf8(Lang::Str::LogPeriodLocked), info.requestedPeriod);
+            Log::Info(Lang::Utf8(Lang::Str::LogPeriodLocked), Lang::Frames(info.requestedPeriod));
         }
 
         m_streamsInfo.push_back(info);

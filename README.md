@@ -10,8 +10,8 @@ This is a fork of [miniant-git/REAL](https://github.com/miniant-git/REAL) (v0.2.
 that is still maintained and adds quality-of-life features:
 
 * proper window that can be closed/minimised to the system tray, with a menu bar
-  (settings file, log file, diagnostics, about) and only the state-changing
-  buttons at the bottom
+  (**File**: the mode, the autostart, exit; **Options**; **Diagnostics**; **About**)
+  and only the state-changing buttons at the bottom
 * tray menu: enable/disable, restart the activation, log, diagnostics, autostart, exit
 * activation of the audio streams without restarting the application — automatically
   on device changes, sleep/resume and session unlock, manually via the tray menu,
@@ -101,13 +101,22 @@ Commands that run in this process:
 | `--help`, `-h`, `/?` | Show help |
 | `--version` | Show the version |
 
+Options are case-insensitive. An unknown option is reported in the log and
+ignored. `--tray`, `--log-level` and `--multi-instance` hold for that run only:
+they are never written to the settings file, and the autostart entry follows the
+file.
+
 ## Configuration
 
 `real.settings.json` is created next to `REAL.exe` on the first run. It is plain
 JSON (`//` and `/* */` comments are allowed) and every option is explained by a
 comment. **Options** in the menu bar opens a window with the same parameters: it
 writes that very file, so the file stays the source of truth, and the button
-**Open the file** keeps the manual way available (together with `--config`). Command-line options override the file. A step-by-step guide in Russian is available in
+**Open the file** keeps the manual way available (together with `--config`),
+**Reload** reads the file into the window again. Command-line options override the
+file for the current run. A file that cannot be parsed is reported in the log and
+by one notification, the defaults are used, and the text of the file is kept as
+`real.settings.json.bad` before anything is written over it. A step-by-step guide in Russian is available in
 [docs/usage.ru.md](docs/usage.ru.md). See [docs/CONFIG.md](docs/CONFIG.md) for the full reference and
 [docs/real.settings.example.json](docs/real.settings.example.json) for an
 annotated example.
@@ -190,7 +199,7 @@ and disabling power throttling (`performance.disablePowerThrottling`).
 
 ### How do I report a problem?
 
-Press **Diagnostics** in the window (or *File → Diagnostics...*, or run
+Choose **Diagnostics → Diagnostics** in the menu bar of the window (or run
 `REAL.exe --diagnose`). It writes
 `REAL-diagnostics.txt` next to the executable with your Windows version, the
 active audio endpoints of the direction selected by `audio.dataFlow`, their

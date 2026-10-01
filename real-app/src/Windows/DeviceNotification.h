@@ -31,7 +31,10 @@ using DeviceEventHandler = std::function<void(const DeviceEvent&)>;
 // The callbacks are invoked on a thread owned by the audio system, so the
 // handler must not call into the audio client: it should only post a message to
 // the main window. The audio objects stay owned by the main thread.
-class DeviceNotificationClient: public IMMNotificationClient {
+// "final": the object is owned and deleted through its own type (unique_ptr in
+// AudioSession), never through the COM interface, which has no virtual
+// destructor.
+class DeviceNotificationClient final: public IMMNotificationClient {
 public:
     explicit DeviceNotificationClient(DeviceEventHandler handler);
     ~DeviceNotificationClient();

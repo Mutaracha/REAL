@@ -5,20 +5,10 @@
 
 namespace miniant::Config {
 
-// The layout of the settings file. The comments in it are written by the
-// program, so the number grows when the layout changes (9:
-// tray.showStatusInTooltip is gone - the tooltip always shows the state, that
-// is what it is for; 8: audio.releaseOnExit is gone - it changed nothing, the
-// streams are closed on exit anyway; 7:
-// audio.role is gone - the small buffer is taken on the default device of
-// every role; 6:
-// logging.level is the only logging parameter, "off" switches the file off; 5:
-// the key tray.menu.openSettings is gone - the settings window keeps the button
-// that opens the file; 4: application.theme is gone; 3: the theme of the windows
-// was a parameter of its own; 2: a comment sits in the same line as its value).
-// A file with an older number is rewritten once, with every value kept; a file
-// of the current number and a newer one are left as they are.
-inline constexpr int CONFIG_VERSION = 9;
+// The layout of the settings file. The number grows when the layout changes;
+// a file with another number is rewritten once in the current layout, with
+// every value the program knows kept.
+inline constexpr int CONFIG_VERSION = 1;
 
 enum class CloseAction {
     Minimize,
@@ -171,6 +161,9 @@ std::string ToJsonString(const Settings& settings);
 // JSON with comments that explain every parameter: this is what is written to
 // the settings file, so that the file itself is the reference.
 std::string ToDocumentedJsonString(const Settings& settings);
+// The values that take part in the latency reduction, written with the keys of
+// the settings file ("dataFlow=render, periodSelection=min, ..."): the keys are
+// what the user finds in the file, so they are not translated.
 std::string Describe(const Settings& settings);
 
 // The "commentLanguage" field of a file on disk, read without touching the
@@ -178,5 +171,10 @@ std::string Describe(const Settings& settings);
 // settings file only when they differ (a value that cannot be read means "the
 // file has to be rewritten").
 std::string PeekCommentLanguage(const std::wstring& path);
+
+// The "application.language" field of a file on disk: the language has to be
+// known before the file is parsed, because everything the reader says about it
+// is written to the journal in that language. An empty value means "auto".
+std::string PeekLanguage(const std::wstring& path);
 
 }

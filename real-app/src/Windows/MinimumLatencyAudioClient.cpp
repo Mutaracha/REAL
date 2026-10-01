@@ -20,44 +20,6 @@ using namespace miniant::Windows::WasapiLatency;
 #define AUDCLNT_E_ENGINE_FORMAT_LOCKED _HRESULT_TYPEDEF_(0x88890029L)
 #endif
 
-#ifndef AUDCLNT_E_DEVICE_INVALIDATED
-#define AUDCLNT_E_DEVICE_INVALIDATED _HRESULT_TYPEDEF_(0x88890004L)
-#endif
-
-#ifndef AUDCLNT_E_SERVICE_NOT_RUNNING
-#define AUDCLNT_E_SERVICE_NOT_RUNNING _HRESULT_TYPEDEF_(0x88890010L)
-#endif
-
-#ifndef AUDCLNT_E_RESOURCES_INVALIDATED
-#define AUDCLNT_E_RESOURCES_INVALIDATED _HRESULT_TYPEDEF_(0x88890026L)
-#endif
-
-namespace {
-// The endpoint or the audio service was not ready when we asked: this happens
-// while a device is being enabled/disabled and is worth another attempt.
-bool IsTransientEndpointError(long code) {
-    if (code == static_cast<long>(HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) ||
-        code == static_cast<long>(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) ||
-        code == static_cast<long>(HRESULT_FROM_WIN32(ERROR_NO_MORE_ITEMS))) {
-        return true;
-    }
-
-    return code == static_cast<long>(AUDCLNT_E_DEVICE_INVALIDATED) ||
-        code == static_cast<long>(AUDCLNT_E_SERVICE_NOT_RUNNING) ||
-        code == static_cast<long>(AUDCLNT_E_RESOURCES_INVALIDATED);
-}
-
-std::string DescribeEndpointError(miniant::Lang::Str what, long code) {
-    const std::string prefix = miniant::Lang::Utf8(what);
-
-    if (IsTransientEndpointError(code)) {
-        return prefix + miniant::Lang::Utf8(miniant::Lang::Str::ErrEndpointTransient);
-    }
-
-    return prefix + ": " + DescribeHResult(code);
-}
-}
-
 namespace {
 
 // {a45c254e-df1c-4efd-8020-67d146a850e0}, 14 == PKEY_Device_FriendlyName
@@ -323,19 +285,23 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
 namespace {
 
 std::string DescribeStream(const AudioStreamInfo& info, bool withFlow) {
-    std::string text = miniant::Text::ToUtf8(info.deviceName.empty() ? std::wstring(L"<unknown device>") : info.deviceName);
+    // The name of the device is never translated, everything after it is.
+    std::string text = miniant::Text::ToUtf8(
+        info.deviceName.empty() ? miniant::Lang::Wide(miniant::Lang::Str::UnknownDevice) : info.deviceName);
 
     if (withFlow) {
-        text += info.dataFlow == eRender ? ", render" : ", capture";
+        text += ", ";
+        text += miniant::Lang::Utf8(
+            info.dataFlow == eRender ? miniant::Lang::Str::FlowRender : miniant::Lang::Str::FlowCapture);
     }
 
     text += fmt::format(
-        ", {} Hz, {} ch, {} bit, period {} frames ({:.2f} ms)",
+        miniant::Lang::Utf8(miniant::Lang::Str::StreamDetails),
         info.sampleRate,
-        info.channels,
+        miniant::Lang::Channels(info.channels),
         info.bitsPerSample,
-        info.currentPeriod,
-        info.PeriodMilliseconds(info.currentPeriod));
+        miniant::Lang::Frames(info.currentPeriod),
+        miniant::Lang::Milliseconds(info.PeriodMilliseconds(info.currentPeriod)));
 
     return text;
 }

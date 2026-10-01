@@ -53,15 +53,21 @@ enum class Str {
     NotifyUpdateFailed,
     NotifyUpdateClick,
     NotifyReportFailed,
+    NotifySettingsUnreadable,
 
     StatusSuspended,
     StatusActive,
+    StreamDetails,
     UnknownDevice,
     FlowRender,
     FlowCapture,
     LogMutexFailed,
+    LogTrayForeignEvent,
+    LogAudioSettings,
+    LogUnknownArgument,
     LogInstanceNoAnswer,
     LogSettingsUnreadable,
+    LogSettingsBackup,
     LogComFailed,
     LogWindowFailed,
     LogSessionNotifications,
@@ -84,7 +90,6 @@ enum class Str {
     LogUpdatesDisabled,
     LogUpdateRunning,
     LogReinitInvalid,
-    LogApplyRetry,
     LogResumeApply,
     LogHotkeyRegisterFailed,
     LogHotkeyParseFailed,
@@ -104,6 +109,8 @@ enum class Str {
     LogTrayConfigureFailed,
     LogWindowClassFailed,
     LogWindowCreateFailed,
+    ErrUnhandledException,
+    ErrUnhandledExceptionUnknown,
 
     ErrAudioEnumeratorFailed,
     ErrAudioNotificationsFailed,
@@ -114,7 +121,6 @@ enum class Str {
     ErrDefaultEndpointQuery,
     ErrDefaultDeviceChanged,
     ErrStreamNotRunning,
-    ErrEndpointTransient,
     ErrNoAudioClient3,
     ErrActivateClient,
     ErrMixFormat,
@@ -178,6 +184,15 @@ enum class Str {
     DiagActivateFailed,
 
     SettingsPrefix,
+    CfgErrNotObject,
+    CfgErrParse,
+    CfgErrRead,
+    CfgWarnString,
+    CfgWarnBool,
+    CfgWarnInteger,
+    CfgWarnRange,
+    CfgWarnUnknownKey,
+    CfgWarnUnknownValue,
 
     // Command line help (one block per language)
     HelpText,
@@ -356,5 +371,13 @@ Language Current();
 // Text in the current language.
 const char* Utf8(Str id);
 std::wstring Wide(Str id);
+
+// A number with its noun in the current language: "1344 frames", and in
+// Russian the noun agrees with the numeral ("1 фрейм", "2 фрейма", "5 фреймов").
+std::string Frames(unsigned int count);
+std::string Channels(unsigned int count);
+
+// "7.00 ms" with the unit of the current language.
+std::string Milliseconds(double value);
 
 }

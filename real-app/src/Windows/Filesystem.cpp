@@ -120,5 +120,24 @@ bool miniant::Windows::Filesystem::WriteTextFileUtf8(const std::wstring& path, c
     }
 
     stream.write(content.data(), static_cast<std::streamsize>(content.size()));
-    return stream.good();
+    stream.close();
+
+    return !stream.fail();
+}
+
+bool miniant::Windows::Filesystem::WriteTextFileUtf8Atomic(const std::wstring& path, const std::string& content) {
+    const std::wstring temporary = path + L".tmp";
+
+    if (!WriteTextFileUtf8(temporary, content)) {
+        return false;
+    }
+
+    if (::MoveFileExW(
+            temporary.c_str(), path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) == FALSE) {
+        ::DeleteFileW(temporary.c_str());
+        return false;
+    }
+
+    return true;
 }

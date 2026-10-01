@@ -35,6 +35,7 @@ const int FIELD_WIDTH = 220;
 const int PAGE_TOP = 62;
 const int BUTTON_HEIGHT = 30;
 const int BUTTON_WIDTH = 120;
+const int BUTTON_GAP = 8;
 
 // Every control of the window has a number: the values are read back by it, so
 // a control that is not on screen at the moment (another page is open) keeps
@@ -681,7 +682,9 @@ void CreateTabs(Context& context) {
     };
 
     const int top = MARGIN;
-    const int bottom = WINDOW_HEIGHT - MARGIN - BUTTON_HEIGHT - 8;
+    // The bottom of the window holds two rows of buttons, the pages end above
+    // them (see BuildFrame).
+    const int bottom = WINDOW_HEIGHT - MARGIN - 2 * BUTTON_HEIGHT - BUTTON_GAP - 8;
 
     context.tabs = CreateControl(
         context, WC_TABCONTROLW, L"",
@@ -777,34 +780,45 @@ void ResetPageOffset(Context& context) {
 
 // The frame of the window: the buttons at the bottom.
 void BuildFrame(Context& context) {
-    const int buttonY = WINDOW_HEIGHT - MARGIN - BUTTON_HEIGHT;
+    // Two rows: the file, the button that reads it again and the path of the
+    // file on the first one, the buttons that end the window on the second one.
+    // In one row the path was overlapped by the buttons next to it.
+    const int secondRowY = WINDOW_HEIGHT - MARGIN - BUTTON_HEIGHT;
+    const int firstRowY = secondRowY - BUTTON_GAP - BUTTON_HEIGHT;
+
+    const int openFileWidth = BUTTON_WIDTH + 30;
 
     CreateControl(
         context, L"BUTTON", Lang::Wide(Lang::Str::SettingsOpenFile),
         BS_PUSHBUTTON | WS_TABSTOP, Id::OpenFile,
-        MARGIN, buttonY, BUTTON_WIDTH + 30, BUTTON_HEIGHT);
-
-    CreateControl(
-        context, L"STATIC", context.settingsPath, SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS,
-        Id::SettingsPath, MARGIN + BUTTON_WIDTH + 44, buttonY,
-        WINDOW_WIDTH - 2 * MARGIN - 3 * BUTTON_WIDTH - 82, BUTTON_HEIGHT);
-
-    CreateControl(
-        context, L"BUTTON", Lang::Wide(Lang::Str::SettingsSave),
-        BS_DEFPUSHBUTTON | WS_TABSTOP, Id::Save,
-        WINDOW_WIDTH - MARGIN - BUTTON_WIDTH, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
+        MARGIN, firstRowY, openFileWidth, BUTTON_HEIGHT);
 
     // Re-reads the file without closing the window: a value edited in a text
     // editor gets in, and "Save" is still what writes and applies it.
     CreateControl(
         context, L"BUTTON", Lang::Wide(Lang::Str::SettingsReload),
         BS_PUSHBUTTON | WS_TABSTOP, Id::Reload,
-        WINDOW_WIDTH - MARGIN - 2 * BUTTON_WIDTH - 8, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
+        MARGIN + openFileWidth + BUTTON_GAP, firstRowY, BUTTON_WIDTH, BUTTON_HEIGHT);
 
+    // The path starts right after "Reload" and takes the rest of the row.
+    const int pathX = MARGIN + openFileWidth + 2 * BUTTON_GAP + BUTTON_WIDTH;
+
+    // A long path loses its middle, not its end: the name of the file stays
+    // visible.
+    CreateControl(
+        context, L"STATIC", context.settingsPath, SS_LEFT | SS_CENTERIMAGE | SS_PATHELLIPSIS,
+        Id::SettingsPath, pathX, firstRowY, WINDOW_WIDTH - MARGIN - pathX, BUTTON_HEIGHT);
+
+    // Created from left to right, so that Tab walks the row in reading order.
     CreateControl(
         context, L"BUTTON", Lang::Wide(Lang::Str::SettingsCancel),
         BS_PUSHBUTTON | WS_TABSTOP, Id::Cancel,
-        WINDOW_WIDTH - MARGIN - 3 * BUTTON_WIDTH - 16, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
+        WINDOW_WIDTH - MARGIN - 2 * BUTTON_WIDTH - BUTTON_GAP, secondRowY, BUTTON_WIDTH, BUTTON_HEIGHT);
+
+    CreateControl(
+        context, L"BUTTON", Lang::Wide(Lang::Str::SettingsSave),
+        BS_DEFPUSHBUTTON | WS_TABSTOP, Id::Save,
+        WINDOW_WIDTH - MARGIN - BUTTON_WIDTH, secondRowY, BUTTON_WIDTH, BUTTON_HEIGHT);
 }
 
 Page PageOfIndex(int index) {
@@ -1045,6 +1059,12 @@ void OnReload(Context& context) {
 
         if (position != std::wstring::npos) {
             text.replace(position, placeholder.size(), context.settingsPath);
+        }
+
+        // The reason (a broken comma, a file locked by an editor) is what the
+        // user needs to fix it.
+        if (!result.error.empty()) {
+            text += L"\n\n" + Text::ToWide(result.error);
         }
 
         ::MessageBoxW(

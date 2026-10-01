@@ -14,11 +14,11 @@ namespace {
 enum MenuId : UINT {
     MENU_ID_TOGGLE = 1001,
     MENU_ID_REINITIALIZE = 1002,
-    MENU_ID_LOG = 1004,
-    MENU_ID_DIAGNOSTICS = 1005,
-    MENU_ID_START_WITH_WINDOWS = 1006,
-    MENU_ID_ABOUT = 1007,
-    MENU_ID_EXIT = 1008,
+    MENU_ID_LOG = 1003,
+    MENU_ID_DIAGNOSTICS = 1004,
+    MENU_ID_START_WITH_WINDOWS = 1005,
+    MENU_ID_ABOUT = 1006,
+    MENU_ID_EXIT = 1007,
 };
 
 constexpr size_t TOOLTIP_MAX_LENGTH = 120;
@@ -146,7 +146,8 @@ void TrayIcon::HandleMessage(WPARAM wParam, LPARAM lParam) {
     const POINT anchor = { static_cast<short>(LOWORD(wParam)), static_cast<short>(HIWORD(wParam)) };
 
     if (iconId != 0 && iconId != m_data.uID) {
-        miniant::Log::Debug("Tray event 0x{:04X} for icon {}, this icon is {}.", event, iconId, m_data.uID);
+        miniant::Log::Debug(
+            miniant::Lang::Utf8(miniant::Lang::Str::LogTrayForeignEvent), event, iconId, m_data.uID);
         return;
     }
 

@@ -18,4 +18,9 @@ bool IsDirectory(const std::wstring& path);
 std::string ReadTextFileUtf8(const std::wstring& path, bool* success = nullptr);
 bool WriteTextFileUtf8(const std::wstring& path, const std::string& content);
 
+// The same write, but through a temporary file next to the target: the file
+// either keeps its previous content or gets the new one whole, an interrupted
+// write cannot leave a half-written file behind.
+bool WriteTextFileUtf8Atomic(const std::wstring& path, const std::string& content);
+
 }

@@ -37,10 +37,6 @@ constexpr unsigned int MAXIMUM_AUDIO_RETRY_MS = 30000;
 constexpr unsigned int FAILURE_TIMEOUT_MS = 60000;
 constexpr const wchar_t* DIAGNOSTICS_FILE_NAME = L"REAL-diagnostics.txt";
 
-}
-
-namespace {
-
 const wchar_t RUN_KEY_PATH[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 const wchar_t RUN_VALUE_NAME[] = L"REAL";
 
@@ -51,6 +47,28 @@ const wchar_t SIGNAL_DISABLE[] = L"REAL.Signal.Disable";
 const wchar_t SIGNAL_EXIT[] = L"REAL.Signal.Exit";
 
 const UINT VALIDATE_INTERVAL_MS = 30000;
+
+// Writes the text to the console the program was started from (cmd,
+// PowerShell). Returns false when there is no such console: the caller then
+// says the same thing its own way.
+bool WriteToParentConsole(const std::string& text) {
+    if (::AttachConsole(ATTACH_PARENT_PROCESS) == FALSE) {
+        return false;
+    }
+
+    ::SetConsoleOutputCP(CP_UTF8);
+
+    FILE* stream = nullptr;
+    const bool redirected = ::freopen_s(&stream, "CONOUT$", "w", stdout) == 0 && stream != nullptr;
+
+    if (redirected) {
+        std::cout << text;
+        std::cout.flush();
+    }
+
+    ::FreeConsole();
+    return redirected;
+}
 
 struct HotkeyDefinition {
     UINT modifiers = 0;
@@ -153,6 +171,17 @@ App::~App() {
 int App::Run() {
     m_options = CommandLine::Parse();
 
+    // A key the program does not know is reported like everything else about
+    // the start: through the journal of the program.
+    for (const auto& argument : m_options.unknown) {
+        m_startupMessages.emplace_back(
+            StartupLevel::Warn, fmt::format(Lang::Utf8(Str::LogUnknownArgument), argument));
+    }
+
+    for (const auto& error : m_options.errors) {
+        m_startupMessages.emplace_back(StartupLevel::Warn, error);
+    }
+
     if (m_options.action == CommandLine::Action::ShowHelp) {
         PrintStartupText(CommandLine::HelpText());
         return 0;
@@ -172,7 +201,9 @@ int App::Run() {
     if (m_settings.application.singleInstance) {
         m_instanceMutex = ::CreateMutexW(nullptr, TRUE, L"Local\\REAL.SingleInstance");
         if (m_instanceMutex == nullptr) {
-            Log::Warn(Lang::Utf8(Str::LogMutexFailed), Windows::DescribeLastError());
+            // The log does not exist yet: the line waits for it.
+            const std::string error = Windows::DescribeLastError();
+            m_startupMessages.emplace_back(StartupLevel::Warn, fmt::format(Lang::Utf8(Str::LogMutexFailed), error));
         } else if (::GetLastError() == ERROR_ALREADY_EXISTS) {
             m_anotherInstanceRuns = true;
         }
@@ -192,8 +223,10 @@ int App::Run() {
         }
 
         if (NotifyRunningInstance(signal)) {
+            // The running copy shows its window; a console the command was
+            // typed in gets one line about it.
             if (m_options.action == CommandLine::Action::Run) {
-                std::cout << "[info] " << Lang::Utf8(Str::OpAlreadyRunning) << std::endl;
+                WriteToParentConsole(std::string(Lang::Utf8(Str::OpAlreadyRunning)) + "\n");
             }
 
             return 0;
@@ -203,12 +236,13 @@ int App::Run() {
             return 0;
         }
 
-        Log::Warn(Lang::Utf8(Str::LogInstanceNoAnswer));
+        m_startupMessages.emplace_back(StartupLevel::Warn, Lang::Utf8(Str::LogInstanceNoAnswer));
     }
 
     InitializeLogging();
 
     LogBanner();
+    LogStartupMessages();
 
     if (!settingsLoaded) {
         Log::Warn(Lang::Utf8(Str::LogSettingsUnreadable));
@@ -244,6 +278,12 @@ int App::Run() {
     InitializeAudio();
     InitializeTray();
 
+    // A broken settings file is easy to miss when the program starts in the
+    // tray: one balloon says so, the details are in the journal.
+    if (!settingsLoaded && m_window != nullptr) {
+        m_window->Notify(Lang::Wide(Str::NotifyTitle), Lang::Wide(Str::NotifySettingsUnreadable), true);
+    }
+
     if (m_settings.updates.checkOnStartup) {
         StartUpdateCheck();
     }
@@ -263,7 +303,16 @@ int App::Run() {
 bool App::LoadSettings() {
     m_settingsPath = m_options.configPath ? *m_options.configPath : Config::GetDefaultPath();
 
+    // A file that cannot be parsed leaves the defaults in effect; the options
+    // of the command line still apply.
+    bool loaded = true;
+
     if (!m_options.ignoreConfig) {
+        // The language has to be known before the file is read: everything the
+        // reader says about it goes to the journal of the program, which is
+        // written in the language of the interface.
+        Lang::Set(Lang::FromCode(Config::PeekLanguage(m_settingsPath)));
+
         const Config::LoadResult result = Config::Load(m_settingsPath);
         m_settings = result.settings;
 
@@ -279,11 +328,13 @@ bool App::LoadSettings() {
         const std::string commentLanguage = Lang::Code(Lang::Current());
 
         for (const auto& warning : result.warnings) {
-            std::cout << "[warn] " << Lang::Utf8(Str::SettingsPrefix) << " " << warning << std::endl;
+            m_startupMessages.emplace_back(
+                StartupLevel::Warn, fmt::format("{} {}", Lang::Utf8(Str::SettingsPrefix), warning));
         }
 
         if (result.parseFailed) {
-            std::cout << "[error] " << Lang::Utf8(Str::SettingsPrefix) << " " << result.error << std::endl;
+            m_startupMessages.emplace_back(
+                StartupLevel::Error, fmt::format("{} {}", Lang::Utf8(Str::SettingsPrefix), result.error));
         }
 
         if (!result.parseFailed) {
@@ -291,15 +342,16 @@ bool App::LoadSettings() {
                 m_settings.commentLanguage = commentLanguage;
 
                 if (Config::Write(m_settings, m_settingsPath)) {
-                    std::cout << "[info] " << Lang::Utf8(Str::OpSettingsCreated) << ": "
-                              << Text::ToUtf8(m_settingsPath) << std::endl;
+                    m_startupMessages.emplace_back(
+                        StartupLevel::Info,
+                        fmt::format("{}: {}", Lang::Utf8(Str::OpSettingsCreated), Text::ToUtf8(m_settingsPath)));
                 } else {
-                    std::cout << "[error] "
-                              << fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath))
-                              << std::endl;
+                    m_startupMessages.emplace_back(
+                        StartupLevel::Error,
+                        fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath)));
                 }
             } else if (Config::PeekCommentLanguage(m_settingsPath) != commentLanguage ||
-                m_settings.configVersion < Config::CONFIG_VERSION) {
+                m_settings.configVersion != Config::CONFIG_VERSION) {
                 // A file of an older layout is upgraded once, with every value
                 // kept; a file of another comment language is rewritten with the
                 // comments in the current one. The very same write does both.
@@ -313,33 +365,57 @@ bool App::LoadSettings() {
                     m_commentsRewritten = commentLanguage;
                     m_layoutUpgraded = !languageChanged;
                 } else {
-                    std::cout << "[error] "
-                              << fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath))
-                              << std::endl;
+                    m_startupMessages.emplace_back(
+                        StartupLevel::Error,
+                        fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath)));
                 }
             }
         }
 
-        if (result.parseFailed) {
-            return false;
-        }
+        loaded = !result.parseFailed;
+        m_settingsBroken = result.parseFailed && result.fileExists;
     } else {
         Lang::Set(Lang::Detect());
     }
 
+    m_fileSettings = m_settings;
+    ApplyCommandLine(m_settings);
+
+    return loaded;
+}
+
+void App::ApplyCommandLine(Config::Settings& settings) const {
     if (m_options.startMinimizedToTray) {
-        m_settings.application.startMinimizedToTray = *m_options.startMinimizedToTray;
+        settings.application.startMinimizedToTray = *m_options.startMinimizedToTray;
     }
 
     if (m_options.singleInstance) {
-        m_settings.application.singleInstance = *m_options.singleInstance;
+        settings.application.singleInstance = *m_options.singleInstance;
     }
 
     if (m_options.logLevel) {
-        m_settings.logging.level = *m_options.logLevel;
+        settings.logging.level = *m_options.logLevel;
+    }
+}
+
+// Everything the reader of the settings file had to say, in the order it was
+// said: the lines appear in the window and in the file like any other message.
+void App::LogStartupMessages() {
+    for (const auto& message : m_startupMessages) {
+        switch (message.first) {
+            case StartupLevel::Info:
+                Log::Info("{}", message.second);
+                break;
+            case StartupLevel::Warn:
+                Log::Warn("{}", message.second);
+                break;
+            case StartupLevel::Error:
+                Log::Error("{}", message.second);
+                break;
+        }
     }
 
-    return true;
+    m_startupMessages.clear();
 }
 
 bool App::InitializeLogging() {
@@ -366,7 +442,7 @@ void App::LogBanner() {
     // The configuration that takes part in the latency reduction: this is what a
     // diagnostics report needs. The version is in the started line above, the
     // remaining settings are in the settings file.
-    Log::Info("{}", Config::Describe(m_settings));
+    Log::Info(Lang::Utf8(Str::LogAudioSettings), Config::Describe(m_settings));
 }
 
 bool App::InitializeUi() {
@@ -526,6 +602,26 @@ void App::ApplyPerformanceSettings() {
 #endif
 }
 
+// One place for switching the mode on and off: the state of a failure is
+// cleared, the retry timer is stopped and the program always applies the new
+// state, so a command that asks for the mode that is already on still brings a
+// visible result (the streams are created again).
+void App::SetAudioEnabled(bool enabled) {
+    m_audioEnabled = enabled;
+    m_audioSuspended = false;
+    m_failureSince = 0;
+
+    // Switching the mode on is reported here and its result by ApplyAudio(),
+    // switching it off by ApplyAudio() alone; ApplyAudio() also shows the
+    // notification, so there is one balloon per action.
+    if (m_audioEnabled) {
+        Log::Operation(Lang::Utf8(Str::OpEnabled));
+    }
+
+    CancelAudioRetry();
+    ApplyAudio();
+}
+
 void App::ApplyAudio() {
     if (!m_window) {
         return;
@@ -561,7 +657,6 @@ void App::ApplyAudio() {
             Log::Debug("{}", result.error().GetMessage());
         }
 
-        m_lastApplyFailed = true;
         ScheduleAudioRetry();
         UpdateStatus();
         return;
@@ -570,7 +665,6 @@ void App::ApplyAudio() {
     // Success: any previous outage is over.
     const bool recovered = m_failureSince != 0;
     m_failureSince = 0;
-    m_lastApplyFailed = false;
     m_audioSuspended = false;
     CancelAudioRetry();
 
@@ -642,9 +736,23 @@ void App::SaveSettings() {
     // A successful write is a normal event and needs no line of its own: the
     // file is the proof, and on a machine that starts with Windows the line
     // would be written on every start. Only a failure is worth reporting.
-    if (!Config::Write(m_settings, m_settingsPath)) {
+    if (!WriteSettingsFile()) {
         Log::Error(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath));
     }
+}
+
+bool App::WriteSettingsFile() {
+    if (m_settingsBroken) {
+        const std::wstring backup = m_settingsPath + L".bad";
+
+        if (::CopyFileW(m_settingsPath.c_str(), backup.c_str(), FALSE) != FALSE) {
+            Log::Warn(Lang::Utf8(Str::LogSettingsBackup), Text::ToUtf8(backup));
+        }
+
+        m_settingsBroken = false;
+    }
+
+    return Config::Write(m_fileSettings, m_settingsPath);
 }
 
 void App::RefreshCommentsLanguage() {
@@ -655,8 +763,9 @@ void App::RefreshCommentsLanguage() {
 
     // Only the comments change: the settings themselves are written as loaded.
     m_settings.commentLanguage = language;
+    m_fileSettings.commentLanguage = language;
 
-    if (Config::Write(m_settings, m_settingsPath)) {
+    if (WriteSettingsFile()) {
         Log::Operation(Lang::Utf8(Str::OpCommentsRewritten), language);
     } else {
         Log::Error(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath));
@@ -687,6 +796,10 @@ void App::ApplySettings(const Config::Settings& previous) {
     // about them.
     if (m_settings.application.startWithWindows != previous.application.startWithWindows) {
         SetStartWithWindows(m_settings.application.startWithWindows);
+    } else {
+        // The command line of the entry says how the program starts ("--tray"):
+        // when the start mode changes, the entry is corrected.
+        ApplyStartWithWindows();
     }
 
     if (m_settings.performance.processPriority != previous.performance.processPriority ||
@@ -698,8 +811,15 @@ void App::ApplySettings(const Config::Settings& previous) {
 
     Log::SetFileSettings(m_settings.logging);
 
-    UnregisterHotkeys();
-    RegisterHotkeys();
+    // The hotkeys are registered again only when they really changed: an
+    // unrelated setting must not touch them, and a failed registration must not
+    // be reported again on every save.
+    if (m_settings.hotkeys.enabled != previous.hotkeys.enabled ||
+        m_settings.hotkeys.toggleEnabled != previous.hotkeys.toggleEnabled ||
+        m_settings.hotkeys.reinitialize != previous.hotkeys.reinitialize) {
+        UnregisterHotkeys();
+        RegisterHotkeys();
+    }
 
     if (m_audioEnabled) {
         ApplyAudio();
@@ -713,7 +833,7 @@ void App::ShowSettingsDialog() {
 
     m_settingsWindowOpen = true;
 
-    Config::Settings edited = m_settings;
+    Config::Settings edited = m_fileSettings;
 
     const bool saved = Windows::ShowSettingsWindow(
         m_window != nullptr ? m_window->GetHWindow() : nullptr,
@@ -730,7 +850,9 @@ void App::ShowSettingsDialog() {
     // The window writes the file: the same writer keeps the comments and the
     // layout, so the file stays the source of truth.
     const Config::Settings previous = m_settings;
+    m_fileSettings = edited;
     m_settings = edited;
+    ApplyCommandLine(m_settings);
     SaveSettings();
     ApplySettings(previous);
 
@@ -992,32 +1114,13 @@ void App::FinishUpdateCheck() {
 void App::OnCommand(Command command) {
     switch (command) {
         case Command::ToggleEnabled:
-            m_audioEnabled = !m_audioEnabled;
-            m_audioSuspended = false;
-            m_failureSince = 0;
-            m_lastApplyFailed = false;
-
-            // Switching the mode off is reported by ApplyAudio(); switching it
-            // on produces two lines there (applying + applied). ApplyAudio()
-            // also shows the notification, so one balloon per action.
-            if (m_audioEnabled) {
-                Log::Operation(Lang::Utf8(Str::OpEnabled));
-            }
-
-            CancelAudioRetry();
-            ApplyAudio();
+            SetAudioEnabled(!m_audioEnabled);
             break;
 
         case Command::Reinitialize:
             // "Reinitialize now" always does something visible: it enables the
             // latency reduction again when it was off and applies it.
-            m_audioEnabled = true;
-            m_audioSuspended = false;
-            m_failureSince = 0;
-            m_lastApplyFailed = false;
-
-            CancelAudioRetry();
-            ApplyAudio();
+            SetAudioEnabled(true);
             break;
 
         case Command::OpenSettings:
@@ -1033,9 +1136,10 @@ void App::OnCommand(Command command) {
             break;
 
         case Command::ToggleStartWithWindows: {
-            const bool enable = !m_settings.application.startWithWindows;
-            SetStartWithWindows(enable);
+            const bool enable = !m_fileSettings.application.startWithWindows;
             m_settings.application.startWithWindows = enable;
+            m_fileSettings.application.startWithWindows = enable;
+            SetStartWithWindows(enable);
             SaveSettings();
             UpdateTrayMenuState();
             break;
@@ -1138,14 +1242,12 @@ void App::OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
 
     if (message == m_signalEnable) {
-        m_audioEnabled = true;
-        ApplyAudio();
+        SetAudioEnabled(true);
         return;
     }
 
     if (message == m_signalDisable) {
-        m_audioEnabled = false;
-        ApplyAudio();
+        SetAudioEnabled(false);
         return;
     }
 
@@ -1168,11 +1270,6 @@ void App::OnTimer(UINT_PTR timerId) {
             Log::Info(Lang::Utf8(Str::LogReinitInvalid), valid.error().GetMessage());
             ApplyAudio();
             return;
-        }
-
-        if (m_lastApplyFailed && m_failureSince == 0) {
-            Log::Info(Lang::Utf8(Str::LogApplyRetry));
-            ApplyAudio();
         }
 
         return;
@@ -1199,7 +1296,6 @@ void App::OnTimer(UINT_PTR timerId) {
         // A device appeared or became the default one: this is the moment to
         // start over, including switching the mode back on when it was off.
         m_failureSince = 0;
-        m_lastApplyFailed = false;
         m_audioSuspended = false;
         m_deviceChangePending = true;
 
@@ -1296,7 +1392,6 @@ void App::GiveUpOnDevice() {
 
     m_retryDelayMs = 0;
     m_failureSince = 0;
-    m_lastApplyFailed = false;
     m_audioSuspended = true;
     m_audioEnabled = false;
 
@@ -1345,6 +1440,7 @@ std::wstring App::WriteDiagnosticsReport(const std::string& report) {
 int App::RunDiagnostics() {
     LoadSettings();
     InitializeLogging();
+    LogStartupMessages();
 
     if (m_layoutUpgraded) {
         Log::Operation(Lang::Utf8(Str::OpSettingsUpgraded));
@@ -1368,26 +1464,13 @@ int App::RunDiagnostics() {
 
     Log::Shutdown();
 
-    if (::AttachConsole(ATTACH_PARENT_PROCESS) != FALSE) {
-        ::SetConsoleOutputCP(CP_UTF8);
+    std::string consoleText = report;
+    if (!path.empty()) {
+        consoleText += fmt::format(Lang::Utf8(Str::CliReportWritten), Text::ToUtf8(path)) + "\n";
+    }
 
-        FILE* stream = nullptr;
-        const bool redirected = ::freopen_s(&stream, "CONOUT$", "w", stdout) == 0 && stream != nullptr;
-
-        if (redirected) {
-            std::cout << report;
-            if (!path.empty()) {
-                std::cout << fmt::format(Lang::Utf8(Str::CliReportWritten), Text::ToUtf8(path)) << std::endl;
-            }
-
-            std::cout.flush();
-        }
-
-        ::FreeConsole();
-
-        if (redirected) {
-            return path.empty() ? 1 : 0;
-        }
+    if (WriteToParentConsole(consoleText)) {
+        return path.empty() ? 1 : 0;
     }
 
     if (path.empty()) {
@@ -1486,61 +1569,110 @@ void App::UnregisterHotkeys() {
     ::UnregisterHotKey(m_window->GetHWindow(), HOTKEY_ID_REINITIALIZE);
 }
 
-bool App::IsStartWithWindowsEnabled() const {
+std::wstring App::ReadAutostartCommand() const {
     HKEY key = nullptr;
     if (::RegOpenKeyExW(HKEY_CURRENT_USER, RUN_KEY_PATH, 0, KEY_READ, &key) != ERROR_SUCCESS) {
-        return false;
+        return {};
     }
 
-    wchar_t buffer[1024] = {};
-    DWORD size = sizeof(buffer);
+    // The value is not guaranteed to end with a zero: the last character of
+    // the buffer is never given to the registry, so it always does.
+    wchar_t buffer[1025] = {};
+    DWORD size = sizeof(buffer) - sizeof(wchar_t);
     DWORD type = 0;
     const LONG result = ::RegQueryValueExW(key, RUN_VALUE_NAME, nullptr, &type, reinterpret_cast<LPBYTE>(buffer), &size);
     ::RegCloseKey(key);
 
-    return result == ERROR_SUCCESS && type == REG_SZ;
+    if (result != ERROR_SUCCESS || type != REG_SZ) {
+        return {};
+    }
+
+    return buffer;
+}
+
+// The command line the entry has to contain: the program with the start mode
+// of the settings file (an option of one run, "--tray" typed by hand, does not
+// count).
+std::wstring App::AutostartCommand() const {
+    std::wstring command = L"\"" + Windows::Filesystem::GetExecutablePath() + L"\"";
+
+    if (m_fileSettings.application.startMinimizedToTray) {
+        command += L" --tray";
+    }
+
+    return command;
+}
+
+bool App::WriteAutostartCommand() {
+    HKEY key = nullptr;
+    if (::RegCreateKeyExW(HKEY_CURRENT_USER, RUN_KEY_PATH, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
+        Log::Error(Lang::Utf8(Str::LogAutostartOpenFailed), Windows::DescribeLastError());
+        return false;
+    }
+
+    const std::wstring command = AutostartCommand();
+
+    const LONG result = ::RegSetValueExW(
+        key,
+        RUN_VALUE_NAME,
+        0,
+        REG_SZ,
+        reinterpret_cast<const BYTE*>(command.c_str()),
+        static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
+
+    ::RegCloseKey(key);
+
+    if (result != ERROR_SUCCESS) {
+        Log::Error(Lang::Utf8(Str::LogAutostartWriteFailed), Windows::DescribeLastError());
+        return false;
+    }
+
+    return true;
 }
 
 void App::ApplyStartWithWindows() {
-    if (m_settings.application.startWithWindows == IsStartWithWindowsEnabled()) {
+    const std::wstring current = ReadAutostartCommand();
+
+    if (!m_fileSettings.application.startWithWindows) {
+        if (!current.empty()) {
+            SetStartWithWindows(false);
+        }
+
         return;
     }
 
-    SetStartWithWindows(m_settings.application.startWithWindows);
+    if (current == AutostartCommand()) {
+        return;
+    }
+
+    // A missing entry is created and reported; an entry with another command
+    // line (another start mode, the program was moved) is corrected quietly.
+    if (current.empty()) {
+        SetStartWithWindows(true);
+    } else {
+        WriteAutostartCommand();
+    }
 }
 
 void App::SetStartWithWindows(bool enabled) {
+    if (enabled) {
+        if (WriteAutostartCommand()) {
+            Log::Operation(Lang::Utf8(Str::OpAutostart), Lang::Utf8(Str::ValueOn));
+        }
+
+        return;
+    }
+
     HKEY key = nullptr;
     if (::RegCreateKeyExW(HKEY_CURRENT_USER, RUN_KEY_PATH, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
         Log::Error(Lang::Utf8(Str::LogAutostartOpenFailed), Windows::DescribeLastError());
         return;
     }
 
-    if (enabled) {
-        std::wstring command = L"\"" + Windows::Filesystem::GetExecutablePath() + L"\"";
-        if (m_settings.application.startMinimizedToTray) {
-            command += L" --tray";
-        }
-
-        const LONG result = ::RegSetValueExW(
-            key,
-            RUN_VALUE_NAME,
-            0,
-            REG_SZ,
-            reinterpret_cast<const BYTE*>(command.c_str()),
-            static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
-
-        if (result == ERROR_SUCCESS) {
-            Log::Operation(Lang::Utf8(Str::OpAutostart), Lang::Utf8(Str::ValueOn));
-        } else {
-            Log::Error(Lang::Utf8(Str::LogAutostartWriteFailed), Windows::DescribeLastError());
-        }
-    } else {
-        ::RegDeleteValueW(key, RUN_VALUE_NAME);
-        Log::Operation(Lang::Utf8(Str::OpAutostart), Lang::Utf8(Str::ValueOff));
-    }
-
+    ::RegDeleteValueW(key, RUN_VALUE_NAME);
     ::RegCloseKey(key);
+
+    Log::Operation(Lang::Utf8(Str::OpAutostart), Lang::Utf8(Str::ValueOff));
 }
 
 void App::CleanupPreviousInstall() {
@@ -1553,14 +1685,7 @@ void App::CleanupPreviousInstall() {
 }
 
 void App::PrintStartupText(const std::wstring& text) const {
-    if (::AttachConsole(ATTACH_PARENT_PROCESS) != FALSE) {
-        ::SetConsoleOutputCP(CP_UTF8);
-
-        FILE* stream = nullptr;
-        ::freopen_s(&stream, "CONOUT$", "w", stdout);
-        std::cout << Text::ToUtf8(text) << std::endl;
-        std::cout.flush();
-        ::FreeConsole();
+    if (WriteToParentConsole(Text::ToUtf8(text) + "\n")) {
         return;
     }
 

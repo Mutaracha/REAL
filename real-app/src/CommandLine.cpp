@@ -31,12 +31,14 @@ std::vector<std::wstring> GetArguments() {
     return result;
 }
 
-std::optional<bool> ParseFlag(const std::wstring& argument) {
-    if (argument == L"--tray") {
+// The argument arrives already folded to lower case: every option of the
+// program is case-insensitive.
+std::optional<bool> ParseFlag(const std::string& argument) {
+    if (argument == "--tray") {
         return true;
     }
 
-    if (argument == L"--no-tray") {
+    if (argument == "--no-tray") {
         return false;
     }
 
@@ -102,7 +104,7 @@ Options miniant::CommandLine::Parse() {
             if (i + 1 < arguments.size()) {
                 options.configPath = arguments[++i];
             } else {
-                options.unknown.push_back(Lang::Utf8(Lang::Str::ArgConfigNeedsPath));
+                options.errors.push_back(Lang::Utf8(Lang::Str::ArgConfigNeedsPath));
             }
 
             continue;
@@ -112,19 +114,19 @@ Options miniant::CommandLine::Parse() {
             if (i + 1 < arguments.size()) {
                 options.logLevel = Text::ToLowerAscii(Text::ToUtf8(arguments[++i]));
             } else {
-                options.unknown.push_back(Lang::Utf8(Lang::Str::ArgLogLevelNeedsValue));
+                options.errors.push_back(Lang::Utf8(Lang::Str::ArgLogLevelNeedsValue));
             }
 
             continue;
         }
 
-        const std::optional<bool> tray = ParseFlag(argument);
+        const std::optional<bool> tray = ParseFlag(argumentUtf8);
         if (tray) {
             options.startMinimizedToTray = *tray;
             continue;
         }
 
-        options.unknown.push_back(argumentUtf8);
+        options.unknown.push_back(Text::ToUtf8(argument));
     }
 
     return options;
