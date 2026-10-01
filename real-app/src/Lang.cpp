@@ -339,11 +339,11 @@ const Entry TABLE[] = {
       "The Windows audio service (Audiosrv) does not seem to be running.\n",
       "Похоже, не запущена служба Windows «Звук» (Audiosrv).\n" },
     { Str::DiagDevicesRender,
-      "Output devices (playback):\n\n",
-      "Устройства вывода (воспроизведение):\n\n" },
+      "--- Output devices (playback) ---\n\n",
+      "--- Устройства вывода (воспроизведение) ---\n\n" },
     { Str::DiagDevicesCapture,
-      "Input devices (recording):\n\n",
-      "Устройства ввода (запись):\n\n" },
+      "--- Input devices (recording) ---\n\n",
+      "--- Устройства ввода (запись) ---\n\n" },
     { Str::DiagNoDevices,
       "No active devices.\n\n",
       "Нет активных устройств.\n\n" },
@@ -378,18 +378,27 @@ const Entry TABLE[] = {
       "IAudioClient3 is not available",
       "IAudioClient3 недоступен" },
     { Str::DiagNotesHeader,
-      "Notes:\n\n",
-      "Примечания:\n\n" },
+      "--- Notes ---\n\n",
+      "--- Примечания ---\n\n" },
     { Str::DiagNotes,
       "A device is suitable for the latency reduction when its minimum period is smaller than its default period (see 'result'). Typical exceptions: Bluetooth endpoints (10 ms by design), HDMI/DisplayPort receivers, some vendor drivers (Realtek, Nahimic, ACX) and virtual devices.\n",
       "Устройство подходит для снижения задержки, если его минимальный период меньше стандартного (см. «итог»). Обычные исключения: Bluetooth (10 мс по замыслу), приёмники HDMI/DisplayPort, некоторые драйверы производителей (Realtek, Nahimic, ACX) и виртуальные устройства.\n" },
 
     { Str::DiagPeriodsNoClient3,
-      "device period {0} frames ({1})",
-      "период устройства {0} кадров ({1})" },
-    { Str::DiagPeriodsDetail,
-      "default {0} frames ({1}), minimum {2} frames ({3}), fundamental {4} frames, maximum {5} frames",
-      "стандартный {0} кадров ({1}), минимальный {2} кадров ({3}), основной {4} кадров, максимальный {5} кадров" },
+      "device period {0} ({1})",
+      "период устройства {0} ({1})" },
+    { Str::DiagPeriodDefault,
+      "default {0} ({1})",
+      "стандартный {0} ({1})" },
+    { Str::DiagPeriodMinimum,
+      "minimum {0} ({1})",
+      "минимальный {0} ({1})" },
+    { Str::DiagPeriodFundamental,
+      "fundamental {0} ({1})",
+      "основной {0} ({1})" },
+    { Str::DiagPeriodMaximum,
+      "maximum {0} ({1})",
+      "максимальный {0} ({1})" },
     { Str::DiagNoAudioClient3Detail,
       "the driver does not expose IAudioClient3, so small buffers are not available for this device (typical for Bluetooth, HDMI/DisplayPort receivers and some virtual drivers)",
       "драйвер не предоставляет IAudioClient3, поэтому малые буферы для этого устройства недоступны (обычно это Bluetooth, приёмники HDMI/DisplayPort и некоторые виртуальные драйверы)" },
@@ -464,13 +473,21 @@ const Entry TABLE[] = {
 
     // Dialogs
     { Str::AboutTitle, "About REAL", "О программе REAL" },
-    { Str::AboutVersion, "REAL v{0}", "REAL v{0}" },
-    { Str::AboutDescription,
-      "While REAL is running, Windows uses the smallest buffer supported by the driver of the device.",
-      "Когда REAL запущен, Windows использует минимальный буфер, который поддерживает драйвер устройства." },
-    // The markup of the SysLink control: the visible text is the URL itself.
-    { Str::AboutProject, "Project: <a href=\"{0}\">{0}</a>", "Проект: <a href=\"{0}\">{0}</a>" },
-    { Str::AboutClose, "Close", "Закрыть" },
+    { Str::AboutText,
+      "REAL {0}\n"
+      "While REAL is running, Windows uses the smallest buffer the driver of the default audio device supports.\n"
+      "\n"
+      "A click on the tray icon shows or hides this window, the tray menu can activate the audio streams.\n"
+      "\n"
+      "Settings: {1}\n"
+      "Project:  {2}",
+      "REAL {0}\n"
+      "Пока REAL запущен, Windows использует минимальный буфер, который поддерживает драйвер устройства по умолчанию.\n"
+      "\n"
+      "Клик по значку в трее показывает и прячет это окно, через меню значка можно активировать аудиопотоки.\n"
+      "\n"
+      "Настройки: {1}\n"
+      "Проект:  {2}" },
     { Str::DiagnosticsWriteFailed, "The diagnostics report could not be written to a file.",
                                    "Не удалось записать отчёт диагностики в файл." },
 

@@ -1,6 +1,5 @@
 #include "App.h"
 
-#include <commctrl.h>
 #include <wtsapi32.h>
 
 #include <cwchar>
@@ -238,12 +237,6 @@ int App::Run() {
     ApplyPerformanceSettings();
     CleanupPreviousInstall();
 
-    // The about window uses the link control of the common controls library.
-    INITCOMMONCONTROLSEX commonControls = {};
-    commonControls.dwSize = sizeof(commonControls);
-    commonControls.dwICC = ICC_STANDARD_CLASSES | ICC_LINK_CLASS;
-    ::InitCommonControlsEx(&commonControls);
-
     if (!InitializeUi()) {
         Shutdown();
         return 1;
@@ -252,6 +245,8 @@ int App::Run() {
     // The reminder about the hotkeys belongs to the beginning of the session,
     // right after the startup lines.
     RegisterHotkeys();
+
+    ApplyStartWithWindows();
 
     InitializeAudio();
     InitializeTray();
@@ -370,7 +365,7 @@ bool App::InitializeLogging() {
 }
 
 void App::LogBanner() {
-    Log::Operation(Lang::Utf8(Str::OpStarted), AppInfo::VERSION.ToString());
+    Log::Operation(Lang::Utf8(Str::OpStarted), AppInfo::DisplayVersion());
 
     if (!m_commentsRewritten.empty()) {
         Log::Operation(Lang::Utf8(Str::OpCommentsRewritten), m_commentsRewritten);
@@ -644,7 +639,7 @@ void App::UpdateTrayMenuState() {
     state.openLog = m_settings.tray.menu.openLog;
     state.diagnostics = m_settings.tray.menu.diagnostics;
     state.startWithWindows = m_settings.tray.menu.startWithWindows;
-    state.startWithWindowsChecked = IsStartWithWindowsEnabled();
+    state.startWithWindowsChecked = m_settings.application.startWithWindows;
     state.about = m_settings.tray.menu.about;
     state.exit = m_settings.tray.menu.exit;
 
@@ -764,9 +759,20 @@ void App::OpenLogFile() {
 }
 
 void App::ShowAboutDialog() {
-    if (m_window != nullptr) {
-        Windows::ShowAboutDialog(m_window->GetHWindow(), m_window->GetInstance());
-    }
+    const std::string formatted = fmt::format(
+        Lang::Utf8(Str::AboutText),
+        AppInfo::DisplayVersion(),
+        Text::ToUtf8(m_settingsPath),
+        AppInfo::PROJECT_URL);
+
+    const std::wstring text = Text::ToWide(formatted);
+    const std::wstring title = Lang::Wide(Str::AboutTitle);
+
+    ::MessageBoxW(
+        m_window != nullptr ? m_window->GetHWindow() : nullptr,
+        text.c_str(),
+        title.c_str(),
+        MB_OK | MB_ICONINFORMATION);
 }
 
 void App::StartUpdateCheck() {
@@ -806,7 +812,7 @@ void App::StartUpdateCheck() {
             message = fmt::format(Lang::Utf8(Str::NotifyUpdateAvailable), release->version.ToString());
             url = release->releaseUrl;
         } else {
-            message = fmt::format(Lang::Utf8(Str::NotifyUpdateLatest), AppInfo::VERSION.ToString());
+            message = fmt::format(Lang::Utf8(Str::NotifyUpdateLatest), AppInfo::DisplayVersion());
         }
 
         {
@@ -906,7 +912,7 @@ void App::OnCommand(Command command) {
             break;
 
         case Command::ToggleStartWithWindows: {
-            const bool enable = !IsStartWithWindowsEnabled();
+            const bool enable = !m_settings.application.startWithWindows;
             SetStartWithWindows(enable);
             m_settings.application.startWithWindows = enable;
             SaveSettings();
@@ -1381,6 +1387,14 @@ bool App::IsStartWithWindowsEnabled() const {
     return result == ERROR_SUCCESS && type == REG_SZ;
 }
 
+void App::ApplyStartWithWindows() {
+    if (m_settings.application.startWithWindows == IsStartWithWindowsEnabled()) {
+        return;
+    }
+
+    SetStartWithWindows(m_settings.application.startWithWindows);
+}
+
 void App::SetStartWithWindows(bool enabled) {
     HKEY key = nullptr;
     if (::RegCreateKeyExW(HKEY_CURRENT_USER, RUN_KEY_PATH, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
@@ -1436,7 +1450,7 @@ void App::PrintStartupText(const std::wstring& text) const {
         return;
     }
 
-    const std::wstring title = std::wstring(AppInfo::NAME) + L" " + Text::ToWide(AppInfo::VERSION.ToString());
+    const std::wstring title = std::wstring(AppInfo::NAME) + L" " + Text::ToWide(AppInfo::DisplayVersion());
     ::MessageBoxW(nullptr, text.c_str(), title.c_str(), MB_OK | MB_ICONINFORMATION);
 }
 

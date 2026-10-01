@@ -30,6 +30,16 @@ if errorlevel 1 (
 
 if not exist build mkdir build
 
+REM The identification of the build: the CI exports the number of the run, the
+REM commit is read from the checkout. Both are part of the version the program
+REM shows, so a build from a zip without a repository has neither.
+set "BUILD_DEFS="
+if defined REAL_BUILD_NUMBER set "BUILD_DEFS=%BUILD_DEFS% /DREAL_BUILD_NUMBER=%REAL_BUILD_NUMBER%"
+if not defined REAL_COMMIT (
+    for /f "usebackq tokens=*" %%i in (`git rev-parse --short HEAD 2^>nul`) do set "REAL_COMMIT=%%i"
+)
+if defined REAL_COMMIT set "BUILD_DEFS=%BUILD_DEFS% /DREAL_COMMIT=%REAL_COMMIT%"
+
 echo [build] Compiling resources...
 rc /nologo /fo build\real-app.res res\real-app.rc
 if errorlevel 1 exit /b 1
@@ -37,7 +47,7 @@ if errorlevel 1 exit /b 1
 echo [build] Compiling sources...
 cl /nologo /O2 /MT /EHsc /std:c++17 /utf-8 /W3 ^
     /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DSPDLOG_WCHAR_FILENAMES ^
-    /D_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING ^
+    /D_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING %BUILD_DEFS% ^
     /I"deps\expected\include" /I"deps\json" /I"deps\spdlog\include" ^
     /Fo:build\ /Fd:build\REAL.pdb /Fe:build\REAL.exe ^
     src\*.cpp src\Windows\*.cpp src\Http\*.cpp ^

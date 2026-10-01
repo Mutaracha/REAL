@@ -190,8 +190,15 @@ Press **Diagnostics** in the window (or *File → Diagnostics...*, or run
 `REAL-diagnostics.txt` next to the executable with your Windows version, the
 active audio endpoints of the direction selected by `audio.dataFlow`, their
 driver version and the periods they support, so the reason is visible without
-guesswork. The application log (`REAL.log`) is written
-next to the executable as well.
+guesswork. The blocks of the report are separated with `--- ... ---` lines, and
+the periods of a device are listed one per line. The application log
+(`REAL.log`) is written next to the executable as well.
+
+Every version the program shows (the About window, `--version`, the diagnostics
+report, the first line of the log) carries the build identification:
+`v0.3.0 RC 39 (47d5109)`, where `RC 39` is the number of the CI run and
+`47d5109` is the commit the executable was built from. A build made from a
+checkout shows the commit only.
 
 ### It says "the driver does not offer a period smaller than the default one"
 

@@ -147,14 +147,14 @@ std::wstring miniant::CommandLine::HelpText() {
         miniant::Lang::Utf8(miniant::Lang::Str::HelpText),
         miniant::Text::ToUtf8(AppInfo::NAME),
         miniant::Text::ToUtf8(AppInfo::DESCRIPTION),
-        AppInfo::VERSION.ToString());
+        AppInfo::DisplayVersion());
 
     return miniant::Text::ToWide(text);
 }
 
 std::wstring miniant::CommandLine::VersionText() {
     std::wstringstream stream;
-    stream << AppInfo::NAME << L" " << AppInfo::VERSION.ToString().c_str() << L" ("
+    stream << AppInfo::NAME << L" " << miniant::Text::ToWide(AppInfo::DisplayVersion()).c_str() << L" ("
            << AppInfo::DESCRIPTION << L")";
     return stream.str();
 }

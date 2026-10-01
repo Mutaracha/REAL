@@ -43,6 +43,31 @@ target_compile_definitions(real-app PRIVATE
 
 target_compile_options(real-app PRIVATE /utf-8 /W3)
 
+# Identification of the build. The CI exports the number of the run; the commit
+# is read from the checkout, so a local build shows it as well. The values are
+# visible in the About window, in the log and in the diagnostics report.
+set(REAL_BUILD_NUMBER "$ENV{REAL_BUILD_NUMBER}" CACHE STRING "CI build number (empty for a local build)")
+
+if(NOT REAL_COMMIT)
+    find_package(Git QUIET)
+    if(Git_FOUND)
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" rev-parse --short HEAD
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            OUTPUT_VARIABLE REAL_COMMIT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+    endif()
+endif()
+
+if(REAL_BUILD_NUMBER)
+    target_compile_definitions(real-app PRIVATE REAL_BUILD_NUMBER=${REAL_BUILD_NUMBER})
+endif()
+
+if(REAL_COMMIT)
+    target_compile_definitions(real-app PRIVATE REAL_COMMIT=${REAL_COMMIT})
+endif()
+
 target_include_directories(real-app PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/deps/expected/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/deps/json"

@@ -168,7 +168,10 @@ enum class Str {
     DiagNotesHeader,
     DiagNotes,
     DiagPeriodsNoClient3,
-    DiagPeriodsDetail,
+    DiagPeriodDefault,
+    DiagPeriodMinimum,
+    DiagPeriodFundamental,
+    DiagPeriodMaximum,
     DiagNoAudioClient3Detail,
     DiagMixFormatFailed,
     DiagEnginePeriodsFailed,
@@ -181,10 +184,7 @@ enum class Str {
 
     // Dialogs
     AboutTitle,
-    AboutVersion,
-    AboutDescription,
-    AboutProject,
-    AboutClose,
+    AboutText,
     DiagnosticsWriteFailed,
 
     // Console / log: operations

@@ -171,7 +171,37 @@ std::string Milliseconds(uint32_t frames, uint32_t sampleRate) {
         return "-";
     }
 
-    return fmt::format("{:.2f} ms", 1000.0 * static_cast<double>(frames) / static_cast<double>(sampleRate));
+    const char* unit = miniant::Lang::Current() == miniant::Lang::Language::Russian ? "мс" : "ms";
+    return fmt::format(
+        "{:.2f} {}", 1000.0 * static_cast<double>(frames) / static_cast<double>(sampleRate), unit);
+}
+
+// "1 кадр", "2 кадра", "5 кадров": the numeral has to agree with the noun, and
+// the rule differs between the languages.
+std::string Frames(uint32_t frames) {
+    if (miniant::Lang::Current() == miniant::Lang::Language::Russian) {
+        const uint32_t last = frames % 10;
+        const uint32_t lastTwo = frames % 100;
+
+        if (last == 1 && lastTwo != 11) {
+            return fmt::format("{} кадр", frames);
+        }
+
+        if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) {
+            return fmt::format("{} кадра", frames);
+        }
+
+        return fmt::format("{} кадров", frames);
+    }
+
+    return frames == 1 ? std::string("1 frame") : fmt::format("{} frames", frames);
+}
+
+// One period: the label of the language, the number of frames with the right
+// plural form and the same number in milliseconds.
+std::string PeriodLine(miniant::Lang::Str label, uint32_t frames, uint32_t sampleRate) {
+    return fmt::format(
+        miniant::Lang::Utf8(label), Frames(frames), Milliseconds(frames, sampleRate));
 }
 
 std::string Periods(const EndpointInfo& info) {
@@ -180,20 +210,19 @@ std::string Periods(const EndpointInfo& info) {
     }
 
     if (!info.supportsAudioClient3) {
-        return fmt::format(
-            miniant::Lang::Utf8(miniant::Lang::Str::DiagPeriodsNoClient3),
-            info.defaultPeriod,
-            Milliseconds(info.defaultPeriod, info.sampleRate));
+        return PeriodLine(miniant::Lang::Str::DiagPeriodsNoClient3, info.defaultPeriod, info.sampleRate);
     }
 
-    return fmt::format(
-        miniant::Lang::Utf8(miniant::Lang::Str::DiagPeriodsDetail),
-        info.defaultPeriod,
-        Milliseconds(info.defaultPeriod, info.sampleRate),
-        info.minPeriod,
-        Milliseconds(info.minPeriod, info.sampleRate),
-        info.fundamentalPeriod,
-        info.maxPeriod);
+    // One value per line: the four numbers are easy to compare this way, while
+    // a single long line of eight numbers is not readable. The continuation
+    // lines are aligned under the first value of the "periods" line.
+    const std::string indent(14, ' ');
+
+    std::string text = PeriodLine(miniant::Lang::Str::DiagPeriodDefault, info.defaultPeriod, info.sampleRate);
+    text += "\n" + indent + PeriodLine(miniant::Lang::Str::DiagPeriodMinimum, info.minPeriod, info.sampleRate);
+    text += "\n" + indent + PeriodLine(miniant::Lang::Str::DiagPeriodFundamental, info.fundamentalPeriod, info.sampleRate);
+    text += "\n" + indent + PeriodLine(miniant::Lang::Str::DiagPeriodMaximum, info.maxPeriod, info.sampleRate);
+    return text;
 }
 
 }
@@ -304,7 +333,7 @@ std::string miniant::Windows::Diagnostics::BuildReport(
     text += miniant::Lang::Utf8(miniant::Lang::Str::DiagRule);
     text += "\n\n";
     text += fmt::format(
-        miniant::Lang::Utf8(miniant::Lang::Str::DiagVersion), AppInfo::VERSION.ToString(), Text::ToUtf8(AppInfo::DESCRIPTION));
+        miniant::Lang::Utf8(miniant::Lang::Str::DiagVersion), AppInfo::DisplayVersion(), Text::ToUtf8(AppInfo::DESCRIPTION));
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagGenerated), timestamp);
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagWindows), GetWindowsVersion());
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagExecutable), Text::ToUtf8(Filesystem::GetExecutablePath()));

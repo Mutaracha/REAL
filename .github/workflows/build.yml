@@ -12,6 +12,8 @@ permissions:
 
 env:
   BUILD_DIR: build
+  # The number of the run ends up in the version of the build: "RC 39".
+  REAL_BUILD_NUMBER: ${{ github.run_number }}
 
 jobs:
   windows:

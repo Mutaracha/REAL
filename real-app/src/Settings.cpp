@@ -432,15 +432,25 @@ public:
         Line(indent, std::string("\"") + name + "\": " + JsonValue(value) + (comma ? "," : ""));
     }
 
+    // The explanation follows the value on the same line: the file stays
+    // compact and a value is read together with what it means.
+    void InlineComment(const std::string& comment) {
+        if (!comment.empty()) {
+            m_text += "  // " + comment;
+        }
+    }
+
     template <typename T>
     void Key(int indent, const char* name, const T& value, const std::string& comment, bool comma = true) {
-        Comment(indent, comment);
-        Line(indent, std::string("\"") + name + "\": " + JsonValue(value) + (comma ? "," : ""));
+        m_text += std::string(static_cast<size_t>(indent), ' ') + "\"" + name + "\": " + JsonValue(value) + (comma ? "," : "");
+        InlineComment(comment);
+        m_text += "\n";
     }
 
     void SectionOpen(int indent, const char* name, const std::string& comment) {
-        Comment(indent, comment);
-        Line(indent, std::string("\"") + name + "\": {");
+        m_text += std::string(static_cast<size_t>(indent), ' ') + "\"" + name + "\": {";
+        InlineComment(comment);
+        m_text += "\n";
     }
 
     void SectionClose(int indent, bool comma) {

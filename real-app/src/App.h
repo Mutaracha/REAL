@@ -3,7 +3,6 @@
 #include "AudioSession.h"
 #include "CommandLine.h"
 #include "Commands.h"
-#include "Windows/AboutDialog.h"
 #include "Settings.h"
 #include "Windows/MainWindow.h"
 
@@ -75,6 +74,9 @@ private:
     std::wstring WriteDiagnosticsReport(const std::string& report);
     bool IsStartWithWindowsEnabled() const;
     void SetStartWithWindows(bool enabled);
+    // The registry entry follows application.startWithWindows: the value is
+    // authoritative, the menu item and the autostart are only its reflection.
+    void ApplyStartWithWindows();
     bool NotifyRunningInstance(UINT message) const;
     void PrintStartupText(const std::wstring& text) const;
     void CleanupPreviousInstall();
