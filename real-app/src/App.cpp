@@ -344,7 +344,7 @@ bool App::LoadSettings() {
                 if (Config::Write(m_settings, m_settingsPath)) {
                     m_startupMessages.emplace_back(
                         StartupLevel::Info,
-                        fmt::format("{}: {}", Lang::Utf8(Str::OpSettingsCreated), Text::ToUtf8(m_settingsPath)));
+                        fmt::format(Lang::Utf8(Str::OpSettingsCreated), Text::ToUtf8(m_settingsPath)));
                 } else {
                     m_startupMessages.emplace_back(
                         StartupLevel::Error,
