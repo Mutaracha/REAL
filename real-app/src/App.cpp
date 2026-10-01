@@ -432,7 +432,8 @@ void App::InitializeAudio() {
     if (!initialized) {
         Log::Error("{}", initialized.error().GetMessage());
         if (m_settings.tray.notifications.onError) {
-            m_window->Notify(L"REAL", Text::ToWide(initialized.error().GetMessage()), true);
+            m_window->Notify(
+                std::wstring(AppInfo::NAME), Text::ToWide(initialized.error().GetMessage()), true);
         }
 
         m_audioEnabled = false;

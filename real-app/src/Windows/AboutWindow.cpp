@@ -1,5 +1,7 @@
 #include "AboutWindow.h"
 
+#include "Dpi.h"
+
 #include "../../res/resource.h"
 #include "../AppVersion.h"
 #include "../Lang.h"
@@ -10,6 +12,7 @@
 #include <shellapi.h>
 
 #include <string>
+#include <vector>
 
 using namespace miniant;
 using namespace miniant::Windows;
@@ -71,6 +74,17 @@ struct Context {
     HFONT font = nullptr;
     HFONT nameFont = nullptr;
     HFONT linkFont = nullptr;
+
+    // The dots per inch of the monitor the window is on: the coordinates below
+    // are design pixels of a 96 DPI layout.
+    UINT dpi = 96;
+
+    int Scale(int value) const {
+        return Dpi::Scale(value, dpi);
+    }
+
+    std::vector<HWND> controls;
+    std::wstring settingsPath;
     bool done = false;
 };
 
@@ -94,17 +108,107 @@ HWND CreateControl(
         className,
         text.c_str(),
         style | WS_CHILD | WS_VISIBLE,
-        x, y, width, height,
+        context.Scale(x), context.Scale(y), context.Scale(width), context.Scale(height),
         context.window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
         context.instance,
         nullptr);
 
-    if (control != nullptr && font != nullptr) {
-        ::SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+    if (control != nullptr) {
+        context.controls.push_back(control);
+
+        if (font != nullptr) {
+            ::SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+        }
     }
 
     return control;
+}
+
+// The icon is loaded in the size the current DPI asks for: a 48 pixel bitmap
+// stretched to 108 pixels on a 225 % monitor would be blurry.
+void ReloadIcon(Context& context) {
+    if (context.icon != nullptr) {
+        ::DestroyIcon(context.icon);
+        context.icon = nullptr;
+    }
+
+    context.icon = static_cast<HICON>(::LoadImageW(
+        context.instance, MAKEINTRESOURCEW(IDI_ICON1), IMAGE_ICON,
+        context.Scale(ICON_SIZE), context.Scale(ICON_SIZE), LR_DEFAULTCOLOR));
+}
+
+// The fonts and the controls of the window: built once and built again when the
+// DPI changes (the design coordinates stay the same).
+void BuildContent(Context& context, const std::wstring& settingsPath) {
+    context.font = Dpi::CreateUiFont(context.dpi);
+    context.nameFont = Dpi::CreateNameFont(context.dpi);
+    context.linkFont = Dpi::CreateLinkFont(context.dpi);
+
+    const int textLeft = MARGIN + ICON_SIZE + 14;
+    const int textWidth = WINDOW_WIDTH - textLeft - MARGIN;
+
+    // The name of the program, large and bold, next to its icon.
+    CreateControl(context, L"STATIC", AppInfo::NAME, SS_LEFT | SS_CENTERIMAGE,
+        NAME_ID, textLeft, MARGIN - 2, textWidth, NAME_HEIGHT, context.nameFont);
+    CreateControl(context, L"STATIC", AppInfo::DESCRIPTION, SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS,
+        DESCRIPTION_ID, textLeft, MARGIN + NAME_HEIGHT - 2, textWidth, LINE_HEIGHT, context.font);
+    CreateControl(context, L"STATIC", Text::ToWide(AppInfo::DisplayVersion()),
+        SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS, VERSION_ID,
+        textLeft, MARGIN + NAME_HEIGHT + LINE_HEIGHT - 2, textWidth, LINE_HEIGHT, context.font);
+
+    int y = MARGIN + ICON_SIZE + 22;
+
+    // The sentence about the program, in the language of the interface: two
+    // lines, the break is a part of the text itself.
+    CreateControl(context, L"STATIC", Lang::Wide(Lang::Str::AboutText),
+        SS_LEFT, 0, MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, 2 * LINE_HEIGHT, context.font);
+
+    y += 2 * LINE_HEIGHT + 8;
+
+    for (int i = 0; i < LINK_COUNT; ++i) {
+        CreateControl(context, L"STATIC", Lang::Wide(LINK_LABELS[i]), SS_LEFT | SS_CENTERIMAGE,
+            LINK_LABEL_FIRST_ID + i, MARGIN, y, LABEL_WIDTH, ROW_HEIGHT, context.font);
+
+        // SS_NOTIFY makes the control report its clicks: the window opens the
+        // page in the browser of the user. The width is the width of the text
+        // itself, so the hand of the cursor appears over the link only.
+        const std::wstring link = LinkText(i);
+
+        // The measured width is in real pixels, the layout is in design ones.
+        const int linkWidth = ::MulDiv(
+            MeasureTextWidth(context.linkFont, link) + 2, 96, static_cast<int>(context.dpi));
+
+        CreateControl(context, L"STATIC", link, SS_LEFT | SS_CENTERIMAGE | SS_NOTIFY,
+            LINK_FIRST_ID + i, MARGIN + LABEL_WIDTH, y, linkWidth, ROW_HEIGHT, context.linkFont);
+
+        y += ROW_HEIGHT;
+    }
+
+    y += 6;
+
+    CreateControl(context, L"STATIC", Lang::Wide(Lang::Str::AboutSettings), SS_LEFT | SS_CENTERIMAGE,
+        SETTINGS_LABEL_ID, MARGIN, y, LABEL_WIDTH, ROW_HEIGHT, context.font);
+    CreateControl(context, L"STATIC", settingsPath, SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS,
+        SETTINGS_PATH_ID, MARGIN + LABEL_WIDTH, y,
+        WINDOW_WIDTH - 2 * MARGIN - LABEL_WIDTH, ROW_HEIGHT, context.font);
+}
+
+void DestroyContent(Context& context) {
+    for (const HWND control : context.controls) {
+        if (control != nullptr) {
+            ::DestroyWindow(control);
+        }
+    }
+
+    context.controls.clear();
+
+    for (HFONT* font : { &context.font, &context.nameFont, &context.linkFont }) {
+        if (*font != nullptr) {
+            ::DeleteObject(*font);
+            *font = nullptr;
+        }
+    }
 }
 
 void OpenUrl(HWND window, const char* url) {
@@ -140,7 +244,9 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
             const HDC dc = ::BeginPaint(window, &paint);
 
             if (context->icon != nullptr) {
-                ::DrawIconEx(dc, MARGIN, MARGIN, context->icon, ICON_SIZE, ICON_SIZE, 0, nullptr, DI_NORMAL);
+                ::DrawIconEx(
+                    dc, context->Scale(MARGIN), context->Scale(MARGIN), context->icon,
+                    context->Scale(ICON_SIZE), context->Scale(ICON_SIZE), 0, nullptr, DI_NORMAL);
             }
 
             ::EndPaint(window, &paint);
@@ -198,6 +304,25 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
             break;
         }
 
+        case WM_DPICHANGED: {
+            const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
+            if (suggested != nullptr) {
+                ::SetWindowPos(
+                    window, nullptr, suggested->left, suggested->top,
+                    suggested->right - suggested->left, suggested->bottom - suggested->top,
+                    SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+
+            context->dpi = HIWORD(wParam) != 0 ? HIWORD(wParam) : Dpi::ForSystem();
+
+            const std::wstring settingsPath = context->settingsPath;
+            ReloadIcon(*context);
+            DestroyContent(*context);
+            BuildContent(*context, settingsPath);
+            ::InvalidateRect(window, nullptr, TRUE);
+            return 0;
+        }
+
         case WM_CLOSE:
             ::DestroyWindow(window);
             return 0;
@@ -219,8 +344,9 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 void miniant::Windows::ShowAboutWindow(HWND owner, HINSTANCE instance, const std::wstring& settingsPath) {
     Context context;
     context.instance = instance;
-    context.icon = static_cast<HICON>(::LoadImageW(
-        instance, MAKEINTRESOURCEW(IDI_ICON1), IMAGE_ICON, ICON_SIZE, ICON_SIZE, LR_DEFAULTCOLOR));
+    context.dpi = Dpi::ForWindow(owner);
+    context.settingsPath = settingsPath;
+    ReloadIcon(context);
 
     WNDCLASSEXW windowClass = {};
     windowClass.cbSize = sizeof(windowClass);
@@ -243,8 +369,8 @@ void miniant::Windows::ShowAboutWindow(HWND owner, HINSTANCE instance, const std
 
     const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
 
-    RECT desired = { 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT };
-    ::AdjustWindowRectEx(&desired, style, FALSE, 0);
+    RECT desired = { 0, 0, context.Scale(WINDOW_WIDTH), context.Scale(WINDOW_HEIGHT) };
+    Dpi::AdjustWindowRect(desired, style, context.dpi);
 
     // Near the window of the program, not in the middle of the screen.
     int windowX = CW_USEDEFAULT;
@@ -278,65 +404,7 @@ void miniant::Windows::ShowAboutWindow(HWND owner, HINSTANCE instance, const std
         return;
     }
 
-    context.font = ::CreateFontW(
-        -12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-
-    context.nameFont = ::CreateFontW(
-        -24, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-
-    context.linkFont = ::CreateFontW(
-        -12, 0, 0, 0, FW_NORMAL, FALSE, TRUE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-
-    const int textLeft = MARGIN + ICON_SIZE + 14;
-    const int textWidth = WINDOW_WIDTH - textLeft - MARGIN;
-
-    // The name of the program, large and bold, next to its icon.
-    CreateControl(context, L"STATIC", AppInfo::NAME, SS_LEFT | SS_CENTERIMAGE,
-        NAME_ID, textLeft, MARGIN - 2, textWidth, NAME_HEIGHT, context.nameFont);
-    CreateControl(context, L"STATIC", AppInfo::DESCRIPTION, SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS,
-        DESCRIPTION_ID, textLeft, MARGIN + NAME_HEIGHT - 2, textWidth, LINE_HEIGHT, context.font);
-    CreateControl(context, L"STATIC", Text::ToWide(AppInfo::DisplayVersion()),
-        SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS, VERSION_ID,
-        textLeft, MARGIN + NAME_HEIGHT + LINE_HEIGHT - 2, textWidth, LINE_HEIGHT, context.font);
-
-    int y = MARGIN + ICON_SIZE + 22;
-
-    // The sentence about the program, in the language of the interface: two
-    // lines, the break is a part of the text itself.
-    CreateControl(context, L"STATIC", Lang::Wide(Lang::Str::AboutText),
-        SS_LEFT, 0, MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, 2 * LINE_HEIGHT, context.font);
-
-    y += 2 * LINE_HEIGHT + 8;
-
-    for (int i = 0; i < LINK_COUNT; ++i) {
-        CreateControl(context, L"STATIC", Lang::Wide(LINK_LABELS[i]), SS_LEFT | SS_CENTERIMAGE,
-            LINK_LABEL_FIRST_ID + i, MARGIN, y, LABEL_WIDTH, ROW_HEIGHT, context.font);
-
-        // SS_NOTIFY makes the control report its clicks: the window opens the
-        // page in the browser of the user. The width is the width of the text
-        // itself, so the hand of the cursor appears over the link only.
-        const std::wstring link = LinkText(i);
-
-        CreateControl(context, L"STATIC", link, SS_LEFT | SS_CENTERIMAGE | SS_NOTIFY,
-            LINK_FIRST_ID + i, MARGIN + LABEL_WIDTH, y,
-            MeasureTextWidth(context.linkFont, link) + 2, ROW_HEIGHT, context.linkFont);
-
-        y += ROW_HEIGHT;
-    }
-
-    y += 6;
-
-    CreateControl(context, L"STATIC", Lang::Wide(Lang::Str::AboutSettings), SS_LEFT | SS_CENTERIMAGE,
-        SETTINGS_LABEL_ID, MARGIN, y, LABEL_WIDTH, ROW_HEIGHT, context.font);
-    CreateControl(context, L"STATIC", settingsPath, SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS,
-        SETTINGS_PATH_ID, MARGIN + LABEL_WIDTH, y,
-        WINDOW_WIDTH - 2 * MARGIN - LABEL_WIDTH, ROW_HEIGHT, context.font);
+    BuildContent(context, settingsPath);
 
     if (owner != nullptr) {
         ::EnableWindow(owner, FALSE);
@@ -377,20 +445,11 @@ void miniant::Windows::ShowAboutWindow(HWND owner, HINSTANCE instance, const std
         ::DestroyWindow(context.window);
     }
 
-    if (context.font != nullptr) {
-        ::DeleteObject(context.font);
-    }
-
-    if (context.nameFont != nullptr) {
-        ::DeleteObject(context.nameFont);
-    }
-
-    if (context.linkFont != nullptr) {
-        ::DeleteObject(context.linkFont);
-    }
+    DestroyContent(context);
 
     if (context.icon != nullptr) {
         ::DestroyIcon(context.icon);
+        context.icon = nullptr;
     }
 
     ::UnregisterClassW(ABOUT_CLASS_NAME, instance);

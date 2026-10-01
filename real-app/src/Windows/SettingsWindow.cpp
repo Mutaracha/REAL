@@ -1,5 +1,7 @@
 #include "SettingsWindow.h"
 
+#include "Dpi.h"
+
 #include "../../res/resource.h"
 #include "../Lang.h"
 #include "../Text.h"
@@ -111,6 +113,18 @@ struct Context {
     HINSTANCE instance = nullptr;
     Config::Settings* settings = nullptr;
     std::wstring settingsPath;
+
+    // The dots per inch of the monitor the window is on: every coordinate below
+    // is a design pixel of a 96 DPI layout and is scaled by CreateControl.
+    UINT dpi = 96;
+
+    int Scale(int value) const {
+        return Dpi::Scale(value, dpi);
+    }
+
+    // Every control of the window: the pages use the list to show and hide
+    // themselves, and a change of the DPI uses it to build the window again.
+    std::vector<HWND> allControls;
 
     std::vector<std::pair<HWND, Page>> pageControls;
     Page page = Page::Window;
@@ -280,7 +294,11 @@ const int CHECK_GLYPH_WIDTH = 24;
 // caption does nothing, and the caption is the only thing that reacts.
 int CheckWidth(Context& context, const std::wstring& text) {
     const int textWidth = MeasureTextWidth(context.font, text);
-    return textWidth > 0 ? textWidth + CHECK_GLYPH_WIDTH : WINDOW_WIDTH - 2 * MARGIN;
+
+    // The measured width is in real pixels, the caller works in design ones.
+    return textWidth > 0
+        ? ::MulDiv(textWidth, 96, static_cast<int>(context.dpi)) + CHECK_GLYPH_WIDTH
+        : WINDOW_WIDTH - 2 * MARGIN;
 }
 
 HWND CreateControl(
@@ -299,17 +317,21 @@ HWND CreateControl(
         className,
         text.c_str(),
         style | WS_CHILD | WS_VISIBLE,
-        x + context.offsetX,
-        y + context.offsetY,
-        width,
-        height,
+        context.Scale(x) + context.offsetX,
+        context.Scale(y) + context.offsetY,
+        context.Scale(width),
+        context.Scale(height),
         context.window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(ControlId(id))),
         context.instance,
         nullptr);
 
-    if (control != nullptr && context.font != nullptr) {
-        ::SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(context.font), TRUE);
+    if (control != nullptr) {
+        context.allControls.push_back(control);
+
+        if (context.font != nullptr) {
+            ::SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(context.font), TRUE);
+        }
     }
 
     return control;
@@ -343,7 +365,7 @@ int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y) {
     return y + ROW_STEP;
 }
 
-void AddCheckColumn(Context& context, Id id, Lang::Str text, bool value, int x, int width, int y) {
+void AddCheckColumn(Context& context, Id id, Lang::Str text, bool value, int x, int y) {
     const std::wstring caption = Lang::Wide(text);
 
     const HWND check = CreateControl(
@@ -553,7 +575,7 @@ int BuildWindowPage(Context& context) {
 
         AddCheckColumn(
             context, MENU_ITEMS[i].id, MENU_ITEMS[i].text, MENU_ITEMS[i].value,
-            MARGIN + column * (columnWidth + MARGIN), columnWidth, y + row * ROW_STEP);
+            MARGIN + column * (columnWidth + MARGIN), y + row * ROW_STEP);
     }
 
     y += 3 * ROW_STEP + GROUP_GAP;
@@ -685,12 +707,67 @@ void CreateTabs(Context& context) {
     ::GetClientRect(context.tabs, &display);
     ::SendMessageW(context.tabs, TCM_ADJUSTRECT, FALSE, reinterpret_cast<LPARAM>(&display));
 
+    // The display area of the tabs is already in real pixels, the pages are
+    // written in design ones: only the two design values are scaled here.
     context.offsetX = display.left;
-    context.offsetY = top + display.top - PAGE_TOP;
+    context.offsetY = context.Scale(top) + display.top - context.Scale(PAGE_TOP);
 
     // Two pixels of air between the frame of the tabs and the first control.
     context.offsetX += 2;
     context.offsetY += 2;
+}
+
+// The parts of the window live further down the file; the rebuild uses them.
+void BuildFrame(Context& context);
+void ResetPageOffset(Context& context);
+void ShowPage(Context& context, Page page);
+bool ReadControls(Context& context, Config::Settings& updated, std::wstring& invalidFields);
+void UpdateEnabledStates(Context& context);
+
+// Builds the content again for another DPI. The design coordinates never
+// change, CreateControl scales them: the window of one monitor keeps the
+// layout that was approved, only larger or smaller.
+void Rebuild(Context& context, UINT dpi) {
+    // Whatever the user has already typed is read back first: the controls are
+    // destroyed and built again, and a typed value must not be lost because the
+    // window was moved to another monitor. A value that cannot be used stays as
+    // it is in the settings; the window shows it again.
+    Config::Settings edited = *context.settings;
+    std::wstring invalidFields;
+    ReadControls(context, edited, invalidFields);
+    *context.settings = edited;
+
+    for (const HWND control : context.allControls) {
+        if (control != nullptr) {
+            ::DestroyWindow(control);
+        }
+    }
+
+    context.allControls.clear();
+    context.pageControls.clear();
+    context.tabs = nullptr;
+
+    if (context.font != nullptr) {
+        ::DeleteObject(context.font);
+    }
+
+    if (context.headerFont != nullptr) {
+        ::DeleteObject(context.headerFont);
+    }
+
+    context.dpi = dpi != 0 ? dpi : Dpi::ForSystem();
+    context.font = Dpi::CreateUiFont(context.dpi);
+    context.headerFont = Dpi::CreateHeaderFont(context.dpi);
+
+    BuildFrame(context);
+    CreateTabs(context);
+    BuildWindowPage(context);
+    BuildAudioPage(context);
+    BuildOtherPage(context);
+
+    ResetPageOffset(context);
+    ShowPage(context, context.page);
+    UpdateEnabledStates(context);
 }
 
 void ResetPageOffset(Context& context) {
@@ -1120,6 +1197,21 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
             break;
         }
 
+        case WM_DPICHANGED: {
+            // The window is on another monitor: the system suggests the position
+            // and the size for the new scale, and the content is built again.
+            const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
+            if (suggested != nullptr) {
+                ::SetWindowPos(
+                    window, nullptr, suggested->left, suggested->top,
+                    suggested->right - suggested->left, suggested->bottom - suggested->top,
+                    SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+
+            Rebuild(*context, HIWORD(wParam));
+            return 0;
+        }
+
         case WM_CLOSE:
             if (context->window != nullptr) {
                 ::DestroyWindow(window);
@@ -1164,6 +1256,7 @@ bool miniant::Windows::ShowSettingsWindow(
     context.instance = instance;
     context.settings = &settings;
     context.settingsPath = settingsPath;
+    context.dpi = Dpi::ForWindow(owner);
 
     WNDCLASSEXW windowClass = {};
     windowClass.cbSize = sizeof(windowClass);
@@ -1184,8 +1277,8 @@ bool miniant::Windows::ShowSettingsWindow(
 
     const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
 
-    RECT desired = { 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT };
-    ::AdjustWindowRectEx(&desired, style, FALSE, 0);
+    RECT desired = { 0, 0, context.Scale(WINDOW_WIDTH), context.Scale(WINDOW_HEIGHT) };
+    Dpi::AdjustWindowRect(desired, style, context.dpi);
 
     // Near the window of the program, not in the middle of the screen.
     int x = CW_USEDEFAULT;
@@ -1215,15 +1308,8 @@ bool miniant::Windows::ShowSettingsWindow(
         return false;
     }
 
-    context.font = ::CreateFontW(
-        -12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-
-    context.headerFont = ::CreateFontW(
-        -13, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+    context.font = Dpi::CreateUiFont(context.dpi);
+    context.headerFont = Dpi::CreateHeaderFont(context.dpi);
 
     // The frame is built first (it is not inside the tabs), then the tab
     // control, and only after it the pages, which are placed inside its display

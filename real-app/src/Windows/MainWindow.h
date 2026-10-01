@@ -71,6 +71,11 @@ private:
     void CreateControls();
     void LayoutControls();
     void CreateFonts();
+    void ApplyFonts();
+    void ApplyDpi(UINT dpi);
+    void ResizeToDesignSize();
+    // A design pixel (96 DPI) in the pixels of the monitor the window is on.
+    int S(int value) const;
     void DestroyResources();
 
     HWND m_window = nullptr;
@@ -84,6 +89,7 @@ private:
 
     HWND m_status = nullptr;
     HWND m_log = nullptr;
+    UINT m_dpi = 96;
     std::vector<std::pair<HWND, miniant::Command>> m_buttons;
     bool m_statusTextSet = false;
 

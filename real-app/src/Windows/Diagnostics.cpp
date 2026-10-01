@@ -5,6 +5,7 @@
 #include "../Log.h"
 #include "../Text.h"
 #include "ComPtr.h"
+#include "Dpi.h"
 #include "Filesystem.h"
 #include "WindowsError.h"
 
@@ -237,6 +238,13 @@ std::string Periods(const EndpointInfo& info) {
 
 }
 
+// The scale of the display, in percents: 225 means "225 %".
+int GetDpiScalePercent() {
+    const UINT dpi = Dpi::ForSystem();
+
+    return dpi != 0 ? ::MulDiv(static_cast<int>(dpi), 100, 96) : 100;
+}
+
 std::string miniant::Windows::Diagnostics::GetWindowsVersion() {
     // RtlGetVersion reports the real version, unlike GetVersionEx which lies
     // unless the executable is manifested for the newest Windows.
@@ -354,6 +362,7 @@ std::string miniant::Windows::Diagnostics::BuildReport(
         miniant::Lang::Utf8(miniant::Lang::Str::DiagVersion), AppInfo::DisplayVersion(), Text::ToUtf8(AppInfo::DESCRIPTION));
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagGenerated), timestamp);
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagWindows), GetWindowsVersion());
+    text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagScale), GetDpiScalePercent());
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagExecutable), Text::ToUtf8(Filesystem::GetExecutablePath()));
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagSettings), Text::ToUtf8(settingsPath));
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagConfig), Config::Describe(settings));

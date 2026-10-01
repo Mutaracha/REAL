@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 
+#include "Dpi.h"
+
 #include "../../res/resource.h"
 #include "../AppMessages.h"
 #include "../Lang.h"
@@ -96,8 +98,12 @@ tl::expected<std::unique_ptr<MainWindow>, WindowsError> MainWindow::Create(HINST
         return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::LogWindowClassFailed)));
     }
 
-    RECT desired = { 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT };
-    ::AdjustWindowRectEx(&desired, WS_OVERLAPPEDWINDOW, FALSE, 0);
+    // The window is created with the metrics of the desktop: the monitor it
+    // lands on is only known when it exists (WM_DPICHANGED reports a move to
+    // another monitor later, and the layout is scaled again).
+    const UINT desktopDpi = Dpi::ForSystem();
+    RECT desired = { 0, 0, Dpi::Scale(WINDOW_WIDTH, desktopDpi), Dpi::Scale(WINDOW_HEIGHT, desktopDpi) };
+    Dpi::AdjustWindowRect(desired, WS_OVERLAPPEDWINDOW, desktopDpi);
 
     const std::wstring title = miniant::Lang::Wide(miniant::Lang::Str::WindowTitle);
 
@@ -119,8 +125,10 @@ tl::expected<std::unique_ptr<MainWindow>, WindowsError> MainWindow::Create(HINST
     }
 
     result->m_window = window;
+    result->m_dpi = Dpi::ForWindow(window);
     result->CreateFonts();
     result->CreateControls();
+    result->ResizeToDesignSize();
 
     return std::move(result);
 }
@@ -355,15 +363,68 @@ void MainWindow::RaiseCommand(miniant::Command command) {
 }
 
 void MainWindow::CreateFonts() {
-    m_uiFont = ::CreateFontW(
-        -12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+    if (m_uiFont != nullptr) {
+        ::DeleteObject(m_uiFont);
+        m_uiFont = nullptr;
+    }
 
-    m_monoFont = ::CreateFontW(
-        -12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        FIXED_PITCH | FF_MODERN, L"Consolas");
+    if (m_monoFont != nullptr) {
+        ::DeleteObject(m_monoFont);
+        m_monoFont = nullptr;
+    }
+
+    m_uiFont = Dpi::CreateUiFont(m_dpi);
+    m_monoFont = Dpi::CreateMonoFont(m_dpi);
+}
+
+// The fonts of every control are replaced: the controls themselves are not
+// re-created, so the text the user has already seen in them stays.
+void MainWindow::ApplyFonts() {
+    if (m_uiFont != nullptr) {
+        if (m_status != nullptr) {
+            ::SendMessageW(m_status, WM_SETFONT, reinterpret_cast<WPARAM>(m_uiFont), TRUE);
+        }
+
+        for (auto& button : m_buttons) {
+            ::SendMessageW(button.first, WM_SETFONT, reinterpret_cast<WPARAM>(m_uiFont), TRUE);
+        }
+    }
+
+    if (m_monoFont != nullptr && m_log != nullptr) {
+        ::SendMessageW(m_log, WM_SETFONT, reinterpret_cast<WPARAM>(m_monoFont), TRUE);
+    }
+}
+
+void MainWindow::ApplyDpi(UINT dpi) {
+    m_dpi = dpi != 0 ? dpi : Dpi::ForSystem();
+
+    miniant::Log::Debug(miniant::Lang::Utf8(miniant::Lang::Str::LogInterfaceScale), ::MulDiv(m_dpi, 100, 96));
+
+    CreateFonts();
+    ApplyFonts();
+    LayoutControls();
+}
+
+// The client area the layout is written for, in the pixels of the monitor the
+// window is on.
+void MainWindow::ResizeToDesignSize() {
+    if (m_window == nullptr) {
+        return;
+    }
+
+    RECT desired = { 0, 0, S(WINDOW_WIDTH), S(WINDOW_HEIGHT) };
+    Dpi::AdjustWindowRect(desired, WS_OVERLAPPEDWINDOW, m_dpi);
+
+    ::SetWindowPos(
+        m_window, nullptr, 0, 0,
+        desired.right - desired.left, desired.bottom - desired.top,
+        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+    LayoutControls();
+}
+
+int MainWindow::S(int value) const {
+    return Dpi::Scale(value, m_dpi);
 }
 
 void MainWindow::CreateControls() {
@@ -454,18 +515,7 @@ void MainWindow::CreateControls() {
         ::SetMenu(m_window, m_menu);
     }
 
-    if (m_uiFont != nullptr) {
-        ::SendMessageW(m_status, WM_SETFONT, reinterpret_cast<WPARAM>(m_uiFont), TRUE);
-
-        for (auto& button : m_buttons) {
-            ::SendMessageW(button.first, WM_SETFONT, reinterpret_cast<WPARAM>(m_uiFont), TRUE);
-        }
-    }
-
-    if (m_monoFont != nullptr) {
-        ::SendMessageW(m_log, WM_SETFONT, reinterpret_cast<WPARAM>(m_monoFont), TRUE);
-    }
-
+    ApplyFonts();
     LayoutControls();
 }
 
@@ -482,24 +532,24 @@ void MainWindow::LayoutControls() {
 
     // The status line is the last strip of the window: the buttons sit above
     // it, the log fills everything that is left.
-    const int statusTop = height - MARGIN - STATUS_HEIGHT;
-    ::MoveWindow(m_status, MARGIN, statusTop, width - 2 * MARGIN, STATUS_HEIGHT, TRUE);
+    const int statusTop = height - S(MARGIN) - S(STATUS_HEIGHT);
+    ::MoveWindow(m_status, S(MARGIN), statusTop, width - 2 * S(MARGIN), S(STATUS_HEIGHT), TRUE);
 
-    const int buttonsTop = statusTop - 4 - BUTTON_HEIGHT;
-    const int logTop = MARGIN;
-    const int logHeight = std::max(40, buttonsTop - logTop - 4);
+    const int buttonsTop = statusTop - S(4) - S(BUTTON_HEIGHT);
+    const int logTop = S(MARGIN);
+    const int logHeight = std::max(S(40), buttonsTop - logTop - S(4));
 
-    ::MoveWindow(m_log, MARGIN, logTop, width - 2 * MARGIN, logHeight, TRUE);
+    ::MoveWindow(m_log, S(MARGIN), logTop, width - 2 * S(MARGIN), logHeight, TRUE);
 
-    // "Activate" is aligned to the left edge of the window, "Exit" to the
-    // right one; the middle of the row stays empty.
-    const int buttonWidth = std::min(BUTTON_WIDTH, std::max(80, (width - 3 * MARGIN) / 2));
+    // "Restart" is aligned to the left edge of the window, "Exit" to the right
+    // one; the middle of the row stays empty.
+    const int buttonWidth = std::min(S(BUTTON_WIDTH), std::max(S(80), (width - 3 * S(MARGIN)) / 2));
 
     for (size_t i = 0; i < m_buttons.size() && i < BUTTON_COUNT; ++i) {
         const bool left = BUTTONS[i].left;
-        const int x = left ? MARGIN : width - MARGIN - buttonWidth;
+        const int x = left ? S(MARGIN) : width - S(MARGIN) - buttonWidth;
 
-        ::MoveWindow(m_buttons[i].first, x, buttonsTop, buttonWidth, BUTTON_HEIGHT, TRUE);
+        ::MoveWindow(m_buttons[i].first, x, buttonsTop, buttonWidth, S(BUTTON_HEIGHT), TRUE);
     }
 }
 
@@ -552,6 +602,21 @@ LRESULT MainWindow::WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam) 
     }
 
     switch (message) {
+        case WM_DPICHANGED: {
+            // The window is on another monitor (per-monitor DPI): the system
+            // suggests the position and the size that match its new scale.
+            const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
+            if (suggested != nullptr) {
+                ::SetWindowPos(
+                    m_window, nullptr, suggested->left, suggested->top,
+                    suggested->right - suggested->left, suggested->bottom - suggested->top,
+                    SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+
+            ApplyDpi(HIWORD(wParam));
+            return 0;
+        }
+
         case WM_SYSCOMMAND:
             if ((wParam & 0xFFF0) == SC_MINIMIZE && m_minimizeToTray) {
                 Hide();

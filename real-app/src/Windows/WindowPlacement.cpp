@@ -1,5 +1,7 @@
 #include "WindowPlacement.h"
 
+#include "Dpi.h"
+
 const int OWNER_OFFSET = 40;
 
 void miniant::Windows::PlaceNearOwner(HWND owner, int width, int height, int& x, int& y) {
@@ -25,8 +27,12 @@ void miniant::Windows::PlaceNearOwner(HWND owner, int width, int height, int& x,
         work = monitor.rcWork;
     }
 
-    int left = ownerRect.left + OWNER_OFFSET;
-    int top = ownerRect.top + OWNER_OFFSET;
+    // The offset is a design value: on a 225 % monitor it has to be 2.25 times
+    // as large, or the window would sit on top of the owner.
+    const int offset = Dpi::Scale(OWNER_OFFSET, Dpi::ForWindow(owner));
+
+    int left = ownerRect.left + offset;
+    int top = ownerRect.top + offset;
 
     // The window has to be fully visible: it is moved back inside the working
     // area of the monitor the main window is on.
