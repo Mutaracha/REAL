@@ -205,27 +205,49 @@ void TrayIcon::ShowContextMenu(const POINT& anchor) {
         return;
     }
 
+    // The menu is built group by group: a separator is a divider between two
+    // groups of items, so it is not drawn at all when one of the groups is
+    // empty (a menu of one item with a divider looks broken).
+    bool anythingDrawn = false;
+
     if (m_state.showStatus) {
         ::AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, Truncate(m_state.statusText, 90).c_str());
-        ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        anythingDrawn = true;
     }
+
+    // The state of the mode and the activation belong to one group.
+    bool firstGroup = false;
 
     if (m_state.toggleEnabled) {
         ::AppendMenuW(menu, MF_STRING | (m_state.enabled ? MF_CHECKED : 0), MENU_ID_TOGGLE, Wide(Str::TrayToggleEnabled).c_str());
+        firstGroup = true;
     }
 
     if (m_state.reinitialize) {
         ::AppendMenuW(menu, MF_STRING, MENU_ID_REINITIALIZE, Wide(Str::TrayReinitialize).c_str());
+        firstGroup = true;
     }
 
-    ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    if (firstGroup) {
+        if (anythingDrawn) {
+            ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        }
+
+        anythingDrawn = true;
+    }
+
+    // The files and the autostart: every item of the group can be switched off
+    // in the options, and the divider goes away with the last of them.
+    bool secondGroup = false;
 
     if (m_state.openLog) {
         ::AppendMenuW(menu, MF_STRING, MENU_ID_LOG, Wide(Str::TrayLog).c_str());
+        secondGroup = true;
     }
 
     if (m_state.diagnostics) {
         ::AppendMenuW(menu, MF_STRING, MENU_ID_DIAGNOSTICS, Wide(Str::TrayDiagnostics).c_str());
+        secondGroup = true;
     }
 
     if (m_state.startWithWindows) {
@@ -234,15 +256,31 @@ void TrayIcon::ShowContextMenu(const POINT& anchor) {
             MF_STRING | (m_state.startWithWindowsChecked ? MF_CHECKED : 0),
             MENU_ID_START_WITH_WINDOWS,
             Wide(Str::TrayStartWithWindows).c_str());
+        secondGroup = true;
     }
 
-    ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    if (secondGroup) {
+        if (anythingDrawn) {
+            ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        }
+
+        anythingDrawn = true;
+    }
 
     if (m_state.about) {
+        if (anythingDrawn) {
+            ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        }
+
         ::AppendMenuW(menu, MF_STRING, MENU_ID_ABOUT, Wide(Str::TrayAbout).c_str());
+        anythingDrawn = true;
     }
 
     if (m_state.exit) {
+        if (anythingDrawn && !m_state.about) {
+            ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        }
+
         ::AppendMenuW(menu, MF_STRING, MENU_ID_EXIT, Wide(Str::TrayExit).c_str());
     }
 

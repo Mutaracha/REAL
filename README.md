@@ -12,13 +12,13 @@ that is still maintained and adds quality-of-life features:
 * proper window that can be closed/minimised to the system tray, with a menu bar
   (settings file, log file, diagnostics, about) and only the state-changing
   buttons at the bottom
-* tray menu: enable/disable, activate, settings, log, diagnostics, autostart, exit
+* tray menu: enable/disable, restart the activation, log, diagnostics, autostart, exit
 * activation of the audio streams without restarting the application — automatically
   on device changes, sleep/resume and session unlock, manually via the tray menu,
   the window button or a hotkey
 * no forced update checks: checking is optional and never closes the application
 * external settings file next to the executable (`real.settings.json`), edited
-  either in the **Settings...** window of the program or in a text editor
+  either in the **Options** window of the program or in a text editor
 * Windows 11 tweaks (power throttling, informative HRESULT diagnostics)
 
 ## Features
@@ -31,7 +31,7 @@ that is still maintained and adds quality-of-life features:
   added/removed, after resume from sleep or after the audio service restarts;
   the mode is switched back on when it was off (`reinit.enableWhenDisabled`)
 * Minimises to the system tray; the tray icon survives an `explorer.exe` restart
-* Global hotkeys (default `Ctrl+Alt+L` — toggle, `Ctrl+Alt+R` — activate)
+* Global hotkeys (default `Ctrl+Alt+L` — toggle, `Ctrl+Alt+R` — restart the activation)
 * Optional autostart with Windows
 * Optional update check at startup only (off by default, never installed
   silently, no runtime requests; the repository is fixed in the build)
@@ -80,7 +80,6 @@ used by the audio engine, for example `2.67 ms - Speakers (Realtek Audio)`.
 | *none* | Start with the main window (tray icon is created as well) |
 | `--tray` | Start minimised to the system tray |
 | `--no-tray` | Start with the main window visible |
-| `--console` | Also attach a console window for the log output |
 | `--config <path>` | Use another settings file |
 | `--no-config` | Ignore the settings file, use built-in defaults |
 | `--log-level <level>` | `trace`, `debug`, `info`, `warn`, `error`, `off` |
@@ -90,7 +89,7 @@ Commands for a running instance (forwarded to it, this process exits):
 
 | Option | Description |
 |---|---|
-| `--reinit` | Re-initialise the audio streams (useful in scripts/shortcuts) |
+| `--reinit` | Restart the activation: re-create the audio streams (scripts, shortcuts) |
 | `--enable` / `--disable` | Enable / disable the latency reduction |
 | `--exit` | Close the running instance |
 | `--diagnose` | Write a report about the audio devices and drivers to `REAL-diagnostics.txt` |
@@ -101,10 +100,9 @@ Commands for a running instance (forwarded to it, this process exits):
 
 `real.settings.json` is created next to `REAL.exe` on the first run. It is plain
 JSON (`//` and `/* */` comments are allowed) and every option is explained by a
-comment. **Settings...** in the menu bar (or in the tray menu) opens a window with
-the same parameters: it writes that very file, so the file stays the source of
-truth. **Open the settings file** in the *File* menu and `--config` keep the
-manual way available. Command-line options override the file. A step-by-step guide in Russian is available in
+comment. **Options** in the menu bar opens a window with the same parameters: it
+writes that very file, so the file stays the source of truth, and the button
+**Open the file** keeps the manual way available (together with `--config`). Command-line options override the file. A step-by-step guide in Russian is available in
 [docs/usage.ru.md](docs/usage.ru.md). See [docs/CONFIG.md](docs/CONFIG.md) for the full reference and
 [docs/real.settings.example.json](docs/real.settings.example.json) for an
 annotated example.
@@ -115,8 +113,8 @@ The most important options:
 {
   "application": { "minimizeToTray": true, "closeButtonAction": "minimize" },
   "audio":       { "dataFlow": "render", "role": "console", "allowPeriodSnap": true },
-  "updates":     { "mode": "off" },          // off | manual (+ checkOnStartup)
-  "logging":     { "toFile": true, "level": "info" }
+  "updates":     { "checkOnStartup": false }, // one check at startup when true
+  "logging":     { "level": "info" }          // "off" switches the log file off
 }
 ```
 
@@ -216,16 +214,16 @@ device add/remove, resume from sleep, session unlock, audio service restart, plu
 a check every 30 seconds). The limits are configurable in `audio.reinit`. If the
 device does not answer, the retries back off and a single balloon is shown; after
 `reinit.failureTimeoutMs` the mode is switched off and the device is not polled
-until it appears again. To force it manually: tray menu → **Activate now**,
-press `Ctrl+Alt+R`, the **Activate** button in the window, or run
+until it appears again. To force it manually: tray menu → **Restart now**,
+press `Ctrl+Alt+R`, the **Restart** button in the window, or run
 `REAL.exe --reinit` — this also switches the mode back on when it was off.
 
 ### Where are the logs?
 
-`REAL.log` next to the executable (configurable in `logging`; the console is not
-part of these settings — whenever it is shown it mirrors the operations at the
-`info` level). Use **Log file** in the tray menu, or *File → Log file...* in the
-window.
+`REAL.log` next to the executable (configurable in `logging`; the window of the
+program always shows the operations at the `info` level, whatever the settings
+say about the file, and `logging.level = "off"` means no file at all). Use
+**Log file** in the tray menu, or *Diagnostics → Open the log* in the window.
 HRESULT failures are reported with their symbolic name, e.g.
 `AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890008)`.
 

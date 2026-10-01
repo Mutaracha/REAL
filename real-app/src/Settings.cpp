@@ -47,11 +47,6 @@ const std::pair<const char*, ProcessPriority> PROCESS_PRIORITY_MAP[] = {
     { "idle", ProcessPriority::Idle },
 };
 
-const std::pair<const char*, UpdatesMode> UPDATES_MODE_MAP[] = {
-    { "off", UpdatesMode::Off },
-    { "manual", UpdatesMode::Manual },
-};
-
 template <typename T, size_t N>
 void ReadEnum(
     const json& section,
@@ -224,10 +219,11 @@ const char* ToString(ProcessPriority value) {
     }
 }
 
-const char* ToString(UpdatesMode value) {
-    return value == UpdatesMode::Manual ? "manual" : "off";
 }
 
+bool miniant::Config::IsLogFileOff(const LoggingSettings& logging) {
+    const std::string level = Text::ToLowerAscii(Text::Trim(logging.level));
+    return level == "off" || level == "none";
 }
 
 std::wstring miniant::Config::GetDefaultPath() {
@@ -276,12 +272,12 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
         ReadBool(*section, "startMinimizedToTray", settings.application.startMinimizedToTray, result.warnings, "application");
         ReadBool(*section, "minimizeToTray", settings.application.minimizeToTray, result.warnings, "application");
         ReadEnum(*section, "closeButtonAction", CLOSE_ACTION_MAP, settings.application.closeButtonAction, result.warnings, "application");
-        ReadBool(*section, "showConsole", settings.application.showConsole, result.warnings, "application");
         ReadBool(*section, "singleInstance", settings.application.singleInstance, result.warnings, "application");
         ReadBool(*section, "startWithWindows", settings.application.startWithWindows, result.warnings, "application");
         WarnUnknownKeys(*section, "application",
-            // "theme" belonged to version 3 of the layout and is not used any
-            // more: a file of that version loads without a word about it.
+            // "theme" (version 3) and "showConsole" (version 5) are not used
+            // any more: a file of an older version loads without a word about
+            // them.
             { "language", "theme", "startMinimizedToTray", "minimizeToTray", "closeButtonAction", "showConsole", "singleInstance", "startWithWindows" },
             result.warnings);
     }
@@ -353,14 +349,16 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
     }
 
     if (const json* section = FindSection(root, "updates")) {
-        ReadEnum(*section, "mode", UPDATES_MODE_MAP, settings.updates.mode, result.warnings, "updates");
         ReadBool(*section, "checkOnStartup", settings.updates.checkOnStartup, result.warnings, "updates");
 
         // "repository" was dropped when the releases were pinned to the project
-        // repository; a file from an older version is accepted and the key is
-        // gone from the next written version.
+        // repository and "mode" was dropped when the check at startup became the
+        // only setting; a file from an older version is accepted and the keys
+        // are gone from the next written version.
         std::string obsoleteRepository;
         ReadString(*section, "repository", obsoleteRepository, result.warnings, "updates");
+        std::string obsoleteMode;
+        ReadString(*section, "mode", obsoleteMode, result.warnings, "updates");
         WarnUnknownKeys(*section, "updates", { "mode", "repository", "checkOnStartup" }, result.warnings);
     }
 
@@ -373,15 +371,17 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
 
     if (const json* section = FindSection(root, "logging")) {
         ReadString(*section, "level", settings.logging.level, result.warnings, "logging");
-        ReadBool(*section, "toFile", settings.logging.toFile, result.warnings, "logging");
         ReadString(*section, "filePath", settings.logging.filePath, result.warnings, "logging");
         ReadInt(*section, "maxFileSizeMb", settings.logging.maxFileSizeMb, 1, 1024, result.warnings, "logging");
         ReadInt(*section, "maxFiles", settings.logging.maxFiles, 1, 100, result.warnings, "logging");
 
-        // "toConsole" is obsolete: the console always mirrors the operations and
-        // is not part of the logging settings anymore.
+        // "toConsole" and "toFile" are obsolete: the window of the program
+        // always shows the operations, and the file is switched on and off by
+        // the level itself ("off" means no file at all).
         bool obsoleteToConsole = false;
         ReadBool(*section, "toConsole", obsoleteToConsole, result.warnings, "logging");
+        bool obsoleteToFile = true;
+        ReadBool(*section, "toFile", obsoleteToFile, result.warnings, "logging");
         WarnUnknownKeys(*section, "logging",
             { "level", "toConsole", "toFile", "filePath", "maxFileSizeMb", "maxFiles" },
             result.warnings);
@@ -482,7 +482,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     application["startMinimizedToTray"] = settings.application.startMinimizedToTray;
     application["minimizeToTray"] = settings.application.minimizeToTray;
     application["closeButtonAction"] = ToString(settings.application.closeButtonAction);
-    application["showConsole"] = settings.application.showConsole;
     application["singleInstance"] = settings.application.singleInstance;
     application["startWithWindows"] = settings.application.startWithWindows;
 
@@ -530,7 +529,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     performance["disablePowerThrottling"] = settings.performance.disablePowerThrottling;
 
     json& updates = root["updates"];
-    updates["mode"] = ToString(settings.updates.mode);
     updates["checkOnStartup"] = settings.updates.checkOnStartup;
 
     json& hotkeys = root["hotkeys"];
@@ -540,7 +538,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
 
     json& logging = root["logging"];
     logging["level"] = settings.logging.level;
-    logging["toFile"] = settings.logging.toFile;
     logging["filePath"] = settings.logging.filePath;
     logging["maxFileSizeMb"] = settings.logging.maxFileSizeMb;
     logging["maxFiles"] = settings.logging.maxFiles;
@@ -565,7 +562,6 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.Key(4, "startMinimizedToTray", settings.application.startMinimizedToTray, text(Str::CfgStartMinimizedToTray), true);
     document.Key(4, "minimizeToTray", settings.application.minimizeToTray, text(Str::CfgMinimizeToTray), true);
     document.Key(4, "closeButtonAction", ToString(settings.application.closeButtonAction), text(Str::CfgCloseButtonAction), true);
-    document.Key(4, "showConsole", settings.application.showConsole, text(Str::CfgShowConsole), true);
     document.Key(4, "singleInstance", settings.application.singleInstance, text(Str::CfgSingleInstance), true);
     document.Key(4, "startWithWindows", settings.application.startWithWindows, text(Str::CfgStartWithWindows), false);
     document.SectionClose(2, true);
@@ -621,7 +617,6 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.Blank();
 
     document.SectionOpen(2, "updates", text(Str::CfgUpdatesSection));
-    document.Key(4, "mode", ToString(settings.updates.mode), text(Str::CfgUpdatesMode), true);
     document.Key(4, "checkOnStartup", settings.updates.checkOnStartup, text(Str::CfgUpdatesCheckOnStartup), false);
     document.SectionClose(2, true);
     document.Blank();
@@ -635,7 +630,6 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
 
     document.SectionOpen(2, "logging", text(Str::CfgLoggingSection));
     document.Key(4, "level", settings.logging.level, text(Str::CfgLoggingLevel), true);
-    document.Key(4, "toFile", settings.logging.toFile, text(Str::CfgLoggingToFile), true);
     document.Key(4, "filePath", settings.logging.filePath, text(Str::CfgLoggingFilePath), true);
     document.Key(4, "maxFileSizeMb", settings.logging.maxFileSizeMb, text(Str::CfgLoggingMaxFileSize), true);
     document.Key(4, "maxFiles", settings.logging.maxFiles, text(Str::CfgLoggingMaxFiles), false);

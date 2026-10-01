@@ -23,7 +23,7 @@ const Entry TABLE[] = {
     // Main window
     { Str::WindowTitle, "REAL - REduce Audio Latency", "REAL - REduce Audio Latency" },
     { Str::StatusStarting, "Starting...", "Запуск..." },
-    { Str::ButtonReinitialize, "Activate", "Активировать" },
+    { Str::ButtonReinitialize, "Restart", "Перезапустить" },
     { Str::ButtonOptions, "Options", "Опции" },
     { Str::ButtonFileMenu, "File", "Файл" },
     { Str::ButtonAbout, "About", "О программе" },
@@ -33,7 +33,7 @@ const Entry TABLE[] = {
 
     // Tray menu
     { Str::TrayToggleEnabled, "Latency reduction enabled", "Снижение задержки включено" },
-    { Str::TrayReinitialize, "Activate now", "Активировать" },
+    { Str::TrayReinitialize, "Restart now", "Перезапустить" },
     { Str::TrayLog, "Log file", "Файл журнала" },
     { Str::TrayDiagnostics, "Diagnostics", "Диагностика" },
     { Str::TrayStartWithWindows, "Start with Windows", "Запускать с Windows" },
@@ -115,11 +115,20 @@ const Entry TABLE[] = {
     { Str::LogSettingsWriteFailed,
       "Could not write the settings file {0}.",
       "Не удалось записать файл настроек {0}." },
-    { Str::LogConsoleRestart,
-      "The console setting (showConsole) is applied after a restart.",
-      "Настройка консоли (showConsole) применяется после перезапуска." },
-    { Str::ConsoleTitle, "REAL - operations log", "REAL - журнал операций" },
-    { Str::LogFileOff, "The log file is switched off in the options.", "Файл журнала выключен в опциях." },
+    { Str::RestartNeededTitle, "Restart REAL", "Перезапуск REAL" },
+    { Str::RestartNeededText,
+      "This setting is applied when REAL starts.\nRestart the program now?",
+      "Эта настройка применяется при запуске REAL.\nПерезапустить программу сейчас?" },
+    { Str::RestartNeededHint, "The setting needs a restart, the user is asked about it.",
+                              "Настройка требует перезапуска, пользователю задан вопрос." },
+    { Str::RestartLaterHint, "The restart was postponed; the setting works after the next start.",
+                             "Перезапуск отложен: настройка вступит в силу при следующем запуске." },
+    { Str::ErrRestartFailed,
+      "Could not start a new copy of REAL. Close the program and start it again.",
+      "Не удалось запустить новую копию REAL. Закройте программу и запустите её снова." },
+    { Str::OpRestarting, "Restarting REAL.", "Перезапускаю REAL." },
+    { Str::LogFileOff, "The log file is switched off (logging.level = \"off\").",
+                       "Файл журнала выключен (logging.level = \"off\")." },
     { Str::LogFileMissing, "There is no log file yet.", "Файла журнала пока нет." },
     { Str::LogLanguageChanged,
       "Language changed to {0}.",
@@ -128,8 +137,8 @@ const Entry TABLE[] = {
       "Could not write the log snapshot to {0}.",
       "Не удалось записать снимок журнала в {0}." },
     { Str::LogUpdatesDisabled,
-      "Update checks are disabled (updates.mode = \"off\").",
-      "Проверка обновлений отключена (updates.mode = \"off\")." },
+      "The update check at start-up is switched off.",
+      "Проверка обновлений при запуске выключена." },
     { Str::LogUpdateRunning,
       "An update check is already running.",
       "Проверка обновлений уже выполняется." },
@@ -261,9 +270,6 @@ const Entry TABLE[] = {
       "The response is too large.",
       "Ответ слишком большой." },
 
-    { Str::ErrConsoleAttach,
-      "Could not attach a console window.",
-      "Не удалось подключиться к окну консоли." },
     { Str::ReasonResume,
       "resume from sleep",
       "выход из спящего режима" },
@@ -424,7 +430,6 @@ const Entry TABLE[] = {
       "  (no options)          Start with the main window; the tray icon is created as well\n"
       "  --tray                Start minimised to the system tray\n"
       "  --no-tray             Start with the main window visible\n"
-      "  --console             Also open a console window with the operations log\n"
       "  --config <path>       Use the given settings file instead of real.settings.json\n"
       "  --no-config           Ignore the settings file, use the built-in defaults\n"
       "  --log-level <level>   trace | debug | info | warn | error | off\n"
@@ -442,7 +447,7 @@ const Entry TABLE[] = {
       "  --help, -h, /?        Show this help\n"
       "  --version             Show the version\n"
       "\n"
-      "Settings: the \"Settings...\" item of the menu bar, or real.settings.json next to REAL.exe.\n"
+      "Settings: the \"Options\" item of the menu bar, or real.settings.json next to REAL.exe.\n"
       "Every parameter is explained by a comment inside that file, see also docs/CONFIG.md.\n",
       "{0} - {1} {2}\n"
       "\n"
@@ -451,7 +456,6 @@ const Entry TABLE[] = {
       "  (без ключей)          запуск с окном; значок в трее создаётся всегда\n"
       "  --tray                стартовать свёрнутым в системный трей\n"
       "  --no-tray             стартовать с видимым окном\n"
-      "  --console             дополнительно открыть консоль с журналом операций\n"
       "  --config <путь>       использовать другой файл настроек вместо real.settings.json\n"
       "  --no-config           не читать файл настроек, взять встроенные значения\n"
       "  --log-level <уровень> trace | debug | info | warn | error | off\n"
@@ -469,7 +473,7 @@ const Entry TABLE[] = {
       "  --help, -h, /?        показать эту справку\n"
       "  --version             показать версию\n"
       "\n"
-      "Настройки: окно «Настройки...» в строке меню или файл real.settings.json рядом с REAL.exe.\n"
+      "Настройки: пункт «Опции» в строке меню или файл real.settings.json рядом с REAL.exe.\n"
       "У каждого параметра есть комментарий прямо в файле, подробнее - docs/CONFIG.md.\n" },
 
     // Dialogs
@@ -531,8 +535,8 @@ const Entry TABLE[] = {
     { Str::SettingsSave, "Save", "Сохранить" },
     { Str::SettingsCancel, "Cancel", "Отмена" },
     { Str::SettingsOpenFile, "Open the file", "Открыть файл" },
-    { Str::SettingsRestartHint, "The console and the tray icon change after a restart.",
-                                "Консоль и значок в трее изменятся после перезапуска." },
+    { Str::SettingsRestartHint, "A single copy of the program needs a restart; the program will offer it.",
+                                "Один экземпляр программы включается после перезапуска: программа предложит его выполнить." },
     { Str::SettingsInvalidValues, "Check these values: {0}", "Проверьте значения: {0}" },
     { Str::SettingsOpenFileFailed, "Could not open the settings file.", "Не удалось открыть файл настроек." },
     { Str::SettingsTabWindow, "Window", "Окно" },
@@ -557,7 +561,6 @@ const Entry TABLE[] = {
     { Str::SettingsCloseAction, "Close button", "Кнопка закрытия" },
     { Str::SettingsCloseMinimize, "minimize to tray", "свернуть в трей" },
     { Str::SettingsCloseExit, "exit", "завершить программу" },
-    { Str::SettingsShowConsole, "Show the console with the log", "Показывать консоль с журналом" },
     { Str::SettingsSingleInstance, "One copy only", "Один экземпляр" },
     { Str::SettingsTrayEnabled, "Show the tray icon", "Показывать значок в трее" },
     { Str::SettingsTrayTooltip, "Show the status in the tooltip", "Показывать состояние в подсказке значка" },
@@ -598,12 +601,8 @@ const Entry TABLE[] = {
     { Str::SettingsHotkeysEnabled, "Use hotkeys", "Использовать горячие клавиши" },
     { Str::SettingsHotkeyToggle, "Enable / disable", "Включить / выключить" },
     { Str::SettingsHotkeyReinitialize, "Activate again", "Активировать заново" },
-    { Str::SettingsUpdatesMode, "Check for updates", "Проверка обновлений" },
-    { Str::SettingsUpdatesOff, "off", "выключена" },
-    { Str::SettingsUpdatesOnStartup, "once at start-up", "один раз при запуске" },
     { Str::SettingsCheckOnStartup, "Check on start-up", "Проверять при запуске" },
     { Str::SettingsLogLevel, "Level", "Уровень" },
-    { Str::SettingsLogToFile, "Write to the file", "Писать в файл" },
     { Str::SettingsLogFilePath, "File", "Файл" },
     { Str::SettingsLogMaxFileSize, "Max size, MB", "Максимальный размер, МБ" },
     { Str::SettingsLogMaxFiles, "Files to keep", "Хранить файлов" },
@@ -619,8 +618,6 @@ const Entry TABLE[] = {
                               "true - кнопка \"Свернуть\" прячет окно в трей, а не в панель задач." },
     { Str::CfgCloseButtonAction, "What the close button does: \"minimize\" (to the tray) or \"exit\" (quit).",
                                  "Что делает крестик окна: \"minimize\" (в трей) или \"exit\" (завершить программу)." },
-    { Str::CfgShowConsole, "true - open a console window with the operations log (same as --console).",
-                           "true - дополнительно открыть окно консоли с журналом операций (то же, что --console)." },
     { Str::CfgSingleInstance, "true - a single copy: starting REAL.exe again passes the command to it.",
                               "true - одна копия: повторный запуск передаёт команду работающей (--reinit, --exit)." },
     { Str::CfgStartWithWindows, "true - start automatically after logon (HKCU Run key).",
@@ -690,19 +687,17 @@ const Entry TABLE[] = {
                                       "true - снять троттлинг скорости исполнения (Windows 11), чтобы аудиопоток не занимал ядро CPU." },
     { Str::CfgUpdatesSection, "Update checks. Off by default; REAL never checks while it is running.",
                               "Проверка обновлений. По умолчанию выключена; во время работы запросов нет." },
-    { Str::CfgUpdatesMode, "\"off\" - no network request at all; \"manual\" - one check at startup if checkOnStartup is true.",
-                           "\"off\" - ни одного сетевого запроса; \"manual\" - одна проверка при запуске, если checkOnStartup включён." },
-    { Str::CfgUpdatesCheckOnStartup, "true - check once at startup (only with mode = \"manual\").",
-                                     "true - один раз проверить обновления при запуске (только при mode = \"manual\")." },
+    { Str::CfgUpdatesCheckOnStartup, "true - check once at startup; false - no network request at all.",
+                                     "true - один раз проверить обновления при запуске; false - ни одного сетевого запроса." },
     { Str::CfgHotkeysSection, "Global hotkeys.", "Глобальные горячие клавиши." },
     { Str::CfgHotkeysEnabled, "true - register the hotkeys.", "true - регистрировать горячие клавиши." },
     { Str::CfgHotkeysToggle, "Enable or disable the mode. Keys: Ctrl, Alt, Shift, Win, A-Z, 0-9, F1-F24.",
                              "Включить и выключить режим. Клавиши: Ctrl, Alt, Shift, Win, A-Z, 0-9, F1-F24." },
     { Str::CfgHotkeysReinitialize, "Activate the audio streams.", "Активировать аудиопотоки." },
-    { Str::CfgLoggingSection, "Log file. The console always shows the operations at the info level.", "Файл журнала. В консоль всегда выводятся основные операции уровня info." },
-    { Str::CfgLoggingLevel, "Verbosity: \"trace\", \"debug\", \"info\", \"warn\", \"error\", \"off\".",
-                            "Подробность: \"trace\", \"debug\", \"info\", \"warn\", \"error\", \"off\"." },
-    { Str::CfgLoggingToFile, "true - write the log file.", "true - писать файл журнала." },
+    { Str::CfgLoggingSection, "Log file. The window of the program always shows the operations at the info level.",
+                              "Файл журнала. В окне программы всегда видны основные операции уровня info." },
+    { Str::CfgLoggingLevel, "\"off\" - the file is not written at all; \"trace\", \"debug\", \"info\", \"warn\", \"error\" - how detailed the file is.",
+                            "\"off\" - файл не ведётся совсем; \"trace\", \"debug\", \"info\", \"warn\", \"error\" - насколько подробно ведётся файл." },
     { Str::CfgLoggingFilePath, "Log path: relative to the REAL.exe directory or absolute.",
                                "Путь к журналу: относительно каталога REAL.exe или абсолютный." },
     { Str::CfgLoggingMaxFileSize, "Log file size before rotation (MB).", "Размер файла журнала до ротации (МБ)." },

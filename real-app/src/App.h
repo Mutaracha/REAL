@@ -54,6 +54,12 @@ private:
     // Tells the user why the log cannot be opened right now.
     void ReportLogUnavailable(Lang::Str reason);
     void OpenLogFile();
+    // The settings that a running program cannot apply (a single copy of the
+    // program is one of them) ask for a restart: the user is asked about it and
+    // the program starts itself again with the same command line.
+    bool NeedsRestart(const Config::Settings& previous) const;
+    void AskForRestart();
+    void RestartApplication();
     void ShowAboutDialog();
     void StartUpdateCheck();
     void FinishUpdateCheck();

@@ -5,12 +5,11 @@
 #include "Text.h"
 #include "Windows/Filesystem.h"
 
-#include <Windows.h>
-
 #include <spdlog/sinks/base_sink.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <ctime>
 #include <exception>
 #include <filesystem>
@@ -40,50 +39,10 @@ private:
     LogBuffer* m_buffer;
 };
 
-// Writes a line to the console window the way a console program does: the
-// standard handle is asked for on every line (the window may appear after the
-// logger was created), the text goes through WriteConsoleW so that the
-// Cyrillic letters are shown as letters, and a redirected output is written as
-// UTF-8 bytes. It never throws and never fails: a console that is not there
-// simply means there is nothing to write to.
-void WriteToConsole(const std::string& text) {
-    const HANDLE handle = ::GetStdHandle(STD_OUTPUT_HANDLE);
-    if (handle == nullptr || handle == INVALID_HANDLE_VALUE) {
-        return;
-    }
-
-    DWORD written = 0;
-    DWORD mode = 0;
-
-    if (::GetConsoleMode(handle, &mode) != FALSE) {
-        const std::wstring wide = Text::ToWide(text);
-        if (!wide.empty()) {
-            ::WriteConsoleW(handle, wide.c_str(), static_cast<DWORD>(wide.size()), &written, nullptr);
-        }
-
-        return;
-    }
-
-    ::WriteFile(handle, text.data(), static_cast<DWORD>(text.size()), &written, nullptr);
-}
-
-// The console mirror: every line the program writes at the info level and above
-// goes through it, no matter what the settings say about the log file.
-class ConsoleSink: public spdlog::sinks::base_sink<std::mutex> {
-protected:
-    void sink_it_(const spdlog::details::log_msg& message) override {
-        fmt::memory_buffer formatted;
-        formatter_->format(message, formatted);
-        WriteToConsole(std::string(formatted.data(), formatted.size()));
-    }
-
-    void flush_() override {}
-};
-
 std::shared_ptr<spdlog::logger> g_logger;
-// Console output is a separate logger: it mirrors the program at the info level
-// and is never switched off from the settings.
-std::shared_ptr<spdlog::logger> g_consoleLogger;
+// The file of the log is a sink of its own: it carries the level from the
+// settings while the window of the program always shows the operations.
+std::shared_ptr<spdlog::sinks::sink> g_fileSink;
 std::unique_ptr<LogBuffer> g_buffer;
 std::wstring g_logFilePath;
 
@@ -106,22 +65,9 @@ void WriteToLoggers(Level level, const std::string& message) {
         return;
     }
 
-    // The console shows everything at the info level and above; the file keeps
-    // what the settings allow, so the two never depend on each other.
-    if (g_consoleLogger != nullptr && level != Level::Trace && level != Level::Debug) {
-        switch (level) {
-            case Level::Warn:
-                g_consoleLogger->warn(message);
-                break;
-            case Level::Error:
-                g_consoleLogger->error(message);
-                break;
-            default:
-                g_consoleLogger->info(message);
-                break;
-        }
-    }
-
+    // Every sink decides for itself: the buffer of the window keeps the info
+    // level, the file keeps the level of the settings, and neither of them can
+    // silence the other.
     switch (level) {
         case Level::Trace:
             g_logger->trace(message);
@@ -288,52 +234,69 @@ LogBuffer& miniant::Log::Buffer() {
     return *g_buffer;
 }
 
-void miniant::Log::Initialize(const Config::Settings& settings, bool consoleAttached) {
-    g_buffer = std::make_unique<LogBuffer>();
-
-    std::vector<spdlog::sink_ptr> sinks;
-
-    auto bufferSink = std::make_shared<BufferSink>(g_buffer.get());
-    bufferSink->set_pattern("[%H:%M:%S] [%l] %v");
-    sinks.push_back(bufferSink);
-
-    // The console is not part of the logging settings: whenever it is shown, it
-    // mirrors everything the program reports at the info level, so that the user
-    // always sees what is going on. Only the log file is configurable.
-    if (consoleAttached) {
-        auto consoleSink = std::make_shared<ConsoleSink>();
-        consoleSink->set_pattern("[%l] %v");
-        g_consoleLogger = std::make_shared<spdlog::logger>("console", consoleSink);
-        g_consoleLogger->set_level(spdlog::level::info);
-        g_consoleLogger->flush_on(spdlog::level::info);
+// The file is switched on and off by the level itself: "off" means "no file at
+// all", any other value means "write the file, this detailed". The path and the
+// rotation are read once here, so a change in the settings window takes effect
+// at once - the file is re-created from the new values.
+void ApplyFileSettings(const Config::LoggingSettings& logging) {
+    if (g_logger == nullptr) {
+        return;
     }
 
-    if (settings.logging.toFile) {
-        g_logFilePath = ResolveLogPath(settings.logging.filePath);
+    auto& sinks = g_logger->sinks();
 
-        try {
-            const size_t maxBytes = static_cast<size_t>(settings.logging.maxFileSizeMb) * 1024 * 1024;
-            auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-                g_logFilePath,
-                maxBytes,
-                static_cast<size_t>(settings.logging.maxFiles));
-            fileSink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
-            sinks.push_back(fileSink);
-        } catch (const std::exception&) {
-            g_logFilePath.clear();
-        }
-    } else {
+    if (g_fileSink != nullptr) {
+        sinks.erase(std::remove(sinks.begin(), sinks.end(), g_fileSink), sinks.end());
+        g_fileSink.reset();
         g_logFilePath.clear();
     }
 
-    g_logger = std::make_shared<spdlog::logger>("real", sinks.begin(), sinks.end());
-    g_logger->set_level(ToSpdlogLevel(settings.logging.level));
+    if (Config::IsLogFileOff(logging)) {
+        return;
+    }
+
+    try {
+        const size_t maxBytes = static_cast<size_t>(logging.maxFileSizeMb) * 1024 * 1024;
+        const std::wstring path = ResolveLogPath(logging.filePath);
+
+        auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+            path,
+            maxBytes,
+            static_cast<size_t>(logging.maxFiles));
+        fileSink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
+        fileSink->set_level(ToSpdlogLevel(logging.level));
+
+        g_logFilePath = path;
+        g_fileSink = fileSink;
+        sinks.push_back(fileSink);
+    } catch (const std::exception&) {
+        g_logFilePath.clear();
+    }
+}
+
+void miniant::Log::Initialize(const Config::Settings& settings) {
+    g_buffer = std::make_unique<LogBuffer>();
+
+    auto bufferSink = std::make_shared<BufferSink>(g_buffer.get());
+    bufferSink->set_pattern("[%H:%M:%S] [%l] %v");
+
+    // The window of the program is not a log of its own: it always shows the
+    // operations at the info level, whatever the settings say about the file.
+    bufferSink->set_level(spdlog::level::info);
+
+    g_logger = std::make_shared<spdlog::logger>("real", bufferSink);
+
+    // The level of the file belongs to the sink of the file, so the logger
+    // itself lets every line through.
+    g_logger->set_level(spdlog::level::trace);
     g_logger->flush_on(spdlog::level::warn);
+
+    ApplyFileSettings(settings.logging);
 }
 
 void miniant::Log::Shutdown() {
     FlushRepeatedMessages();
-    g_consoleLogger.reset();
+    g_fileSink.reset();
     if (g_logger) {
         g_logger->flush();
         g_logger.reset();
@@ -342,23 +305,15 @@ void miniant::Log::Shutdown() {
     spdlog::shutdown();
 }
 
-void miniant::Log::SetLevel(const std::string& level) {
-    if (g_logger) {
-        g_logger->set_level(ToSpdlogLevel(level));
-    }
+void miniant::Log::SetFileSettings(const Config::LoggingSettings& logging) {
+    ApplyFileSettings(logging);
 }
 
 void miniant::Log::WriteOperation(const std::string& message) {
-    // An operation is an ordinary line at the info level: the console mirror is
-    // a part of the way every line is written.
     Write(Level::Info, message);
 }
 
 void miniant::Log::WriteHint(const std::string& message) {
-    if (g_consoleLogger != nullptr) {
-        g_consoleLogger->info(message);
-    }
-
     // The window shows the hints as well, so the file is the only place they
     // are left out of. The timestamp matches the pattern of the buffer sink.
     const std::time_t now = std::time(nullptr);

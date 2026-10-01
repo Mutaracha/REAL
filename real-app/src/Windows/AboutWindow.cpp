@@ -4,6 +4,8 @@
 #include "../AppVersion.h"
 #include "../Lang.h"
 #include "../Text.h"
+#include "TextMetrics.h"
+#include "WindowPlacement.h"
 
 #include <shellapi.h>
 
@@ -16,7 +18,9 @@ namespace {
 
 const wchar_t ABOUT_CLASS_NAME[] = L"REAL.AboutWindow";
 
-const int WINDOW_WIDTH = 560;
+// The width follows the two lines of the sentence about the program: a wider
+// window would only add empty space on the right.
+const int WINDOW_WIDTH = 440;
 const int WINDOW_HEIGHT = 264;
 
 const int MARGIN = 16;
@@ -242,15 +246,24 @@ void miniant::Windows::ShowAboutWindow(HWND owner, HINSTANCE instance, const std
     RECT desired = { 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT };
     ::AdjustWindowRectEx(&desired, style, FALSE, 0);
 
+    // Near the window of the program, not in the middle of the screen.
+    int windowX = CW_USEDEFAULT;
+    int windowY = CW_USEDEFAULT;
+
+    const int width = desired.right - desired.left;
+    const int height = desired.bottom - desired.top;
+
+    PlaceNearOwner(owner, width, height, windowX, windowY);
+
     const HWND window = ::CreateWindowExW(
         WS_EX_CONTROLPARENT,
         ABOUT_CLASS_NAME,
         Lang::Wide(Lang::Str::AboutTitle).c_str(),
         style,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        desired.right - desired.left,
-        desired.bottom - desired.top,
+        windowX,
+        windowY,
+        width,
+        height,
         owner,
         nullptr,
         instance,
@@ -306,10 +319,13 @@ void miniant::Windows::ShowAboutWindow(HWND owner, HINSTANCE instance, const std
             LINK_LABEL_FIRST_ID + i, MARGIN, y, LABEL_WIDTH, ROW_HEIGHT, context.font);
 
         // SS_NOTIFY makes the control report its clicks: the window opens the
-        // page in the browser of the user.
-        CreateControl(context, L"STATIC", LinkText(i), SS_LEFT | SS_CENTERIMAGE | SS_NOTIFY,
+        // page in the browser of the user. The width is the width of the text
+        // itself, so the hand of the cursor appears over the link only.
+        const std::wstring link = LinkText(i);
+
+        CreateControl(context, L"STATIC", link, SS_LEFT | SS_CENTERIMAGE | SS_NOTIFY,
             LINK_FIRST_ID + i, MARGIN + LABEL_WIDTH, y,
-            WINDOW_WIDTH - 2 * MARGIN - LABEL_WIDTH, ROW_HEIGHT, context.linkFont);
+            MeasureTextWidth(context.linkFont, link) + 2, ROW_HEIGHT, context.linkFont);
 
         y += ROW_HEIGHT;
     }

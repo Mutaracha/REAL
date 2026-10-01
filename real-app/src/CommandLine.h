@@ -22,7 +22,6 @@ struct Options {
     std::optional<std::wstring> configPath;
     std::optional<std::string> logLevel;
     std::optional<bool> startMinimizedToTray;
-    std::optional<bool> showConsole;
     std::optional<bool> singleInstance;
     bool ignoreConfig = false;
     std::vector<std::string> unknown;

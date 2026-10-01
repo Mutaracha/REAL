@@ -3,6 +3,8 @@
 #include "../../res/resource.h"
 #include "../Lang.h"
 #include "../Text.h"
+#include "TextMetrics.h"
+#include "WindowPlacement.h"
 
 #include <commctrl.h>
 #include <shellapi.h>
@@ -41,7 +43,6 @@ enum class Id : int {
     StartMinimizedToTray,
     MinimizeToTray,
     CloseButtonAction,
-    ShowConsole,
     SingleInstance,
 
     NotificationError,
@@ -86,11 +87,9 @@ enum class Id : int {
     HotkeyToggle,
     HotkeyReinitialize,
 
-    UpdateMode,
     UpdateCheckOnStartup,
 
     LogLevel,
-    LogToFile,
     LogFilePath,
     LogMaxFileSize,
     LogMaxFiles,
@@ -190,11 +189,6 @@ const Choice<Config::ProcessPriority> PRIORITIES[] = {
     { Config::ProcessPriority::Idle, Lang::Str::SettingsPriorityIdle },
 };
 
-const Choice<Config::UpdatesMode> UPDATE_MODES[] = {
-    { Config::UpdatesMode::Off, Lang::Str::SettingsUpdatesOff },
-    { Config::UpdatesMode::Manual, Lang::Str::SettingsUpdatesOnStartup },
-};
-
 template <typename Enum, size_t N>
 std::vector<std::wstring> Texts(const Choice<Enum> (&choices)[N]) {
     std::vector<std::wstring> items;
@@ -288,6 +282,16 @@ void BindToPage(Context& context, HWND control) {
     }
 }
 
+// The box of a check mark plus the gap between it and the caption.
+const int CHECK_GLYPH_WIDTH = 24;
+
+// A control is never wider than its own text: a click far to the right of a
+// caption does nothing, and the caption is the only thing that reacts.
+int CheckWidth(Context& context, const std::wstring& text) {
+    const int textWidth = MeasureTextWidth(context.font, text);
+    return textWidth > 0 ? textWidth + CHECK_GLYPH_WIDTH : WINDOW_WIDTH - 2 * MARGIN;
+}
+
 HWND CreateControl(
     Context& context,
     const wchar_t* className,
@@ -334,9 +338,11 @@ int AddHeader(Context& context, Lang::Str text, int y) {
 }
 
 int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y) {
+    const std::wstring caption = Lang::Wide(text);
+
     const HWND check = CreateControl(
-        context, L"BUTTON", Lang::Wide(text), BS_AUTOCHECKBOX | WS_TABSTOP, id,
-        MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, ROW_HEIGHT);
+        context, L"BUTTON", caption, BS_AUTOCHECKBOX | WS_TABSTOP, id,
+        MARGIN, y, CheckWidth(context, caption), ROW_HEIGHT);
 
     if (check != nullptr) {
         ::SendMessageW(check, BM_SETCHECK, value ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -347,9 +353,11 @@ int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y) {
 }
 
 void AddCheckColumn(Context& context, Id id, Lang::Str text, bool value, int x, int width, int y) {
+    const std::wstring caption = Lang::Wide(text);
+
     const HWND check = CreateControl(
-        context, L"BUTTON", Lang::Wide(text), BS_AUTOCHECKBOX | WS_TABSTOP, id,
-        x, y, width, ROW_HEIGHT);
+        context, L"BUTTON", caption, BS_AUTOCHECKBOX | WS_TABSTOP, id,
+        x, y, CheckWidth(context, caption), ROW_HEIGHT);
 
     if (check != nullptr) {
         ::SendMessageW(check, BM_SETCHECK, value ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -367,6 +375,10 @@ int AddCombo(Context& context, Id id, Lang::Str label, const std::vector<std::ws
         context, L"COMBOBOX", L"",
         WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, id,
         MARGIN + LABEL_WIDTH, y, WINDOW_WIDTH - 2 * MARGIN - LABEL_WIDTH, ROW_HEIGHT * 8);
+
+    // A list belongs to its page like every other control: without this the
+    // lists of all three pages would be drawn in the same place at once.
+    BindToPage(context, combo);
 
     if (combo != nullptr) {
         for (const std::wstring& item : items) {
@@ -486,8 +498,6 @@ int BuildWindowPage(Context& context) {
         settings.application.minimizeToTray, y);
     y = AddCombo(context, Id::CloseButtonAction, Lang::Str::SettingsCloseAction, Texts(CLOSE_ACTIONS),
         IndexOf(CLOSE_ACTIONS, settings.application.closeButtonAction), y);
-    y = AddCheck(context, Id::ShowConsole, Lang::Str::SettingsShowConsole,
-        settings.application.showConsole, y);
     y = AddCheck(context, Id::SingleInstance, Lang::Str::SettingsSingleInstance,
         settings.application.singleInstance, y);
 
@@ -616,8 +626,6 @@ int BuildOtherPage(Context& context) {
 
     y += GROUP_GAP;
     y = AddHeader(context, Lang::Str::SettingsHeaderUpdates, y);
-    y = AddCombo(context, Id::UpdateMode, Lang::Str::SettingsUpdatesMode, Texts(UPDATE_MODES),
-        IndexOf(UPDATE_MODES, settings.updates.mode), y);
     y = AddCheck(context, Id::UpdateCheckOnStartup, Lang::Str::SettingsCheckOnStartup,
         settings.updates.checkOnStartup, y);
 
@@ -625,7 +633,6 @@ int BuildOtherPage(Context& context) {
     y = AddHeader(context, Lang::Str::SettingsHeaderLog, y);
     y = AddCombo(context, Id::LogLevel, Lang::Str::SettingsLogLevel, LogLevelTexts(),
         LogLevelIndex(settings.logging.level), y);
-    y = AddCheck(context, Id::LogToFile, Lang::Str::SettingsLogToFile, settings.logging.toFile, y);
     y = AddEdit(context, Id::LogFilePath, Lang::Str::SettingsLogFilePath,
         Text::ToWide(settings.logging.filePath), WINDOW_WIDTH - 2 * MARGIN - LABEL_WIDTH, y);
     y = AddEdit(context, Id::LogMaxFileSize, Lang::Str::SettingsLogMaxFileSize,
@@ -752,7 +759,6 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     updated.application.startMinimizedToTray = IsChecked(context, Id::StartMinimizedToTray);
     updated.application.minimizeToTray = IsChecked(context, Id::MinimizeToTray);
     updated.application.closeButtonAction = ValueAt(CLOSE_ACTIONS, SelectedIndex(context, Id::CloseButtonAction));
-    updated.application.showConsole = IsChecked(context, Id::ShowConsole);
     updated.application.singleInstance = IsChecked(context, Id::SingleInstance);
 
     updated.tray.enabled = IsChecked(context, Id::TrayEnabled);
@@ -817,7 +823,6 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     updated.hotkeys.reinitialize = Text::ToUtf8(
         ReadText(context, Id::HotkeyReinitialize, Text::ToWide(current.hotkeys.reinitialize)));
 
-    updated.updates.mode = ValueAt(UPDATE_MODES, SelectedIndex(context, Id::UpdateMode));
     updated.updates.checkOnStartup = IsChecked(context, Id::UpdateCheckOnStartup);
 
     const int levelIndex = SelectedIndex(context, Id::LogLevel);
@@ -825,7 +830,6 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
         updated.logging.level = LOG_LEVELS[static_cast<size_t>(levelIndex)];
     }
 
-    updated.logging.toFile = IsChecked(context, Id::LogToFile);
     updated.logging.filePath = Text::ToUtf8(
         ReadText(context, Id::LogFilePath, Text::ToWide(current.logging.filePath)));
 
@@ -1027,15 +1031,24 @@ bool miniant::Windows::ShowSettingsWindow(
     RECT desired = { 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT };
     ::AdjustWindowRectEx(&desired, style, FALSE, 0);
 
+    // Near the window of the program, not in the middle of the screen.
+    int x = CW_USEDEFAULT;
+    int y = CW_USEDEFAULT;
+
+    const int width = desired.right - desired.left;
+    const int height = desired.bottom - desired.top;
+
+    PlaceNearOwner(owner, width, height, x, y);
+
     const HWND window = ::CreateWindowExW(
         WS_EX_CONTROLPARENT,
         SETTINGS_CLASS_NAME,
         Lang::Wide(Lang::Str::SettingsWindowTitle).c_str(),
         style,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        desired.right - desired.left,
-        desired.bottom - desired.top,
+        x,
+        y,
+        width,
+        height,
         owner,
         nullptr,
         instance,

@@ -6,13 +6,14 @@
 namespace miniant::Config {
 
 // The layout of the settings file. The comments in it are written by the
-// program, so the number grows when the layout changes (5: the key
+// program, so the number grows when the layout changes (6: logging.level is the
+// only logging parameter, "off" switches the file off; 5: the key
 // tray.menu.openSettings is gone - the settings window keeps the button that
 // opens the file; 4: application.theme is gone; 3: the theme of the windows was
 // a parameter of its own; 2: a comment sits in the same line as its value). A
 // file with an older number is rewritten once, with every value kept; a file of
 // the current number and a newer one are left as they are.
-inline constexpr int CONFIG_VERSION = 5;
+inline constexpr int CONFIG_VERSION = 6;
 
 enum class CloseAction {
     Minimize,
@@ -43,11 +44,6 @@ enum class ProcessPriority {
     Idle,
 };
 
-enum class UpdatesMode {
-    Off,
-    Manual,
-};
-
 struct ReinitSettings {
     bool defaultDeviceChanged = true;
     bool deviceStateChanged = true;
@@ -70,7 +66,6 @@ struct ApplicationSettings {
     bool startMinimizedToTray = false;
     bool minimizeToTray = true;
     CloseAction closeButtonAction = CloseAction::Minimize;
-    bool showConsole = false;
     bool singleInstance = true;
     bool startWithWindows = false;
 };
@@ -116,12 +111,11 @@ struct PerformanceSettings {
 };
 
 struct UpdateSettings {
-    // Off by default: no network request at all unless the user asks for it.
-    // In "manual" mode a single check happens at startup when checkOnStartup is
-    // enabled; the application never checks again while it is running and never
-    // installs anything by itself. The releases are read from the project this
-    // build belongs to, so there is no repository setting.
-    UpdatesMode mode = UpdatesMode::Off;
+    // The only setting: a single check at startup. Off by default, so there is
+    // no network request at all unless the user asks for it; the application
+    // never checks again while it is running and never installs anything by
+    // itself. The releases are read from the project this build belongs to, so
+    // there is no repository setting either.
     bool checkOnStartup = false;
 };
 
@@ -132,10 +126,11 @@ struct HotkeySettings {
 };
 
 struct LoggingSettings {
-    // These settings describe the log file only: the console always mirrors the
-    // operations at the info level (see Log::Initialize).
+    // These settings describe the log file only: the window of the program
+    // always shows the operations at the info level and does not depend on
+    // them. "off" switches the file off, any other value switches it on and
+    // tells how detailed it is (see Log::Initialize).
     std::string level = "info";
-    bool toFile = true;
     std::string filePath = "REAL.log";
     int maxFileSizeMb = 1;
     int maxFiles = 3;
@@ -164,6 +159,11 @@ struct LoadResult {
     std::vector<std::string> warnings;
     std::string error;
 };
+
+// "off" in logging.level means "no log file at all"; any other value writes
+// the file and tells how detailed it is. The window of the program never
+// depends on it (see Log::Initialize).
+bool IsLogFileOff(const LoggingSettings& logging);
 
 // Path of "real.settings.json" next to the executable.
 std::wstring GetDefaultPath();

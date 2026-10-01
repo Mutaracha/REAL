@@ -17,8 +17,8 @@ struct UpdateInfo {
 
 // Update checks are never forced and never happen while the application is
 // running: at most one check is made at startup, and only when the settings ask
-// for it (updates.mode = "manual" and updates.checkOnStartup = true). A newer
-// release is reported to the user, never downloaded or installed silently.
+// for it (updates.checkOnStartup = true). A newer release is reported to the
+// user, never downloaded or installed silently.
 class AutoUpdater {
 public:
     explicit AutoUpdater(std::string repository);

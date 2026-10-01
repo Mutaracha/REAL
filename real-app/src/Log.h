@@ -10,6 +10,7 @@
 
 namespace miniant::Config {
 struct Settings;
+struct LoggingSettings;
 }
 
 namespace miniant::Log {
@@ -43,11 +44,12 @@ private:
 
 LogBuffer& Buffer();
 
-void Initialize(const Config::Settings& settings, bool consoleAttached);
+void Initialize(const Config::Settings& settings);
 void Shutdown();
 
-// Switches the level at runtime (used by --log-level).
-void SetLevel(const std::string& level);
+// Re-applies the settings of the log file at runtime (used when the settings
+// window saves them). The window of the program is not affected.
+void SetFileSettings(const Config::LoggingSettings& logging);
 
 void Write(Level level, const std::string& message);
 

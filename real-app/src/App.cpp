@@ -11,7 +11,6 @@
 #include "Log.h"
 #include "Text.h"
 #include "Windows/AboutWindow.h"
-#include "Windows/Console.h"
 #include "Windows/Diagnostics.h"
 #include "Windows/Filesystem.h"
 #include "Windows/SettingsWindow.h"
@@ -253,7 +252,7 @@ int App::Run() {
     InitializeAudio();
     InitializeTray();
 
-    if (m_settings.updates.mode != Config::UpdatesMode::Off && m_settings.updates.checkOnStartup) {
+    if (m_settings.updates.checkOnStartup) {
         StartUpdateCheck();
     }
 
@@ -340,10 +339,6 @@ bool App::LoadSettings() {
         m_settings.application.startMinimizedToTray = *m_options.startMinimizedToTray;
     }
 
-    if (m_options.showConsole) {
-        m_settings.application.showConsole = *m_options.showConsole;
-    }
-
     if (m_options.singleInstance) {
         m_settings.application.singleInstance = *m_options.singleInstance;
     }
@@ -356,21 +351,9 @@ bool App::LoadSettings() {
 }
 
 bool App::InitializeLogging() {
-    // The console mirrors the operations whenever it exists; a window is created
-    // only for showConsole/--console, so a normal GUI start stays windowless.
-    bool consoleAttached = Windows::Console::HasConsole();
-
-    if (m_settings.application.showConsole) {
-        const bool attached = Windows::Console::Attach();
-
-        if (!attached && !consoleAttached) {
-            std::cout << "[error] " << Lang::Utf8(Str::ErrConsoleAttach) << std::endl;
-        }
-
-        consoleAttached = consoleAttached || attached;
-    }
-
-    Log::Initialize(m_settings, consoleAttached);
+    // The window of the program always shows the operations at the info level;
+    // the log file is described by the logging settings alone.
+    Log::Initialize(m_settings);
     return true;
 }
 
@@ -709,10 +692,6 @@ void App::ReloadSettings() {
 // Everything the program has to do after the settings have changed, no matter
 // where the change came from (the window of the program or the file itself).
 void App::ApplySettings(const Config::Settings& previous) {
-    if (previous.application.showConsole != m_settings.application.showConsole) {
-        Log::Warn(Lang::Utf8(Str::LogConsoleRestart));
-    }
-
     if (previous.application.language != m_settings.application.language) {
         Lang::Set(Lang::FromCode(m_settings.application.language));
         Log::Info(Lang::Utf8(Str::LogLanguageChanged), Lang::Code(Lang::Current()));
@@ -729,7 +708,21 @@ void App::ApplySettings(const Config::Settings& previous) {
         }
     }
 
-    Log::SetLevel(m_settings.logging.level);
+    // The autostart and the priority of the process are applied by the program
+    // itself whenever they change, so the settings window does not have to talk
+    // about them.
+    if (m_settings.application.startWithWindows != previous.application.startWithWindows) {
+        SetStartWithWindows(m_settings.application.startWithWindows);
+    }
+
+    if (m_settings.performance.processPriority != previous.performance.processPriority ||
+        m_settings.performance.disablePowerThrottling != previous.performance.disablePowerThrottling) {
+        ApplyPerformanceSettings();
+    }
+
+    UpdateTrayMenuState();
+
+    Log::SetFileSettings(m_settings.logging);
 
     UnregisterHotkeys();
     RegisterHotkeys();
@@ -766,13 +759,123 @@ void App::ShowSettingsDialog() {
     m_settings = edited;
     SaveSettings();
     ApplySettings(previous);
+
+    // A part of the settings belongs to the start of the program: instead of
+    // silently promising "next time", the program offers to start again.
+    if (NeedsRestart(previous)) {
+        AskForRestart();
+    }
+}
+
+bool App::NeedsRestart(const Config::Settings& previous) const {
+    // A single copy of the program is decided by the mutex that is created
+    // once, at start-up; everything else is applied to the running program.
+    return previous.application.singleInstance != m_settings.application.singleInstance;
+}
+
+void App::AskForRestart() {
+    HWND owner = m_window != nullptr ? m_window->GetHWindow() : nullptr;
+
+    Log::Hint("%s", Lang::Utf8(Str::RestartNeededHint));
+
+    const int answer = ::MessageBoxW(
+        owner,
+        Lang::Wide(Str::RestartNeededText).c_str(),
+        Lang::Wide(Str::RestartNeededTitle).c_str(),
+        MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1);
+
+    if (answer != IDYES) {
+        Log::Hint("%s", Lang::Utf8(Str::RestartLaterHint));
+        return;
+    }
+
+    RestartApplication();
+}
+
+// The arguments of this start, without the path of the executable: the new copy
+// has to see the same command line (another settings file, a log level...).
+std::wstring CommandLineArguments() {
+    const std::wstring full = ::GetCommandLineW() != nullptr ? ::GetCommandLineW() : L"";
+
+    size_t index = 0;
+    if (!full.empty() && full[0] == L'"') {
+        const size_t closing = full.find(L'"', 1);
+        index = closing == std::wstring::npos ? full.size() : closing + 1;
+    } else {
+        const size_t space = full.find(L' ');
+        index = space == std::wstring::npos ? full.size() : space;
+    }
+
+    while (index < full.size() && full[index] == L' ') {
+        ++index;
+    }
+
+    return full.substr(index);
+}
+
+void App::RestartApplication() {
+    const std::wstring executable = Windows::Filesystem::GetExecutablePath();
+
+    std::wstring command = L"\"" + executable + L"\"";
+    const std::wstring arguments = CommandLineArguments();
+    if (!arguments.empty()) {
+        command += L" " + arguments;
+    }
+
+    STARTUPINFOW startup = {};
+    startup.cb = sizeof(startup);
+
+    PROCESS_INFORMATION process = {};
+
+    // The new copy is created suspended: the mutex of a single copy has to be
+    // released before the new copy looks for it, otherwise it would decide that
+    // another program is already running and would only pass a command to it.
+    const BOOL started = ::CreateProcessW(
+        executable.c_str(),
+        command.data(),
+        nullptr,
+        nullptr,
+        FALSE,
+        CREATE_SUSPENDED,
+        nullptr,
+        nullptr,
+        &startup,
+        &process);
+
+    if (started == FALSE) {
+        Log::Error(Lang::Utf8(Str::ErrRestartFailed), Windows::DescribeLastError());
+
+        ::MessageBoxW(
+            m_window != nullptr ? m_window->GetHWindow() : nullptr,
+            Lang::Wide(Str::ErrRestartFailed).c_str(),
+            Lang::Wide(Str::RestartNeededTitle).c_str(),
+            MB_OK | MB_ICONWARNING);
+
+        return;
+    }
+
+    if (m_instanceMutex != nullptr) {
+        ::ReleaseMutex(m_instanceMutex);
+        ::CloseHandle(m_instanceMutex);
+        m_instanceMutex = nullptr;
+    }
+
+    ::ResumeThread(process.hThread);
+    ::CloseHandle(process.hThread);
+    ::CloseHandle(process.hProcess);
+
+    Log::Operation(Lang::Utf8(Str::OpRestarting));
+
+    // The loop of the messages ends and Shutdown() closes the program the usual
+    // way: the tray icon and the audio stream go away by themselves.
+    ::PostQuitMessage(0);
 }
 
 void App::OpenLogFile() {
     // The journal is opened only when it is switched on and exists: an item that
     // silently writes a snapshot somewhere else is worse than a message that
     // says why there is nothing to open.
-    if (!m_settings.logging.toFile) {
+    if (Config::IsLogFileOff(m_settings.logging)) {
         ReportLogUnavailable(Str::LogFileOff);
         return;
     }
@@ -820,7 +923,7 @@ void App::ShowAboutDialog() {
 }
 
 void App::StartUpdateCheck() {
-    if (m_settings.updates.mode == Config::UpdatesMode::Off) {
+    if (!m_settings.updates.checkOnStartup) {
         Log::Info(Lang::Utf8(Str::LogUpdatesDisabled));
         return;
     }
@@ -1525,8 +1628,6 @@ void App::Shutdown() {
         ::CoUninitialize();
         m_comInitialized = false;
     }
-
-    Windows::Console::Detach();
 
     if (m_instanceMutex != nullptr) {
         ::ReleaseMutex(m_instanceMutex);

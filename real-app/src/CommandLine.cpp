@@ -93,16 +93,6 @@ Options miniant::CommandLine::Parse() {
             continue;
         }
 
-        if (argumentUtf8 == "--console") {
-            options.showConsole = true;
-            continue;
-        }
-
-        if (argumentUtf8 == "--no-console") {
-            options.showConsole = false;
-            continue;
-        }
-
         if (argumentUtf8 == "--multi-instance") {
             options.singleInstance = false;
             continue;
