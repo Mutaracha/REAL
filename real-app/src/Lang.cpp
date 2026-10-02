@@ -35,12 +35,12 @@ const Entry TABLE[] = {
     { Str::ButtonExit, "Exit", "Выход" },
 
     // Tray menu
-    { Str::TrayToggleEnabled, "Latency reduction enabled", "Снижение задержки включено" },
+    { Str::TrayToggleEnabled, "REAL is running", "REAL запущен" },
     { Str::TrayReinitialize, "Restart now", "Перезапустить" },
     { Str::TrayLog, "Log file", "Файл журнала" },
     { Str::TrayDiagnostics, "Diagnostics", "Диагностика" },
+    { Str::TraySettings, "Settings", "Настройки" },
     { Str::TrayStartWithWindows, "Start with Windows", "Запускать с Windows" },
-    { Str::TrayAbout, "About REAL", "О программе" },
     { Str::TrayExit, "Exit", "Выход" },
 
     // Status line
@@ -48,7 +48,7 @@ const Entry TABLE[] = {
     { Str::StatusNotActive, "Latency reduction is not active", "Снижение задержки не активно" },
     { Str::StatusDriverMinimum, "driver already uses its smallest buffer ({:.2f} ms) - {}",
                                 "драйвер уже отдаёт минимальный буфер ({:.2f} мс) - {}" },
-    { Str::StatusPeriodLocked, " (period locked by another app)", " (период занят другим приложением)" },
+    { Str::StatusPeriodLocked, " (period locked by another app)", " (период закреплён другим приложением)" },
     { Str::StatusMoreDevices, " (+{} more)", " (+{} ещё)" },
 
     // Notifications: short texts, a balloon shows only a few words
@@ -98,9 +98,6 @@ const Entry TABLE[] = {
     { Str::LogMutexFailed,
       "Could not create the single instance mutex: {0}",
       "Не удалось создать мьютекс единственного экземпляра: {0}" },
-    { Str::LogInstanceNoAnswer,
-      "Another instance seems to be running but did not answer; starting a new one.",
-      "Другая копия, похоже, запущена, но не отвечает; запускаем новую." },
     { Str::LogSettingsUnreadable,
       "Built-in default settings are used; the settings file is left as it is.",
       "Используются встроенные значения настроек; файл настроек не изменён." },
@@ -125,35 +122,11 @@ const Entry TABLE[] = {
     { Str::LogPriorityFailed,
       "Could not change the process priority: {0}",
       "Не удалось изменить приоритет процесса: {0}" },
-    { Str::LogPowerThrottlingFailed,
-      "Power throttling could not be disabled: {0}",
-      "Не удалось отключить ограничение скорости выполнения: {0}" },
-    { Str::LogPowerThrottlingOff,
-      "Power throttling (execution speed) disabled for this process.",
-      "Ограничение скорости выполнения отключено для этого процесса." },
-    { Str::LogPowerThrottlingUnavailable,
-      "Power throttling is not available with the Windows SDK used for this build.",
-      "Ограничение скорости выполнения недоступно в SDK, с которым собран файл." },
     { Str::LogSettingsWriteFailed,
       "Could not write the settings file {0}.",
       "Не удалось записать файл настроек {0}." },
-    { Str::RestartNeededTitle, "Restart REAL", "Перезапуск REAL" },
-    { Str::RestartNeededText,
-      "This setting is applied when REAL starts.\nRestart the program now?",
-      "Эта настройка применяется при запуске REAL.\nПерезапустить программу сейчас?" },
-    { Str::RestartNeededHint, "The setting needs a restart, the user is asked about it.",
-                              "Настройка требует перезапуска, пользователю задан вопрос." },
-    { Str::RestartLaterHint, "The restart was postponed; the setting works after the next start.",
-                             "Перезапуск отложен: настройка вступит в силу при следующем запуске." },
-    { Str::ErrRestartFailed,
-      "Could not start a new copy of REAL. Close the program and start it again.",
-      "Не удалось запустить новую копию REAL. Закройте программу и запустите её снова." },
-    { Str::LogRestartFailed,
-      "Could not start a new copy of REAL: {0}",
-      "Не удалось запустить новую копию REAL: {0}" },
-    { Str::OpRestarting, "Restarting REAL.", "Перезапускаю REAL." },
-    { Str::LogFileOff, "The log file is switched off: the log level is off (the Options window, the Other tab).",
-                       "Файл журнала выключен: уровень журнала off (окно «Опции», вкладка «Прочее»)." },
+    { Str::LogFileOff, "The log file is switched off: the log level is off (Options - Settings, the Other tab).",
+                       "Файл журнала выключен: уровень журнала off (Опции → Настройки, вкладка «Прочее»)." },
     { Str::LogFileMissing, "There is no log file yet.", "Файла журнала пока нет." },
     { Str::LogLanguageChanged,
       "Language changed to {0}.",
@@ -165,8 +138,8 @@ const Entry TABLE[] = {
       "An update check is already running.",
       "Проверка обновлений уже выполняется." },
     { Str::LogReinitInvalid,
-      "The audio streams are no longer valid, activating again: {0}",
-      "Аудиопотоки недействительны, активирую заново: {0}" },
+      "The audio streams are no longer valid, restarting: {0}",
+      "Аудиопотоки недействительны, перезапускаю: {0}" },
     { Str::LogResumeApply,
       "The system reported {0}; re-applying the low latency mode.",
       "Система сообщила {0}; применяем режим заново." },
@@ -198,8 +171,8 @@ const Entry TABLE[] = {
       "Low latency stream started: {0}",
       "Поток с низкой задержкой запущен: {0}" },
     { Str::LogPeriodLocked,
-      "Another application has already locked the audio engine period; the nearest one is used: {0}.",
-      "Другое приложение уже зафиксировало период аудиодвижка; выбран ближайший период: {0}." },
+      "The audio engine period is already locked by another application, its period is used: {0}.",
+      "Период аудиодвижка уже закреплён другим приложением, используется его период: {0}." },
     { Str::LogDiagCollected,
       "Diagnostics: location and configuration collected.",
       "Диагностика: расположение и настройки собраны." },
@@ -246,9 +219,9 @@ const Entry TABLE[] = {
     { Str::ErrLowLatency,
       "Could not enable the low latency mode.",
       "Не удалось включить режим низкой задержки." },
-    { Str::ErrNoEndpoint,
-      "No audio endpoint could be inspected.",
-      "Ни одно аудиоустройство не удалось проверить." },
+    { Str::WarnNoDefaultDevice,
+      "No default audio device is connected.",
+      "Аудиоустройство по умолчанию не подключено." },
     { Str::ErrStreamInvalid,
       "The audio stream is no longer valid: {0}",
       "Аудиопоток больше не действителен: {0}" },
@@ -352,6 +325,15 @@ const Entry TABLE[] = {
     { Str::DiagScale,
       "DPI:         {0}%\n",
       "Масштаб:     {0}%\n" },
+    { Str::DiagCpu,
+      "CPU:         logical processors: {0}; reserved for audio: {1}\n",
+      "Процессор:   логических ядер: {0}; зарезервировано для звука: {1}\n" },
+    { Str::DiagCpuNone,
+      "none",
+      "нет" },
+    { Str::DiagCpuItem,
+      "CPU {0}",
+      "ЦП {0}" },
     { Str::DiagExecutable,
       "Executable:  {0}\n",
       "Файл:        {0}\n" },
@@ -415,10 +397,12 @@ const Entry TABLE[] = {
     { Str::DiagNotes,
       "A device is suitable for the latency reduction when its minimum period is smaller than its default period (see 'result'). Typical exceptions: Bluetooth endpoints (10 ms by design), HDMI/DisplayPort receivers, some vendor drivers (Realtek, Nahimic, ACX) and virtual devices.\n"
       "The base step is the amount by which the engine can change its period: any value between the minimum and the maximum with that step is allowed. The step itself is not a period, so a value like \"step of 1 frame\" cannot be requested; REAL never asks for a period below the minimum.\n"
-      "The small buffer is taken on both default devices of the chosen direction: the usual default device and the default communication device (Settings - System - Sound).\n",
+      "The small buffer is taken on both default devices of the chosen direction: the usual default device and the default communication device (Settings - System - Sound).\n"
+      "A processor reserved for audio (the CPU line above) is kept by Windows for the audio engine while a stream with a small buffer runs: other programs get it last, so monitoring tools may show it underused. This is the low latency mode of Windows itself, not a fault of REAL.\n",
       "Устройство подходит для снижения задержки, если его минимальный период меньше стандартного (см. «итог»). Обычные исключения: Bluetooth (10 мс по замыслу), приёмники HDMI/DisplayPort, некоторые драйверы производителей (Realtek, Nahimic, ACX) и виртуальные устройства.\n"
       "Базовый шаг — это ступень, с которой движок меняет период: допустимы значения от минимального до максимального с этим шагом. Сам шаг периодом не является, поэтому значение вида «шаг 1 фрейм» использовать нельзя — программа запрашивает период не меньше минимального.\n"
-      "Малый буфер берётся на обоих устройствах по умолчанию выбранного направления: на обычном устройстве по умолчанию и на устройстве связи по умолчанию («Параметры → Система → Звук»).\n" },
+      "Малый буфер берётся на обоих устройствах по умолчанию выбранного направления: на обычном устройстве по умолчанию и на устройстве связи по умолчанию («Параметры → Система → Звук»).\n"
+      "Ядро, зарезервированное для звука (строка «Процессор» выше), Windows держит для аудиодвижка, пока работает поток с малым буфером: другие программы получают его в последнюю очередь, поэтому в мониторинге оно может выглядеть недогруженным. Это особый режим низкой задержки самой Windows, а не ошибка REAL.\n" },
 
     { Str::DiagPeriodsNoClient3,
       "device period {0} ({1})",
@@ -489,10 +473,9 @@ const Entry TABLE[] = {
       "  --config <path>       Use the given settings file instead of real.settings.json\n"
       "  --no-config           Ignore the settings file, use the built-in defaults\n"
       "  --log-level <level>   off | error | warn | info | debug | trace\n"
-      "  --multi-instance      Do not reuse an already running instance\n"
       "\n"
       "Commands for a running instance (the command is passed to it and this process exits):\n"
-      "  --reinit              Restart: activate again (re-create the audio streams), the mode is enabled\n"
+      "  --reinit              Restart: re-create the audio streams, the mode is enabled\n"
       "  --enable              Enable the latency reduction\n"
       "  --disable             Disable the latency reduction (the engine returns to its default)\n"
       "  --exit                Close the running instance\n"
@@ -503,7 +486,7 @@ const Entry TABLE[] = {
       "  --help, -h, /?        Show this help\n"
       "  --version             Show the version\n"
       "\n"
-      "Settings: the \"Options\" item of the menu bar, or real.settings.json next to REAL.exe.\n"
+      "Settings: \"Options - Settings\" in the menu bar, \"Settings\" in the tray menu, or real.settings.json next to REAL.exe.\n"
       "Every parameter is explained by a comment inside that file, see also docs/CONFIG.md.\n",
       "{0} - {1} {2}\n"
       "\n"
@@ -515,10 +498,9 @@ const Entry TABLE[] = {
       "  --config <путь>       использовать другой файл настроек вместо real.settings.json\n"
       "  --no-config           не читать файл настроек, взять встроенные значения\n"
       "  --log-level <уровень> off | error | warn | info | debug | trace\n"
-      "  --multi-instance      не переиспользовать уже запущенную копию\n"
       "\n"
       "Команды для работающей копии (передаются ей, этот процесс завершается):\n"
-      "  --reinit              перезапустить: активировать заново (пересоздать потоки), режим включается\n"
+      "  --reinit              перезапустить: заново создать аудиопотоки, режим включается\n"
       "  --enable              включить снижение задержки\n"
       "  --disable             выключить снижение задержки (движок вернётся к 10 мс)\n"
       "  --exit                закрыть работающую копию\n"
@@ -529,7 +511,7 @@ const Entry TABLE[] = {
       "  --help, -h, /?        показать эту справку\n"
       "  --version             показать версию\n"
       "\n"
-      "Настройки: пункт «Опции» в строке меню или файл real.settings.json рядом с REAL.exe.\n"
+      "Настройки: «Опции → Настройки» в строке меню, «Настройки» в меню значка или файл real.settings.json рядом с REAL.exe.\n"
       "У каждого параметра есть комментарий прямо в файле, подробнее - docs/CONFIG.md.\n" },
 
     // Dialogs
@@ -541,10 +523,10 @@ const Entry TABLE[] = {
     // The note of the About window: one sentence, in the language of the
     // interface; "{}" is the version and is drawn by the window itself.
     { Str::AboutText,
-      "While REAL is running, Windows uses the smallest buffer\n"
-      "that the driver of the default audio device supports.",
-      "Пока REAL запущен, Windows использует минимальный буфер,\n"
-      "который поддерживает драйвер устройства по умолчанию." },
+      "While REAL is running, Windows uses the smallest audio buffer\n"
+      "supported by the device driver.",
+      "Пока REAL запущен, Windows использует минимальный аудиобуфер,\n"
+      "поддерживаемый драйвером устройства." },
 
     { Str::DiagnosticsWriteFailed, "The diagnostics report could not be written to a file.",
                                    "Не удалось записать отчёт диагностики в файл." },
@@ -559,6 +541,8 @@ const Entry TABLE[] = {
                                "Файл настроек перезаписан в текущем оформлении (значения сохранены)" },
     { Str::OpAlreadyRunning, "REAL is already running; the command was passed to it",
                              "REAL уже запущен, команда передана ему" },
+    { Str::OpInstanceNotResponding, "REAL is already running but does not respond.",
+                                    "REAL уже запущен, но не отвечает." },
     { Str::OpLogOpened, "Log opened: {}", "Открыт журнал: {}" },
     { Str::OpApplied, "Latency reduction is active: {}", "Снижение задержки активно: {}" },
     { Str::OpDriverMinimum, "The driver already keeps the smallest buffer, nothing has to be held open: {}",
@@ -571,7 +555,7 @@ const Entry TABLE[] = {
                      "Устройство не ответило за {} с, снижение задержки выключено" },
     { Str::OpDiagnostics, "Diagnostics report: {}", "Отчёт диагностики: {}" },
     { Str::OpDiagnosticsFailed, "Could not write the diagnostics report", "Не удалось записать отчёт диагностики" },
-    { Str::OpHotkeys, "Hotkeys: toggle {}, activate {}", "Горячие клавиши: переключение {}, активация {}" },
+    { Str::OpHotkeys, "Hotkeys: on/off {}, restart {}", "Горячие клавиши: включить/выключить {}, перезапустить {}" },
     { Str::OpAutostart, "Autostart: {}", "Автозапуск: {}" },
     { Str::OpUpdateChecking, "Checking for updates...", "Проверяю обновления..." },
     { Str::OpExiting, "Exiting", "Выход" },
@@ -583,7 +567,7 @@ const Entry TABLE[] = {
     { Str::ValueOff, "off", "выкл" },
 
     // Settings window
-    { Str::SettingsWindowTitle, "REAL options", "Опции REAL" },
+    { Str::SettingsWindowTitle, "REAL settings", "Настройки REAL" },
     { Str::SettingsSave, "Save", "Сохранить" },
     { Str::SettingsCancel, "Cancel", "Отмена" },
     { Str::SettingsOpenFile, "Open the file", "Открыть файл" },
@@ -598,9 +582,9 @@ const Entry TABLE[] = {
     { Str::SettingsTabOther, "Other", "Прочее" },
     { Str::SettingsHeaderApplication, "Application", "Приложение" },
     { Str::SettingsHeaderTray, "Tray icon and its menu", "Значок в трее и его меню" },
-    { Str::SettingsHeaderMenu, "Tray menu items", "Пункты меню в трее" },
+    { Str::SettingsHeaderNotifications, "Notifications", "Уведомления" },
     { Str::SettingsHeaderAudio, "Audio streams", "Аудиопотоки" },
-    { Str::SettingsHeaderReinit, "Reactivation", "Повторная активация" },
+    { Str::SettingsHeaderReinit, "Automatic restart", "Автоматический перезапуск" },
     { Str::SettingsHeaderPerformance, "Performance", "Производительность" },
     { Str::SettingsHeaderHotkeys, "Hotkeys", "Горячие клавиши" },
     { Str::SettingsHeaderUpdates, "Updates", "Обновления" },
@@ -615,13 +599,10 @@ const Entry TABLE[] = {
     { Str::SettingsCloseAction, "Close button", "Кнопка закрытия" },
     { Str::SettingsCloseMinimize, "Minimize to tray", "Свернуть в трей" },
     { Str::SettingsCloseExit, "Exit", "Завершить программу" },
-    { Str::SettingsSingleInstance, "One copy only", "Один экземпляр" },
     { Str::SettingsTrayEnabled, "Show the tray icon", "Показывать значок в трее" },
     { Str::SettingsNotifyError, "Notify about errors", "Уведомлять об ошибках" },
     { Str::SettingsNotifyDeviceChange, "Notify about device changes", "Уведомлять о смене устройств" },
     { Str::SettingsNotifyStateChange, "Notify about the mode switching", "Уведомлять о переключении режима" },
-    { Str::SettingsMenuStatus, "Status line", "Строка состояния" },
-    { Str::SettingsEnabledOnStartup, "Turn on at start-up", "Включать при запуске" },
     { Str::SettingsDataFlow, "Streams", "Потоки" },
     { Str::SettingsFlowRender, "Playback (render)", "Воспроизведение (render)" },
     { Str::SettingsFlowCapture, "Recording (capture)", "Запись (capture)" },
@@ -631,24 +612,22 @@ const Entry TABLE[] = {
     { Str::SettingsPeriodFundamental, "By the base step", "По базовому шагу" },
     { Str::SettingsPeriodFixed, "Fixed value", "Фиксированный" },
     { Str::SettingsRequestedPeriod, "Requested period, frames", "Запрашиваемый период, фреймы" },
-    { Str::SettingsAllowPeriodSnap, "Let Windows adjust the period", "Разрешить Windows подбирать период" },
     { Str::SettingsReinitDeviceChanged, "Default device changed", "Сменилось устройство по умолчанию" },
     { Str::SettingsReinitDeviceState, "Device state changed", "Сменилось состояние устройства" },
     { Str::SettingsReinitDeviceAdded, "Device added", "Устройство добавлено" },
     { Str::SettingsReinitDeviceRemoved, "Device removed", "Устройство удалено" },
     { Str::SettingsReinitResume, "Resume from sleep", "Выход из спящего режима" },
     { Str::SettingsReinitUnlock, "Session unlock", "Разблокировка сеанса" },
-    { Str::SettingsReinitEnableWhenDisabled, "Enable when the driver resets the mode", "Включать, если драйвер сбросил режим" },
+    { Str::SettingsReinitEnableWhenDisabled, "Switch on at a device change if off", "Включать при смене устройства, если выключено" },
     { Str::SettingsReinitFailureTimeout, "Wait for the device, ms", "Ждать ответа устройства, мс" },
-    { Str::SettingsReinitDebounce, "Pause before activating, ms", "Пауза перед активацией, мс" },
+    { Str::SettingsReinitDebounce, "Pause before restarting, ms", "Пауза перед перезапуском, мс" },
     { Str::SettingsProcessPriority, "Process priority", "Приоритет процесса" },
     { Str::SettingsPriorityNormal, "Normal", "Обычный" },
     { Str::SettingsPriorityBelowNormal, "Below normal", "Ниже среднего" },
     { Str::SettingsPriorityIdle, "Low", "Низкий" },
-    { Str::SettingsDisablePowerThrottling, "Disable power throttling", "Отключить энергосбережение" },
     { Str::SettingsHotkeysEnabled, "Use hotkeys", "Использовать горячие клавиши" },
     { Str::SettingsHotkeyToggle, "Enable / disable", "Включить / выключить" },
-    { Str::SettingsHotkeyReinitialize, "Activate again", "Активировать заново" },
+    { Str::SettingsHotkeyReinitialize, "Restart", "Перезапустить" },
     { Str::SettingsCheckOnStartup, "Check on start-up", "Проверять при запуске" },
     { Str::SettingsLogLevel, "Level", "Уровень" },
     // The value of the file stays in parentheses: the list and the settings
@@ -674,8 +653,6 @@ const Entry TABLE[] = {
                               "true - кнопка \"Свернуть\" прячет окно в трей, а не в панель задач." },
     { Str::CfgCloseButtonAction, "What the close button does: \"minimize\" (to the tray) or \"exit\" (quit).",
                                  "Что делает крестик окна: \"minimize\" (в трей) или \"exit\" (завершить программу)." },
-    { Str::CfgSingleInstance, "true - a single copy: starting REAL.exe again passes the command to it.",
-                              "true - одна копия: повторный запуск передаёт команду работающей (--reinit, --exit)." },
     { Str::CfgStartWithWindows, "true - start automatically after logon (HKCU Run key).",
                                 "true - автозапуск при входе в систему (запись REAL в HKCU Run)." },
     { Str::CfgLanguage, "Language of the interface, the log and these comments: \"auto\" (Windows), \"en\", \"ru\". When the language changes, the comments are rewritten on the next start, the values stay.",
@@ -690,32 +667,24 @@ const Entry TABLE[] = {
                                     "true - уведомлять о смене аудиоустройства." },
     { Str::CfgNotifyOnStateChange, "true - notify when the latency reduction is switched on or off.",
                                    "true - уведомлять о включении и выключении режима." },
-    { Str::CfgMenuSection, "Tray menu items (false hides an item).", "Состав меню значка (false - пункт скрыт)." },
-    { Str::CfgMenuShowStatus, "Current status as the first line of the menu.",
-                              "Строка с текущим статусом первой строкой меню." },
-    { Str::CfgMenuToggle, "Item that enables or disables the latency reduction.",
-                          "Пункт включения и выключения режима." },
-    { Str::CfgMenuReinitialize, "Item that re-initialises the audio streams without a restart.",
-                                "Пункт активации без перезапуска." },
+    { Str::CfgMenuSection, "Tray menu items that can be hidden (false hides an item); the status line, \"Settings\" and \"Exit\" are always there.",
+                           "Пункты меню значка, которые можно скрыть (false - пункт скрыт); строка состояния, \"Настройки\" и \"Выход\" есть всегда." },
+    { Str::CfgMenuToggle, "The \"REAL is running\" item: switches the latency reduction on and off.",
+                          "Пункт \"REAL запущен\": включает и выключает снижение задержки." },
+    { Str::CfgMenuReinitialize, "The \"Restart\" item: the audio streams are created again.",
+                                "Пункт \"Перезапустить\": аудиопотоки создаются заново." },
     { Str::CfgMenuLog, "Item that opens the log.", "Пункт открытия журнала." },
     { Str::CfgMenuDiagnostics, "Item that writes a report about the audio devices.",
                                "Пункт создания отчёта об аудиоустройствах." },
-    { Str::CfgMenuStartWithWindows, "Item that toggles the autostart.", "Пункт-переключатель автозапуска." },
-    { Str::CfgMenuAbout, "Item with information about the program.", "Пункт \"О программе\"." },
-    { Str::CfgMenuExit, "Item that quits the program.", "Пункт выхода из программы." },
     { Str::CfgAudioSection, "How REAL talks to the audio engine.", "Параметры работы с аудиодвижком." },
-    { Str::CfgEnabledOnStartup, "true - apply the low latency mode right after the start.",
-                                "true - включать снижение задержки сразу при запуске." },
     { Str::CfgDataFlow, "Devices to process: \"render\" (playback), \"capture\" (recording), \"both\".",
                         "Какие устройства обрабатывать: \"render\" (воспроизведение), \"capture\" (запись), \"both\"." },
     { Str::CfgPeriodSelection, "Which buffer to request: \"min\" - the smallest period of the device; \"fundamental\" - the same smallest period rounded up to the base step of the engine (the step itself is not a period, so a value below the minimum is never requested); \"fixed\" - exactly the number of frames written in requestedPeriodFrames.",
                                "Какой буфер запрашивать: \"min\" - минимальный период устройства; \"fundamental\" - он же, выровненный по базовому шагу движка (сам шаг периодом не является, поэтому меньше минимального не запрашивается никогда); \"fixed\" - ровно столько фреймов, сколько указано в requestedPeriodFrames." },
     { Str::CfgRequestedPeriodFrames, "The buffer in frames that \"fixed\" asks for: it is rounded to the base step of the engine and kept inside the range the device supports (0 - the smallest period of the device).",
                                      "Буфер во фреймах, который запрашивает \"fixed\": округляется по базовому шагу движка и удерживается в поддерживаемом устройством диапазоне (0 - минимальный период устройства)." },
-    { Str::CfgAllowPeriodSnap, "true - if the buffer is already locked by another application, accept it instead of reporting an error.",
-                               "true - если буфер уже зафиксирован другим приложением, принять его, а не сообщать об ошибке." },
-    { Str::CfgReinitSection, "When to activate again automatically (the streams are re-created).",
-                             "Когда активировать заново автоматически (потоки создаются заново)." },
+    { Str::CfgReinitSection, "When to restart automatically (the audio streams are created again).",
+                             "Когда перезапускать автоматически (аудиопотоки создаются заново)." },
     { Str::CfgReinitDeviceChanged, "The default device changed (the main case).",
                                    "Сменилось устройство по умолчанию (основной случай)." },
     { Str::CfgReinitDeviceState, "A device became active or inactive (headphones switched on).",
@@ -728,13 +697,12 @@ const Entry TABLE[] = {
                                         "true - при смене устройства включать снижение задержки, если оно было выключено." },
     { Str::CfgReinitFailureTimeout, "How long to keep retrying before the mode is switched off and polling stops (ms).",
                                     "Сколько миллисекунд повторять попытки, прежде чем выключить режим и прекратить опрос." },
-    { Str::CfgReinitDebounce, "Pause before re-initialising: Windows sends a burst of events (ms).",
-                              "Пауза перед активацией: Windows присылает пачку событий подряд (мс)." },
-    { Str::CfgPerformanceSection, "Side effects of the low latency mode.", "Побочные эффекты низкой задержки." },
+    { Str::CfgReinitDebounce, "Pause before restarting: Windows sends a burst of events (ms).",
+                              "Пауза перед перезапуском: Windows присылает пачку событий подряд (мс)." },
+    { Str::CfgPerformanceSection, "The REAL process itself. It does not affect the sound: the sound is processed by the Windows Audio service.",
+                                  "Сам процесс REAL. На звук не влияет: звук обрабатывает служба Windows Audio." },
     { Str::CfgProcessPriority, "Process priority as in the Task Manager: \"normal\", \"belowNormal\" (below normal) or \"idle\" (low).",
                                "Приоритет процесса как в диспетчере задач: \"normal\" (обычный), \"belowNormal\" (ниже среднего), \"idle\" (низкий)." },
-    { Str::CfgDisablePowerThrottling, "true - disable the execution speed throttling (Windows 11) so that the audio stream does not keep a CPU core busy.",
-                                      "true - снять троттлинг скорости исполнения (Windows 11), чтобы аудиопоток не занимал ядро CPU." },
     { Str::CfgUpdatesSection, "Update checks. Off by default; REAL never checks while it is running.",
                               "Проверка обновлений. По умолчанию выключена; во время работы запросов нет." },
     { Str::CfgUpdatesCheckOnStartup, "true - check once at startup; false - no network request at all.",
@@ -743,7 +711,7 @@ const Entry TABLE[] = {
     { Str::CfgHotkeysEnabled, "true - register the hotkeys.", "true - регистрировать горячие клавиши." },
     { Str::CfgHotkeysToggle, "Enable or disable the mode. Keys: Ctrl, Alt, Shift, Win, A-Z, 0-9, F1-F24.",
                              "Включить и выключить режим. Клавиши: Ctrl, Alt, Shift, Win, A-Z, 0-9, F1-F24." },
-    { Str::CfgHotkeysReinitialize, "Activate the audio streams.", "Активировать аудиопотоки." },
+    { Str::CfgHotkeysReinitialize, "Restart: create the audio streams again.", "Перезапустить: заново создать аудиопотоки." },
     { Str::CfgLoggingSection, "Log file. The window of the program always shows the operations at the info level.",
                               "Файл журнала. В окне программы всегда видны основные операции уровня info." },
     { Str::CfgLoggingLevel, "\"off\" - the file is not written at all; \"error\", \"warn\", \"info\", \"debug\", \"trace\" - from the shortest file to the most detailed one.",

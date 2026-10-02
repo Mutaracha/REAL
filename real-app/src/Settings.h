@@ -55,7 +55,6 @@ struct ApplicationSettings {
     bool startMinimizedToTray = false;
     bool minimizeToTray = true;
     CloseAction closeButtonAction = CloseAction::Minimize;
-    bool singleInstance = true;
     bool startWithWindows = false;
 };
 
@@ -65,15 +64,14 @@ struct NotificationSettings {
     bool onStateChange = false;
 };
 
+// The items of the tray menu that can be hidden. The status line, "Settings"
+// and "Exit" are always there: a menu without them would leave no way to the
+// settings or out of the program.
 struct TrayMenuSettings {
-    bool showStatus = true;
     bool toggleEnabled = true;
     bool reinitialize = true;
     bool openLog = true;
     bool diagnostics = true;
-    bool startWithWindows = true;
-    bool about = true;
-    bool exit = true;
 };
 
 struct TraySettings {
@@ -83,17 +81,14 @@ struct TraySettings {
 };
 
 struct AudioSettings {
-    bool enabledOnStartup = true;
     DataFlow dataFlow = DataFlow::Render;
     PeriodSelection periodSelection = PeriodSelection::Minimum;
     unsigned int requestedPeriodFrames = 0;
-    bool allowPeriodSnap = true;
     ReinitSettings reinit;
 };
 
 struct PerformanceSettings {
     ProcessPriority processPriority = ProcessPriority::Normal;
-    bool disablePowerThrottling = true;
 };
 
 struct UpdateSettings {

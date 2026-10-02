@@ -196,48 +196,20 @@ int App::Run() {
         return RunDiagnostics();
     }
 
-    const bool settingsLoaded = LoadSettings();
-
-    if (m_settings.application.singleInstance) {
-        m_instanceMutex = ::CreateMutexW(nullptr, TRUE, L"Local\\REAL.SingleInstance");
-        if (m_instanceMutex == nullptr) {
-            // The log does not exist yet: the line waits for it.
-            const std::string error = Windows::DescribeLastError();
-            m_startupMessages.emplace_back(StartupLevel::Warn, fmt::format(Lang::Utf8(Str::LogMutexFailed), error));
-        } else if (::GetLastError() == ERROR_ALREADY_EXISTS) {
-            m_anotherInstanceRuns = true;
-        }
-    }
-
     RegisterSignalMessages();
 
-    if (m_anotherInstanceRuns) {
-        UINT signal = m_signalShow;
-
-        switch (m_options.action) {
-            case CommandLine::Action::Reinitialize: signal = m_signalReinitialize; break;
-            case CommandLine::Action::Enable: signal = m_signalEnable; break;
-            case CommandLine::Action::Disable: signal = m_signalDisable; break;
-            case CommandLine::Action::Exit: signal = m_signalExit; break;
-            default: break;
-        }
-
-        if (NotifyRunningInstance(signal)) {
-            // The running copy shows its window; a console the command was
-            // typed in gets one line about it.
-            if (m_options.action == CommandLine::Action::Run) {
-                WriteToParentConsole(std::string(Lang::Utf8(Str::OpAlreadyRunning)) + "\n");
-            }
-
-            return 0;
-        }
-
-        if (m_options.action == CommandLine::Action::Exit) {
-            return 0;
-        }
-
-        m_startupMessages.emplace_back(StartupLevel::Warn, Lang::Utf8(Str::LogInstanceNoAnswer));
+    int handOverCode = 0;
+    if (HandOverToRunningInstance(handOverCode)) {
+        return handOverCode;
     }
+
+    // "--exit" without a running copy: there is nothing to close, and the
+    // settings file and the log are not touched.
+    if (m_options.action == CommandLine::Action::Exit) {
+        return 0;
+    }
+
+    const bool settingsLoaded = LoadSettings();
 
     InitializeLogging();
 
@@ -246,10 +218,6 @@ int App::Run() {
 
     if (!settingsLoaded) {
         Log::Warn(Lang::Utf8(Str::LogSettingsUnreadable));
-    }
-
-    if (m_options.action == CommandLine::Action::Exit) {
-        return 0;
     }
 
     const HRESULT comResult = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -389,10 +357,6 @@ void App::ApplyCommandLine(Config::Settings& settings) const {
         settings.application.startMinimizedToTray = *m_options.startMinimizedToTray;
     }
 
-    if (m_options.singleInstance) {
-        settings.application.singleInstance = *m_options.singleInstance;
-    }
-
     if (m_options.logLevel) {
         settings.logging.level = *m_options.logLevel;
     }
@@ -517,7 +481,9 @@ void App::InitializeAudio() {
         return;
     }
 
-    m_audioEnabled = m_settings.audio.enabledOnStartup;
+    // The latency reduction is always on at the start: switching it off is a
+    // decision for the running session (the menu, the hotkey, --disable).
+    m_audioEnabled = true;
     ApplyAudio();
 }
 
@@ -547,6 +513,73 @@ void App::RegisterSignalMessages() {
     m_signalEnable = ::RegisterWindowMessageW(SIGNAL_ENABLE);
     m_signalDisable = ::RegisterWindowMessageW(SIGNAL_DISABLE);
     m_signalExit = ::RegisterWindowMessageW(SIGNAL_EXIT);
+}
+
+// One copy of the program runs at a time. The check comes before the settings
+// are read: a second start only passes its command on and never touches the
+// settings file or the log of the running copy.
+bool App::HandOverToRunningInstance(int& exitCode) {
+    exitCode = 0;
+
+    // The lines written before the settings are read (by this check or by a
+    // second start) are in the language of the settings; the file is only
+    // peeked at.
+    if (!m_options.ignoreConfig) {
+        const std::wstring path = m_options.configPath ? *m_options.configPath : Config::GetDefaultPath();
+        Lang::Set(Lang::FromCode(Config::PeekLanguage(path)));
+    } else {
+        Lang::Set(Lang::Detect());
+    }
+
+    m_instanceMutex = ::CreateMutexW(nullptr, TRUE, L"Local\\REAL.SingleInstance");
+    if (m_instanceMutex == nullptr) {
+        // Without the mutex another copy cannot be detected: the program starts
+        // and says why in the journal (the log does not exist yet, the line waits).
+        const std::string error = Windows::DescribeLastError();
+        m_startupMessages.emplace_back(StartupLevel::Warn, fmt::format(Lang::Utf8(Str::LogMutexFailed), error));
+        return false;
+    }
+
+    if (::GetLastError() != ERROR_ALREADY_EXISTS) {
+        return false;
+    }
+
+    UINT signal = m_signalShow;
+
+    switch (m_options.action) {
+        case CommandLine::Action::Reinitialize: signal = m_signalReinitialize; break;
+        case CommandLine::Action::Enable: signal = m_signalEnable; break;
+        case CommandLine::Action::Disable: signal = m_signalDisable; break;
+        case CommandLine::Action::Exit: signal = m_signalExit; break;
+        default: break;
+    }
+
+    if (NotifyRunningInstance(signal)) {
+        // The running copy shows its window; a console the command was
+        // typed in gets one line about it.
+        if (m_options.action == CommandLine::Action::Run) {
+            WriteToParentConsole(std::string(Lang::Utf8(Str::OpAlreadyRunning)) + "\n");
+        }
+
+        return true;
+    }
+
+    // The running copy does not answer. A second copy is never started:
+    // "--exit" ends quietly, any other start says why nothing happened.
+    if (m_options.action != CommandLine::Action::Exit) {
+        ReportInstanceNotResponding();
+        exitCode = 1;
+    }
+
+    return true;
+}
+
+void App::ReportInstanceNotResponding() const {
+    const std::string text = Lang::Utf8(Str::OpInstanceNotResponding);
+
+    if (!WriteToParentConsole(text + "\n")) {
+        ::MessageBoxW(nullptr, Text::ToWide(text).c_str(), std::wstring(AppInfo::NAME).c_str(), MB_OK | MB_ICONWARNING);
+    }
 }
 
 bool App::NotifyRunningInstance(UINT message) const {
@@ -581,24 +614,17 @@ void App::ApplyPerformanceSettings() {
         Log::Warn(Lang::Utf8(Str::LogPriorityFailed), Windows::DescribeLastError());
     }
 
+    // The process of REAL only holds the audio streams and waits for events;
+    // the sound itself is processed by the Windows Audio service. Windows 11 is
+    // told that this work is not urgent (EcoQoS: a lower clock, the efficient
+    // cores). Windows 10 does not know the request, which changes nothing.
 #if defined(PROCESS_POWER_THROTTLING_EXECUTION_SPEED)
-    if (m_settings.performance.disablePowerThrottling) {
-        PROCESS_POWER_THROTTLING_STATE state = {};
-        state.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
-        state.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
-        state.StateMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+    PROCESS_POWER_THROTTLING_STATE state = {};
+    state.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+    state.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+    state.StateMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
 
-        if (::SetProcessInformation(process, ProcessPowerThrottling, &state, sizeof(state)) == FALSE) {
-            // Windows 10 does not know this information class; it is not an error.
-            Log::Debug(Lang::Utf8(Str::LogPowerThrottlingFailed), Windows::DescribeLastError());
-        } else {
-            Log::Info(Lang::Utf8(Str::LogPowerThrottlingOff));
-        }
-    }
-#else
-    if (m_settings.performance.disablePowerThrottling) {
-        Log::Debug(Lang::Utf8(Str::LogPowerThrottlingUnavailable));
-    }
+    ::SetProcessInformation(process, ProcessPowerThrottling, &state, sizeof(state));
 #endif
 }
 
@@ -643,9 +669,14 @@ void App::ApplyAudio() {
             // the file log, so that the window stays readable.
             m_failureSince = ::GetTickCount64();
 
-            // The message already says that another attempt follows; the
-            // retries themselves stay quiet (see ScheduleAudioRetry).
-            Log::Error("{}", result.error().GetMessage());
+            // The retries themselves stay quiet (see ScheduleAudioRetry). A
+            // missing default device is no fault of the program but what keeps
+            // it from working: a warning; everything else is an error.
+            if (m_audio.HasNoDefaultDevice()) {
+                Log::Warn("{}", result.error().GetMessage());
+            } else {
+                Log::Error("{}", result.error().GetMessage());
+            }
 
             if (m_settings.tray.notifications.onError) {
                 m_window->Notify(
@@ -715,16 +746,11 @@ void App::UpdateTrayMenuState() {
 
     Windows::TrayMenuState state;
     state.enabled = m_audioEnabled;
-    state.showStatus = m_settings.tray.menu.showStatus;
     state.statusText = m_audioEnabled ? m_audio.GetStatusText() : CurrentOffStatusText();
     state.toggleEnabled = m_settings.tray.menu.toggleEnabled;
     state.reinitialize = m_settings.tray.menu.reinitialize;
     state.openLog = m_settings.tray.menu.openLog;
     state.diagnostics = m_settings.tray.menu.diagnostics;
-    state.startWithWindows = m_settings.tray.menu.startWithWindows;
-    state.startWithWindowsChecked = m_settings.application.startWithWindows;
-    state.about = m_settings.tray.menu.about;
-    state.exit = m_settings.tray.menu.exit;
 
     m_window->SetTrayMenuState(state);
 
@@ -802,8 +828,7 @@ void App::ApplySettings(const Config::Settings& previous) {
         ApplyStartWithWindows();
     }
 
-    if (m_settings.performance.processPriority != previous.performance.processPriority ||
-        m_settings.performance.disablePowerThrottling != previous.performance.disablePowerThrottling) {
+    if (m_settings.performance.processPriority != previous.performance.processPriority) {
         ApplyPerformanceSettings();
     }
 
@@ -827,7 +852,10 @@ void App::ApplySettings(const Config::Settings& previous) {
 }
 
 void App::ShowSettingsDialog() {
+    // The window is modal and is never opened twice: "Settings" in the tray
+    // menu brings the open one to the front instead.
     if (m_settingsWindowOpen) {
+        Windows::ActivateSettingsWindow();
         return;
     }
 
@@ -855,116 +883,6 @@ void App::ShowSettingsDialog() {
     ApplyCommandLine(m_settings);
     SaveSettings();
     ApplySettings(previous);
-
-    // A part of the settings belongs to the start of the program: instead of
-    // silently promising "next time", the program offers to start again.
-    if (NeedsRestart(previous)) {
-        AskForRestart();
-    }
-}
-
-bool App::NeedsRestart(const Config::Settings& previous) const {
-    // A single copy of the program is decided by the mutex that is created
-    // once, at start-up; everything else is applied to the running program.
-    return previous.application.singleInstance != m_settings.application.singleInstance;
-}
-
-void App::AskForRestart() {
-    HWND owner = m_window != nullptr ? m_window->GetHWindow() : nullptr;
-
-    Log::Hint("{}", Lang::Utf8(Str::RestartNeededHint));
-
-    const int answer = ::MessageBoxW(
-        owner,
-        Lang::Wide(Str::RestartNeededText).c_str(),
-        Lang::Wide(Str::RestartNeededTitle).c_str(),
-        MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1);
-
-    if (answer != IDYES) {
-        Log::Hint("{}", Lang::Utf8(Str::RestartLaterHint));
-        return;
-    }
-
-    RestartApplication();
-}
-
-// The arguments of this start, without the path of the executable: the new copy
-// has to see the same command line (another settings file, a log level...).
-std::wstring CommandLineArguments() {
-    const std::wstring full = ::GetCommandLineW() != nullptr ? ::GetCommandLineW() : L"";
-
-    size_t index = 0;
-    if (!full.empty() && full[0] == L'"') {
-        const size_t closing = full.find(L'"', 1);
-        index = closing == std::wstring::npos ? full.size() : closing + 1;
-    } else {
-        const size_t space = full.find(L' ');
-        index = space == std::wstring::npos ? full.size() : space;
-    }
-
-    while (index < full.size() && full[index] == L' ') {
-        ++index;
-    }
-
-    return full.substr(index);
-}
-
-void App::RestartApplication() {
-    const std::wstring executable = Windows::Filesystem::GetExecutablePath();
-
-    std::wstring command = L"\"" + executable + L"\"";
-    const std::wstring arguments = CommandLineArguments();
-    if (!arguments.empty()) {
-        command += L" " + arguments;
-    }
-
-    STARTUPINFOW startup = {};
-    startup.cb = sizeof(startup);
-
-    PROCESS_INFORMATION process = {};
-
-    // The new copy is created suspended: the mutex of a single copy has to be
-    // released before the new copy looks for it, otherwise it would decide that
-    // another program is already running and would only pass a command to it.
-    const BOOL started = ::CreateProcessW(
-        executable.c_str(),
-        command.data(),
-        nullptr,
-        nullptr,
-        FALSE,
-        CREATE_SUSPENDED,
-        nullptr,
-        nullptr,
-        &startup,
-        &process);
-
-    if (started == FALSE) {
-        Log::Error(Lang::Utf8(Str::LogRestartFailed), Windows::DescribeLastError());
-
-        ::MessageBoxW(
-            m_window != nullptr ? m_window->GetHWindow() : nullptr,
-            Lang::Wide(Str::ErrRestartFailed).c_str(),
-            Lang::Wide(Str::RestartNeededTitle).c_str(),
-            MB_OK | MB_ICONWARNING);
-
-        return;
-    }
-
-    if (m_instanceMutex != nullptr) {
-        ::ReleaseMutex(m_instanceMutex);
-        ::CloseHandle(m_instanceMutex);
-        m_instanceMutex = nullptr;
-    }
-
-    ::ResumeThread(process.hThread);
-    ::CloseHandle(process.hThread);
-    ::CloseHandle(process.hProcess);
-
-    Log::Operation(Lang::Utf8(Str::OpRestarting));
-
-    // The loop of the messages ends and Shutdown() closes the program the usual
-    // way: the tray icon and the audio stream go away by themselves.
-    ::PostQuitMessage(0);
 }
 
 void App::OpenLogFile() {

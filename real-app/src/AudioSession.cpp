@@ -203,6 +203,10 @@ bool AudioSession::IsActive() const {
     return !m_streams.empty();
 }
 
+bool AudioSession::HasNoDefaultDevice() const {
+    return m_noDefaultDevice;
+}
+
 const std::vector<AudioStreamInfo>& AudioSession::GetStreams() const {
     return m_streamsInfo;
 }
@@ -217,6 +221,7 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
     }
 
     Stop();
+    m_noDefaultDevice = false;
 
     std::vector<std::string> errors;
     const std::vector<EDataFlow> flows = GetDataFlows(settings.audio.dataFlow);
@@ -232,8 +237,7 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
             endpoint.dataFlow,
             endpoint.role,
             ToPeriodSelection(settings.audio.periodSelection),
-            settings.audio.requestedPeriodFrames,
-            settings.audio.allowPeriodSnap);
+            settings.audio.requestedPeriodFrames);
 
         if (!stream) {
             const std::string message =
@@ -277,7 +281,8 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
     }
 
     if (m_streams.empty() && m_streamsInfo.empty()) {
-        return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::ErrNoEndpoint)));
+        m_noDefaultDevice = endpoints.empty();
+        return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::WarnNoDefaultDevice)));
     }
 
     return {};

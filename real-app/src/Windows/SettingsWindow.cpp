@@ -23,9 +23,10 @@ namespace {
 
 const wchar_t SETTINGS_CLASS_NAME[] = L"REAL.SettingsWindow";
 
+// The window is created with this size; once the pages are built it gets the
+// width of the widest row and the height of the tallest page (see
+// FitWindowToContent).
 const int WINDOW_WIDTH = 680;
-// The window is created with this height; once the pages are built it gets the
-// height of the tallest one (see FitWindowToContent).
 const int WINDOW_HEIGHT = 660;
 
 const int MARGIN = 14;
@@ -33,12 +34,20 @@ const int ROW_HEIGHT = 24;
 const int ROW_STEP = 24;
 const int HEADER_STEP = 30;
 const int GROUP_GAP = 12;
-const int LABEL_WIDTH = 220;
+// The space between the longest label and the fields next to it.
+const int LABEL_GAP = 16;
 const int FIELD_WIDTH = 220;
+// A check box that depends on the one above it (an item of the tray menu
+// under "Show the tray icon") starts under the caption of that one.
+const int CHECK_INDENT = 20;
 const int PAGE_TOP = 62;
-const int BUTTON_HEIGHT = 30;
-const int BUTTON_WIDTH = 120;
+// The buttons have the size of every push button of the program (see
+// StandardButtonWidth): the width is known once the font is.
+const int BUTTON_HEIGHT = STANDARD_BUTTON_HEIGHT;
 const int BUTTON_GAP = 8;
+// The part of the first row of buttons that is at least left for the path of
+// the settings file; a longer path loses its middle.
+const int MINIMUM_PATH_WIDTH = 160;
 
 // The two rows of buttons at the bottom of the window, the space between them
 // and the tabs, and the space between the lowest control of a page and the
@@ -46,6 +55,10 @@ const int BUTTON_GAP = 8;
 const int FRAME_HEIGHT = 2 * BUTTON_HEIGHT + BUTTON_GAP;
 const int FRAME_GAP = 8;
 const int PAGE_BOTTOM_PADDING = 8;
+
+// The air between the border of the tabs and the controls of a page, in real
+// pixels: the same on the left and on the right.
+const int PAGE_AIR = 2;
 
 // A header is measured in real pixels and rounded to design ones: a few pixels
 // of reserve keep its last letter from being cut off.
@@ -60,27 +73,20 @@ enum class Id : int {
     StartMinimizedToTray,
     MinimizeToTray,
     CloseButtonAction,
-    SingleInstance,
+
+    TrayEnabled,
+    TrayMenuToggle,
+    TrayMenuReinit,
+    TrayMenuLog,
+    TrayMenuDiagnostics,
 
     NotificationError,
     NotificationDeviceChange,
     NotificationStateChange,
 
-    TrayEnabled,
-    TrayMenuStatus,
-    TrayMenuToggle,
-    TrayMenuReinit,
-    TrayMenuLog,
-    TrayMenuDiagnostics,
-    TrayMenuStartWithWindows,
-    TrayMenuAbout,
-    TrayMenuExit,
-
-    AudioEnabledOnStartup,
     AudioDataFlow,
     AudioPeriodSelection,
     AudioRequestedPeriodFrames,
-    AudioAllowPeriodSnap,
 
     ReinitDefaultDevice,
     ReinitDeviceState,
@@ -93,7 +99,6 @@ enum class Id : int {
     ReinitDebounce,
 
     ProcessPriority,
-    DisablePowerThrottling,
 
     HotkeysEnabled,
     HotkeyToggle,
@@ -158,6 +163,18 @@ struct Context {
     // The top of the two rows of buttons in design pixels: right under the
     // tabs, whose height follows the tallest page.
     int frameTop = WINDOW_HEIGHT - MARGIN - FRAME_HEIGHT;
+
+    // The width of the client area in design pixels: it follows the widest
+    // row of the pages (see FitWindowToContent).
+    int windowWidth = WINDOW_WIDTH;
+
+    // The right edge of the widest control of the pages in design pixels.
+    int contentRight = 0;
+
+    // The column of the labels in front of the lists and the fields, and the
+    // width of a button: both follow the texts of the current language.
+    int labelWidth = 220;
+    int buttonWidth = 75;
 
     bool saved = false;
     bool done = false;
@@ -344,6 +361,42 @@ int DesignTextWidth(Context& context, HFONT font, const std::wstring& text) {
     return textWidth > 0 ? ::MulDiv(textWidth, 96, static_cast<int>(context.dpi)) : 0;
 }
 
+// The pages remember the right edge of their widest control: the window is
+// made just wide enough for it.
+void ExtendContent(Context& context, int right) {
+    context.contentRight = (std::max)(context.contentRight, right);
+}
+
+// The labels in front of the lists and the fields. The column is as wide as
+// the longest of them in the language of the window, plus a gap: a label
+// added to a page has to be added here as well.
+const Lang::Str FIELD_LABELS[] = {
+    Lang::Str::SettingsLanguage,
+    Lang::Str::SettingsCloseAction,
+    Lang::Str::SettingsDataFlow,
+    Lang::Str::SettingsPeriod,
+    Lang::Str::SettingsRequestedPeriod,
+    Lang::Str::SettingsReinitFailureTimeout,
+    Lang::Str::SettingsReinitDebounce,
+    Lang::Str::SettingsProcessPriority,
+    Lang::Str::SettingsHotkeyToggle,
+    Lang::Str::SettingsHotkeyReinitialize,
+    Lang::Str::SettingsLogLevel,
+    Lang::Str::SettingsLogFilePath,
+    Lang::Str::SettingsLogMaxFileSize,
+    Lang::Str::SettingsLogMaxFiles,
+};
+
+int LabelColumnWidth(Context& context) {
+    int widest = 0;
+
+    for (const Lang::Str label : FIELD_LABELS) {
+        widest = (std::max)(widest, DesignTextWidth(context, context.font, Lang::Wide(label)));
+    }
+
+    return widest > 0 ? widest + LABEL_GAP : 220;
+}
+
 // A control is never wider than its own text: a click far to the right of a
 // caption does nothing, and the caption is the only thing that reacts. It is
 // not wider than the page either, whatever the length of a translation.
@@ -408,49 +461,43 @@ int AddHeader(Context& context, Lang::Str text, int y) {
     }
 
     BindToPage(context, label);
+    ExtendContent(context, MARGIN + width);
     return y + HEADER_STEP;
 }
 
-int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y) {
+// The indent moves a check box that depends on the one above it under the
+// caption of that one.
+int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y, int indent = 0) {
     const std::wstring caption = Lang::Wide(text);
+    const int x = MARGIN + indent;
+    const int width = CheckWidth(context, caption, x);
 
     const HWND check = CreateControl(
         context, L"BUTTON", caption, BS_AUTOCHECKBOX | WS_TABSTOP, id,
-        MARGIN, y, CheckWidth(context, caption, MARGIN), ROW_HEIGHT);
+        x, y, width, ROW_HEIGHT);
 
     if (check != nullptr) {
         ::SendMessageW(check, BM_SETCHECK, value ? BST_CHECKED : BST_UNCHECKED, 0);
     }
 
     BindToPage(context, check);
+    ExtendContent(context, x + width);
     return y + ROW_STEP;
-}
-
-void AddCheckColumn(Context& context, Id id, Lang::Str text, bool value, int x, int y) {
-    const std::wstring caption = Lang::Wide(text);
-
-    const HWND check = CreateControl(
-        context, L"BUTTON", caption, BS_AUTOCHECKBOX | WS_TABSTOP, id,
-        x, y, CheckWidth(context, caption, x), ROW_HEIGHT);
-
-    if (check != nullptr) {
-        ::SendMessageW(check, BM_SETCHECK, value ? BST_CHECKED : BST_UNCHECKED, 0);
-    }
-
-    BindToPage(context, check);
 }
 
 int AddCombo(Context& context, Id id, Lang::Str label, const std::vector<std::wstring>& items, int selected, int y) {
     BindToPage(context, CreateControl(
         context, L"STATIC", Lang::Wide(label), SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
-        MARGIN, y, LABEL_WIDTH, ROW_HEIGHT));
+        MARGIN, y, context.labelWidth, ROW_HEIGHT));
 
     // The same width as the fields of the hotkeys: a list does not need the
     // whole window, and a row of controls of different lengths looks ragged.
     const HWND combo = CreateControl(
         context, L"COMBOBOX", L"",
         WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, id,
-        MARGIN + LABEL_WIDTH, y, FIELD_WIDTH, ROW_HEIGHT * 8);
+        MARGIN + context.labelWidth, y, FIELD_WIDTH, ROW_HEIGHT * 8);
+
+    ExtendContent(context, MARGIN + context.labelWidth + FIELD_WIDTH);
 
     // A list belongs to its page like every other control: without this the
     // lists of all three pages would be drawn in the same place at once.
@@ -472,12 +519,13 @@ int AddCombo(Context& context, Id id, Lang::Str label, const std::vector<std::ws
 int AddEdit(Context& context, Id id, Lang::Str label, const std::wstring& value, int width, int y) {
     BindToPage(context, CreateControl(
         context, L"STATIC", Lang::Wide(label), SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
-        MARGIN, y, LABEL_WIDTH, ROW_HEIGHT));
+        MARGIN, y, context.labelWidth, ROW_HEIGHT));
 
     BindToPage(context, CreateControl(
         context, L"EDIT", value, WS_TABSTOP | ES_AUTOHSCROLL, id,
-        MARGIN + LABEL_WIDTH, y, width, ROW_HEIGHT, WS_EX_CLIENTEDGE));
+        MARGIN + context.labelWidth, y, width, ROW_HEIGHT, WS_EX_CLIENTEDGE));
 
+    ExtendContent(context, MARGIN + context.labelWidth + width);
     return y + ROW_STEP;
 }
 
@@ -595,12 +643,27 @@ int BuildWindowPage(Context& context) {
         settings.application.minimizeToTray, y);
     y = AddCombo(context, Id::CloseButtonAction, Lang::Str::SettingsCloseAction, Texts(CLOSE_ACTIONS),
         IndexOf(CLOSE_ACTIONS, settings.application.closeButtonAction), y);
-    y = AddCheck(context, Id::SingleInstance, Lang::Str::SettingsSingleInstance,
-        settings.application.singleInstance, y);
 
+    // The icon and the items of its menu that can be hidden. The items depend
+    // on the icon: they stand under its caption and are greyed out while it is
+    // off. The status line, "Settings" and "Exit" are always in the menu, so
+    // they have no switch here.
     y += GROUP_GAP;
     y = AddHeader(context, Lang::Str::SettingsHeaderTray, y);
     y = AddCheck(context, Id::TrayEnabled, Lang::Str::SettingsTrayEnabled, settings.tray.enabled, y);
+    y = AddCheck(context, Id::TrayMenuToggle, Lang::Str::TrayToggleEnabled,
+        settings.tray.menu.toggleEnabled, y, CHECK_INDENT);
+    y = AddCheck(context, Id::TrayMenuReinit, Lang::Str::TrayReinitialize,
+        settings.tray.menu.reinitialize, y, CHECK_INDENT);
+    y = AddCheck(context, Id::TrayMenuLog, Lang::Str::TrayLog,
+        settings.tray.menu.openLog, y, CHECK_INDENT);
+    y = AddCheck(context, Id::TrayMenuDiagnostics, Lang::Str::TrayDiagnostics,
+        settings.tray.menu.diagnostics, y, CHECK_INDENT);
+
+    // The balloons are shown by the tray icon: without it they are greyed out
+    // as well.
+    y += GROUP_GAP;
+    y = AddHeader(context, Lang::Str::SettingsHeaderNotifications, y);
     y = AddCheck(context, Id::NotificationError, Lang::Str::SettingsNotifyError,
         settings.tray.notifications.onError, y);
     y = AddCheck(context, Id::NotificationDeviceChange, Lang::Str::SettingsNotifyDeviceChange,
@@ -608,42 +671,7 @@ int BuildWindowPage(Context& context) {
     y = AddCheck(context, Id::NotificationStateChange, Lang::Str::SettingsNotifyStateChange,
         settings.tray.notifications.onStateChange, y);
 
-    y += GROUP_GAP;
-    y = AddHeader(context, Lang::Str::SettingsHeaderMenu, y);
-
-    const int columnWidth = (WINDOW_WIDTH - 4 * MARGIN) / 3;
-
-    const struct {
-        Id id;
-        Lang::Str text;
-        bool value;
-    } MENU_ITEMS[] = {
-        { Id::TrayMenuStatus, Lang::Str::SettingsMenuStatus, settings.tray.menu.showStatus },
-        { Id::TrayMenuToggle, Lang::Str::TrayToggleEnabled, settings.tray.menu.toggleEnabled },
-        { Id::TrayMenuReinit, Lang::Str::TrayReinitialize, settings.tray.menu.reinitialize },
-        { Id::TrayMenuLog, Lang::Str::TrayLog, settings.tray.menu.openLog },
-        { Id::TrayMenuDiagnostics, Lang::Str::TrayDiagnostics, settings.tray.menu.diagnostics },
-        { Id::TrayMenuStartWithWindows, Lang::Str::TrayStartWithWindows, settings.tray.menu.startWithWindows },
-        { Id::TrayMenuAbout, Lang::Str::TrayAbout, settings.tray.menu.about },
-        { Id::TrayMenuExit, Lang::Str::TrayExit, settings.tray.menu.exit },
-    };
-
-    const size_t menuItemCount = sizeof(MENU_ITEMS) / sizeof(MENU_ITEMS[0]);
-
-    for (size_t i = 0; i < menuItemCount; ++i) {
-        const int column = static_cast<int>(i % 3);
-        const int row = static_cast<int>(i / 3);
-
-        AddCheckColumn(
-            context, MENU_ITEMS[i].id, MENU_ITEMS[i].text, MENU_ITEMS[i].value,
-            MARGIN + column * (columnWidth + MARGIN), y + row * ROW_STEP);
-    }
-
-    // The grid of the menu items is the lowest block of the page: its last row
-    // is where the page ends.
-    const int rows = static_cast<int>((menuItemCount + 2) / 3);
-
-    return y + rows * ROW_STEP;
+    return y;
 }
 
 int BuildAudioPage(Context& context) {
@@ -654,16 +682,12 @@ int BuildAudioPage(Context& context) {
     int y = PAGE_TOP;
 
     y = AddHeader(context, Lang::Str::SettingsHeaderAudio, y);
-    y = AddCheck(context, Id::AudioEnabledOnStartup, Lang::Str::SettingsEnabledOnStartup,
-        settings.audio.enabledOnStartup, y);
     y = AddCombo(context, Id::AudioDataFlow, Lang::Str::SettingsDataFlow, Texts(DATA_FLOWS),
         IndexOf(DATA_FLOWS, settings.audio.dataFlow), y);
     y = AddCombo(context, Id::AudioPeriodSelection, Lang::Str::SettingsPeriod, Texts(PERIODS),
         IndexOf(PERIODS, settings.audio.periodSelection), y);
     y = AddEdit(context, Id::AudioRequestedPeriodFrames, Lang::Str::SettingsRequestedPeriod,
         std::to_wstring(settings.audio.requestedPeriodFrames), FIELD_WIDTH, y);
-    y = AddCheck(context, Id::AudioAllowPeriodSnap, Lang::Str::SettingsAllowPeriodSnap,
-        settings.audio.allowPeriodSnap, y);
 
     y += GROUP_GAP;
     y = AddHeader(context, Lang::Str::SettingsHeaderReinit, y);
@@ -699,8 +723,6 @@ int BuildOtherPage(Context& context) {
     y = AddHeader(context, Lang::Str::SettingsHeaderPerformance, y);
     y = AddCombo(context, Id::ProcessPriority, Lang::Str::SettingsProcessPriority, Texts(PRIORITIES),
         IndexOf(PRIORITIES, settings.performance.processPriority), y);
-    y = AddCheck(context, Id::DisablePowerThrottling, Lang::Str::SettingsDisablePowerThrottling,
-        settings.performance.disablePowerThrottling, y);
 
     y += GROUP_GAP;
     y = AddHeader(context, Lang::Str::SettingsHeaderHotkeys, y);
@@ -777,14 +799,14 @@ void CreateTabs(Context& context) {
     context.offsetX = display.left;
     context.offsetY = context.Scale(top) + display.top - context.Scale(PAGE_TOP);
 
-    // Two pixels of air between the frame of the tabs and the first control.
-    context.offsetX += 2;
-    context.offsetY += 2;
+    // A little air between the frame of the tabs and the first control.
+    context.offsetX += PAGE_AIR;
+    context.offsetY += PAGE_AIR;
 
-    // The same two pixels on the right: a control of a page ends before the
-    // right border of the tabs.
+    // The same air on the right: a control of a page ends before the right
+    // border of the tabs.
     context.pageRight = MARGIN + ::MulDiv(
-        display.right - display.left - 4, 96, static_cast<int>(context.dpi));
+        display.right - display.left - 2 * PAGE_AIR, 96, static_cast<int>(context.dpi));
 }
 
 // The parts of the window live further down the file; the rebuild uses them.
@@ -797,8 +819,8 @@ void ResetPageOffset(Context& context) {
     context.offsetY = 0;
 }
 
-// The window is as high as its tallest page: the tabs end a little below the
-// lowest control of the pages (the menu items of the tray on "Window"), the
+// The window is as high as its tallest page and as wide as its widest row: the
+// tabs end a little below and to the right of the controls of the pages, the
 // two rows of buttons follow right under them. Everything is counted in real
 // pixels of the current DPI, so the window fits again on another monitor.
 void FitWindowToContent(Context& context, int contentBottom) {
@@ -813,23 +835,42 @@ void FitWindowToContent(Context& context, int contentBottom) {
     const int tabsWidth = tabsRect.right - tabsRect.left;
     const int tabsHeight = tabsRect.bottom - tabsRect.top;
 
-    // What the tabs draw under their display area: the bottom border.
+    // What the tabs draw around their display area: the borders.
     RECT display = { 0, 0, tabsWidth, tabsHeight };
     ::SendMessageW(context.tabs, TCM_ADJUSTRECT, FALSE, reinterpret_cast<LPARAM>(&display));
+    const int borderRight = tabsWidth - display.right;
     const int borderBelow = tabsHeight - display.bottom;
 
-    // The pages are still placed with the offset of the display area here.
+    // The pages are still placed with the offset of the display area here; the
+    // widest control gets the same air on the right as the controls have on
+    // the left.
+    const int contentRight = context.Scale(context.contentRight) + context.offsetX + PAGE_AIR;
+    int width = contentRight - tabsRect.left + borderRight;
+
+    // The labels of the tabs fit as well...
+    const int count = static_cast<int>(::SendMessageW(context.tabs, TCM_GETITEMCOUNT, 0, 0));
+    RECT lastTab = {};
+    if (count > 0 &&
+        ::SendMessageW(context.tabs, TCM_GETITEMRECT, static_cast<WPARAM>(count - 1), reinterpret_cast<LPARAM>(&lastTab)) != FALSE) {
+        width = (std::max)(width, static_cast<int>(lastTab.right) + context.Scale(4));
+    }
+
+    // ...and so do the two buttons of the first row and a part of the path.
+    width = (std::max)(width, context.Scale(2 * context.buttonWidth + 2 * BUTTON_GAP + MINIMUM_PATH_WIDTH));
+
     const int tabsBottom =
         context.Scale(contentBottom + PAGE_BOTTOM_PADDING) + context.offsetY + borderBelow;
 
     ::SetWindowPos(
-        context.tabs, nullptr, 0, 0, tabsWidth, tabsBottom - tabsRect.top,
+        context.tabs, nullptr, 0, 0, width, tabsBottom - tabsRect.top,
         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
+    const int clientWidth = tabsRect.left + width + context.Scale(MARGIN);
+
+    context.windowWidth = ::MulDiv(clientWidth, 96, static_cast<int>(context.dpi));
     context.frameTop = ::MulDiv(tabsBottom, 96, static_cast<int>(context.dpi)) + FRAME_GAP;
 
-    RECT window = {
-        0, 0, context.Scale(WINDOW_WIDTH), context.Scale(context.frameTop + FRAME_HEIGHT + MARGIN) };
+    RECT window = { 0, 0, clientWidth, context.Scale(context.frameTop + FRAME_HEIGHT + MARGIN) };
     Dpi::AdjustWindowRect(
         window, static_cast<DWORD>(::GetWindowLongPtrW(context.window, GWL_STYLE)), context.dpi);
 
@@ -842,43 +883,44 @@ void FitWindowToContent(Context& context, int contentBottom) {
 void BuildFrame(Context& context) {
     // Two rows: the file, the button that reads it again and the path of the
     // file on the first one, the buttons that end the window on the second one.
-    // In one row the path was overlapped by the buttons next to it.
+    // In one row the path was overlapped by the buttons next to it. Every
+    // button has the same size.
     const int firstRowY = context.frameTop;
     const int secondRowY = firstRowY + BUTTON_HEIGHT + BUTTON_GAP;
-
-    const int openFileWidth = BUTTON_WIDTH + 30;
+    const int buttonWidth = context.buttonWidth;
+    const int right = context.windowWidth - MARGIN;
 
     CreateControl(
         context, L"BUTTON", Lang::Wide(Lang::Str::SettingsOpenFile),
         BS_PUSHBUTTON | WS_TABSTOP, Id::OpenFile,
-        MARGIN, firstRowY, openFileWidth, BUTTON_HEIGHT);
+        MARGIN, firstRowY, buttonWidth, BUTTON_HEIGHT);
 
     // Re-reads the file without closing the window: a value edited in a text
     // editor gets in, and "Save" is still what writes and applies it.
     CreateControl(
         context, L"BUTTON", Lang::Wide(Lang::Str::SettingsReload),
         BS_PUSHBUTTON | WS_TABSTOP, Id::Reload,
-        MARGIN + openFileWidth + BUTTON_GAP, firstRowY, BUTTON_WIDTH, BUTTON_HEIGHT);
+        MARGIN + buttonWidth + BUTTON_GAP, firstRowY, buttonWidth, BUTTON_HEIGHT);
 
     // The path starts right after "Reload" and takes the rest of the row.
-    const int pathX = MARGIN + openFileWidth + 2 * BUTTON_GAP + BUTTON_WIDTH;
+    const int pathX = MARGIN + 2 * (buttonWidth + BUTTON_GAP);
 
     // A long path loses its middle, not its end: the name of the file stays
     // visible.
     CreateControl(
         context, L"STATIC", context.settingsPath, SS_LEFT | SS_CENTERIMAGE | SS_PATHELLIPSIS,
-        Id::SettingsPath, pathX, firstRowY, WINDOW_WIDTH - MARGIN - pathX, BUTTON_HEIGHT);
+        Id::SettingsPath, pathX, firstRowY, (std::max)(0, right - pathX), BUTTON_HEIGHT);
 
     // Created from left to right, so that Tab walks the row in reading order.
     CreateControl(
         context, L"BUTTON", Lang::Wide(Lang::Str::SettingsCancel),
         BS_PUSHBUTTON | WS_TABSTOP, Id::Cancel,
-        WINDOW_WIDTH - MARGIN - 2 * BUTTON_WIDTH - BUTTON_GAP, secondRowY, BUTTON_WIDTH, BUTTON_HEIGHT);
+        right - 2 * buttonWidth - BUTTON_GAP, secondRowY, buttonWidth, BUTTON_HEIGHT);
 
     CreateControl(
         context, L"BUTTON", Lang::Wide(Lang::Str::SettingsSave),
         BS_DEFPUSHBUTTON | WS_TABSTOP, Id::Save,
-        WINDOW_WIDTH - MARGIN - BUTTON_WIDTH, secondRowY, BUTTON_WIDTH, BUTTON_HEIGHT);
+        right - buttonWidth, secondRowY, buttonWidth, BUTTON_HEIGHT);
 }
 
 // Every control of the window for the current DPI. The order of creation is
@@ -886,6 +928,11 @@ void BuildFrame(Context& context) {
 // last. The frame is built after the pages because it is placed under the
 // tabs, whose height follows the tallest page.
 void BuildContent(Context& context) {
+    // The sizes that follow the texts of the current language and font.
+    context.labelWidth = LabelColumnWidth(context);
+    context.buttonWidth = StandardButtonWidth(context.font, context.dpi);
+    context.contentRight = 0;
+
     CreateTabs(context);
 
     const int windowBottom = BuildWindowPage(context);
@@ -1046,26 +1093,19 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     updated.application.startMinimizedToTray = IsChecked(context, Id::StartMinimizedToTray);
     updated.application.minimizeToTray = IsChecked(context, Id::MinimizeToTray);
     updated.application.closeButtonAction = ValueAt(CLOSE_ACTIONS, SelectedIndex(context, Id::CloseButtonAction));
-    updated.application.singleInstance = IsChecked(context, Id::SingleInstance);
 
     updated.tray.enabled = IsChecked(context, Id::TrayEnabled);
     updated.tray.notifications.onError = IsChecked(context, Id::NotificationError);
     updated.tray.notifications.onDeviceChange = IsChecked(context, Id::NotificationDeviceChange);
     updated.tray.notifications.onStateChange = IsChecked(context, Id::NotificationStateChange);
 
-    updated.tray.menu.showStatus = IsChecked(context, Id::TrayMenuStatus);
     updated.tray.menu.toggleEnabled = IsChecked(context, Id::TrayMenuToggle);
     updated.tray.menu.reinitialize = IsChecked(context, Id::TrayMenuReinit);
     updated.tray.menu.openLog = IsChecked(context, Id::TrayMenuLog);
     updated.tray.menu.diagnostics = IsChecked(context, Id::TrayMenuDiagnostics);
-    updated.tray.menu.startWithWindows = IsChecked(context, Id::TrayMenuStartWithWindows);
-    updated.tray.menu.about = IsChecked(context, Id::TrayMenuAbout);
-    updated.tray.menu.exit = IsChecked(context, Id::TrayMenuExit);
 
-    updated.audio.enabledOnStartup = IsChecked(context, Id::AudioEnabledOnStartup);
     updated.audio.dataFlow = ValueAt(DATA_FLOWS, SelectedIndex(context, Id::AudioDataFlow));
     updated.audio.periodSelection = ValueAt(PERIODS, SelectedIndex(context, Id::AudioPeriodSelection));
-    updated.audio.allowPeriodSnap = IsChecked(context, Id::AudioAllowPeriodSnap);
 
     bool valid = true;
 
@@ -1099,7 +1139,6 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     }
 
     updated.performance.processPriority = ValueAt(PRIORITIES, SelectedIndex(context, Id::ProcessPriority));
-    updated.performance.disablePowerThrottling = IsChecked(context, Id::DisablePowerThrottling);
 
     updated.hotkeys.enabled = IsChecked(context, Id::HotkeysEnabled);
     updated.hotkeys.toggleEnabled = Text::ToUtf8(
@@ -1141,27 +1180,20 @@ void ApplyToControls(Context& context, const Config::Settings& settings) {
     SetChecked(context, Id::StartMinimizedToTray, settings.application.startMinimizedToTray);
     SetChecked(context, Id::MinimizeToTray, settings.application.minimizeToTray);
     SetSelected(context, Id::CloseButtonAction, IndexOf(CLOSE_ACTIONS, settings.application.closeButtonAction));
-    SetChecked(context, Id::SingleInstance, settings.application.singleInstance);
 
     SetChecked(context, Id::TrayEnabled, settings.tray.enabled);
     SetChecked(context, Id::NotificationError, settings.tray.notifications.onError);
     SetChecked(context, Id::NotificationDeviceChange, settings.tray.notifications.onDeviceChange);
     SetChecked(context, Id::NotificationStateChange, settings.tray.notifications.onStateChange);
 
-    SetChecked(context, Id::TrayMenuStatus, settings.tray.menu.showStatus);
     SetChecked(context, Id::TrayMenuToggle, settings.tray.menu.toggleEnabled);
     SetChecked(context, Id::TrayMenuReinit, settings.tray.menu.reinitialize);
     SetChecked(context, Id::TrayMenuLog, settings.tray.menu.openLog);
     SetChecked(context, Id::TrayMenuDiagnostics, settings.tray.menu.diagnostics);
-    SetChecked(context, Id::TrayMenuStartWithWindows, settings.tray.menu.startWithWindows);
-    SetChecked(context, Id::TrayMenuAbout, settings.tray.menu.about);
-    SetChecked(context, Id::TrayMenuExit, settings.tray.menu.exit);
 
-    SetChecked(context, Id::AudioEnabledOnStartup, settings.audio.enabledOnStartup);
     SetSelected(context, Id::AudioDataFlow, IndexOf(DATA_FLOWS, settings.audio.dataFlow));
     SetSelected(context, Id::AudioPeriodSelection, IndexOf(PERIODS, settings.audio.periodSelection));
     SetText(context, Id::AudioRequestedPeriodFrames, std::to_wstring(settings.audio.requestedPeriodFrames));
-    SetChecked(context, Id::AudioAllowPeriodSnap, settings.audio.allowPeriodSnap);
 
     SetChecked(context, Id::ReinitDefaultDevice, settings.audio.reinit.defaultDeviceChanged);
     SetChecked(context, Id::ReinitDeviceState, settings.audio.reinit.deviceStateChanged);
@@ -1174,7 +1206,6 @@ void ApplyToControls(Context& context, const Config::Settings& settings) {
     SetText(context, Id::ReinitDebounce, std::to_wstring(settings.audio.reinit.debounceMs));
 
     SetSelected(context, Id::ProcessPriority, IndexOf(PRIORITIES, settings.performance.processPriority));
-    SetChecked(context, Id::DisablePowerThrottling, settings.performance.disablePowerThrottling);
 
     SetChecked(context, Id::HotkeysEnabled, settings.hotkeys.enabled);
     SetText(context, Id::HotkeyToggle, Text::ToWide(settings.hotkeys.toggleEnabled));
@@ -1193,10 +1224,10 @@ void ApplyToControls(Context& context, const Config::Settings& settings) {
 void UpdateEnabledStates(Context& context) {
     const bool tray = IsChecked(context, Id::TrayEnabled);
 
+    // The items of the tray menu and the balloons exist only with the icon.
     const Id trayDependent[] = {
+        Id::TrayMenuToggle, Id::TrayMenuReinit, Id::TrayMenuLog, Id::TrayMenuDiagnostics,
         Id::NotificationError, Id::NotificationDeviceChange, Id::NotificationStateChange,
-        Id::TrayMenuStatus, Id::TrayMenuToggle, Id::TrayMenuReinit, Id::TrayMenuLog,
-        Id::TrayMenuDiagnostics, Id::TrayMenuStartWithWindows, Id::TrayMenuAbout, Id::TrayMenuExit,
     };
 
     for (const Id id : trayDependent) {
@@ -1494,8 +1525,14 @@ bool miniant::Windows::ShowSettingsWindow(
 
     PlaceNearOwner(owner, width, height, x, y);
 
+    // Opened from the tray while the main window is hidden, the window gets a
+    // button on the taskbar of its own: an owned window has none, and behind
+    // other windows it could not be found again.
+    const bool ownerVisible = owner != nullptr && ::IsWindowVisible(owner) != FALSE && ::IsIconic(owner) == FALSE;
+    const DWORD extendedStyle = WS_EX_CONTROLPARENT | (ownerVisible ? 0 : WS_EX_APPWINDOW);
+
     const HWND window = ::CreateWindowExW(
-        WS_EX_CONTROLPARENT,
+        extendedStyle,
         SETTINGS_CLASS_NAME,
         Lang::Wide(Lang::Str::SettingsWindowTitle).c_str(),
         style,
@@ -1542,7 +1579,11 @@ bool miniant::Windows::ShowSettingsWindow(
     UpdateEnabledStates(context);
 
     // Modal for the main window: it takes no commands while the settings are
-    // being edited, but the tray icon and the audio stream keep working.
+    // being edited, but the tray icon and the audio stream keep working. The
+    // state of the owner is given back as it was: another modal window of the
+    // program may have disabled it before.
+    const bool ownerWasEnabled = owner != nullptr && ::IsWindowEnabled(owner) != FALSE;
+
     if (owner != nullptr) {
         ::EnableWindow(owner, FALSE);
     }
@@ -1587,8 +1628,11 @@ bool miniant::Windows::ShowSettingsWindow(
     }
 
     if (owner != nullptr) {
-        ::EnableWindow(owner, TRUE);
-        ::SetForegroundWindow(owner);
+        ::EnableWindow(owner, ownerWasEnabled ? TRUE : FALSE);
+
+        if (ownerWasEnabled && ::IsWindowVisible(owner) != FALSE) {
+            ::SetForegroundWindow(owner);
+        }
     }
 
     if (context.window != nullptr && ::IsWindow(context.window) != FALSE) {
@@ -1606,4 +1650,24 @@ bool miniant::Windows::ShowSettingsWindow(
     ::UnregisterClassW(SETTINGS_CLASS_NAME, instance);
 
     return context.saved;
+}
+
+void miniant::Windows::ActivateSettingsWindow() {
+    HWND window = nullptr;
+
+    // The class name is the same in every copy of the program: only a window of
+    // this process counts.
+    while ((window = ::FindWindowExW(nullptr, window, SETTINGS_CLASS_NAME, nullptr)) != nullptr) {
+        DWORD process = 0;
+        ::GetWindowThreadProcessId(window, &process);
+
+        if (process == ::GetCurrentProcessId()) {
+            if (::IsIconic(window) != FALSE) {
+                ::ShowWindow(window, SW_RESTORE);
+            }
+
+            ::SetForegroundWindow(window);
+            return;
+        }
+    }
 }

@@ -162,8 +162,7 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
     EDataFlow dataFlow,
     ERole role,
     PeriodSelection selection,
-    uint32_t requestedPeriodFrames,
-    bool allowPeriodSnap) {
+    uint32_t requestedPeriodFrames) {
     ComPtr<IAudioClient3> audioClient;
     HRESULT hr = device.Activate(
         __uuidof(IAudioClient3),
@@ -231,15 +230,21 @@ tl::expected<MinimumLatencyAudioClient, WindowsError> MinimumLatencyAudioClient:
     }
 
     hr = audioClient->InitializeSharedAudioStream(0, period, format, nullptr);
-    if (hr == AUDCLNT_E_ENGINE_PERIODICITY_LOCKED && allowPeriodSnap) {
+
+    // Another program has already fixed the period of the engine (a game or a
+    // studio program that asks for a small buffer itself): nobody can change
+    // it while that program runs. The stream takes the period that is in
+    // effect, so the small buffer stays even after that program is closed.
+    if (hr == AUDCLNT_E_ENGINE_PERIODICITY_LOCKED) {
         WAVEFORMATEX* currentFormat = nullptr;
         uint32_t currentPeriod = 0;
 
-        if (SUCCEEDED(audioClient->GetCurrentSharedModeEnginePeriod(&currentFormat, &currentPeriod)) && currentPeriod > 0) {
-            if (currentFormat != nullptr) {
-                ::CoTaskMemFree(currentFormat);
-            }
+        const HRESULT current = audioClient->GetCurrentSharedModeEnginePeriod(&currentFormat, &currentPeriod);
+        if (currentFormat != nullptr) {
+            ::CoTaskMemFree(currentFormat);
+        }
 
+        if (SUCCEEDED(current) && currentPeriod > 0) {
             info.requestedPeriod = currentPeriod;
             info.acceptedLockedPeriod = true;
 

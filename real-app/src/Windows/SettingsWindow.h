@@ -19,4 +19,8 @@ bool ShowSettingsWindow(
     Config::Settings& settings,
     const std::wstring& settingsPath);
 
+// Brings the settings window of this program to the front when it is open
+// (the tray menu can ask for it while the window is hidden behind others).
+void ActivateSettingsWindow();
+
 }

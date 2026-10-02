@@ -83,6 +83,7 @@ private:
 
     HMENU m_menu = nullptr;
     HMENU m_fileMenu = nullptr;
+    HMENU m_optionsMenu = nullptr;
     HMENU m_diagnosticsMenu = nullptr;
     bool m_latencyEnabled = true;
     bool m_startWithWindows = false;

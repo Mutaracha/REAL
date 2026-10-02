@@ -77,8 +77,7 @@ public:
         EDataFlow dataFlow,
         ERole role,
         PeriodSelection selection,
-        uint32_t requestedPeriodFrames,
-        bool allowPeriodSnap);
+        uint32_t requestedPeriodFrames);
 
 private:
     IAudioClient3* m_audioClient = nullptr;

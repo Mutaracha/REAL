@@ -13,19 +13,16 @@
 
 namespace miniant::Windows {
 
+// The state of the tray menu. The status line, "Settings" and "Exit" are
+// always in the menu; the other items can be hidden in the settings.
 struct TrayMenuState {
     bool enabled = true;
-    bool showStatus = true;
     std::wstring statusText;
 
     bool toggleEnabled = true;
     bool reinitialize = true;
     bool openLog = true;
     bool diagnostics = true;
-    bool startWithWindows = true;
-    bool startWithWindowsChecked = false;
-    bool about = true;
-    bool exit = true;
 };
 
 // System tray icon with a context menu, tooltip and balloon notifications.

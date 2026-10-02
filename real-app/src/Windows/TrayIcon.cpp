@@ -16,9 +16,8 @@ enum MenuId : UINT {
     MENU_ID_REINITIALIZE = 1002,
     MENU_ID_LOG = 1003,
     MENU_ID_DIAGNOSTICS = 1004,
-    MENU_ID_START_WITH_WINDOWS = 1005,
-    MENU_ID_ABOUT = 1006,
-    MENU_ID_EXIT = 1007,
+    MENU_ID_SETTINGS = 1005,
+    MENU_ID_EXIT = 1006,
 };
 
 constexpr size_t TOOLTIP_MAX_LENGTH = 120;
@@ -231,31 +230,26 @@ void TrayIcon::ShowContextMenu(const POINT& anchor) {
         return;
     }
 
-    // The menu is built group by group, and every group is preceded by a
-    // divider: the divider is skipped by AppendSeparator() when there is nothing
-    // above it or when the line above is a divider already, so a group that is
-    // switched off in the options leaves no empty line behind.
+    // The menu is built group by group: the state of the program, the files,
+    // the settings and the exit. A divider is put in front of a group by
+    // AppendSeparator(), which skips it when the line above is a divider
+    // already, so a group whose items are all hidden leaves no empty line.
 
-    // The state of the mode and the activation, with the status above them.
-    if (m_state.showStatus) {
-        ::AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, Truncate(m_state.statusText, 90).c_str());
+    // The status, the switch of the mode and the restart: the status line is
+    // always there, so the first group is never empty.
+    const std::wstring status = m_state.statusText.empty() ? Wide(Str::StatusStarting) : m_state.statusText;
+    ::AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, Truncate(status, 90).c_str());
+
+    if (m_state.toggleEnabled) {
+        ::AppendMenuW(menu, MF_STRING | (m_state.enabled ? MF_CHECKED : 0), MENU_ID_TOGGLE, Wide(Str::TrayToggleEnabled).c_str());
     }
 
-    if (m_state.toggleEnabled || m_state.reinitialize) {
-        AppendSeparator(menu);
-
-        if (m_state.toggleEnabled) {
-            ::AppendMenuW(menu, MF_STRING | (m_state.enabled ? MF_CHECKED : 0), MENU_ID_TOGGLE, Wide(Str::TrayToggleEnabled).c_str());
-        }
-
-        if (m_state.reinitialize) {
-            ::AppendMenuW(menu, MF_STRING, MENU_ID_REINITIALIZE, Wide(Str::TrayReinitialize).c_str());
-        }
+    if (m_state.reinitialize) {
+        ::AppendMenuW(menu, MF_STRING, MENU_ID_REINITIALIZE, Wide(Str::TrayReinitialize).c_str());
     }
 
-    // The files and the autostart: every item of the group can be switched off
-    // in the options, and the divider goes away with the last of them.
-    if (m_state.openLog || m_state.diagnostics || m_state.startWithWindows) {
+    // The files: the journal and the report of the diagnostics.
+    if (m_state.openLog || m_state.diagnostics) {
         AppendSeparator(menu);
 
         if (m_state.openLog) {
@@ -265,29 +259,15 @@ void TrayIcon::ShowContextMenu(const POINT& anchor) {
         if (m_state.diagnostics) {
             ::AppendMenuW(menu, MF_STRING, MENU_ID_DIAGNOSTICS, Wide(Str::TrayDiagnostics).c_str());
         }
-
-        if (m_state.startWithWindows) {
-            ::AppendMenuW(
-                menu,
-                MF_STRING | (m_state.startWithWindowsChecked ? MF_CHECKED : 0),
-                MENU_ID_START_WITH_WINDOWS,
-                Wide(Str::TrayStartWithWindows).c_str());
-        }
     }
 
-    // The program itself: "About" and "Exit" stay together, one divider for
-    // both of them.
-    if (m_state.about || m_state.exit) {
-        AppendSeparator(menu);
+    // The settings and the exit are always there: without them the menu would
+    // leave no way to the settings or out of the program.
+    AppendSeparator(menu);
+    ::AppendMenuW(menu, MF_STRING, MENU_ID_SETTINGS, Wide(Str::TraySettings).c_str());
 
-        if (m_state.about) {
-            ::AppendMenuW(menu, MF_STRING, MENU_ID_ABOUT, Wide(Str::TrayAbout).c_str());
-        }
-
-        if (m_state.exit) {
-            ::AppendMenuW(menu, MF_STRING, MENU_ID_EXIT, Wide(Str::TrayExit).c_str());
-        }
-    }
+    AppendSeparator(menu);
+    ::AppendMenuW(menu, MF_STRING, MENU_ID_EXIT, Wide(Str::TrayExit).c_str());
 
     ::SetForegroundWindow(m_owner);
 
@@ -320,11 +300,8 @@ void TrayIcon::ShowContextMenu(const POINT& anchor) {
         case MENU_ID_DIAGNOSTICS:
             m_handler(miniant::Command::Diagnose);
             break;
-        case MENU_ID_START_WITH_WINDOWS:
-            m_handler(miniant::Command::ToggleStartWithWindows);
-            break;
-        case MENU_ID_ABOUT:
-            m_handler(miniant::Command::About);
+        case MENU_ID_SETTINGS:
+            m_handler(miniant::Command::OpenSettings);
             break;
         case MENU_ID_EXIT:
             m_handler(miniant::Command::Exit);

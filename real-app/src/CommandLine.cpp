@@ -95,11 +95,6 @@ Options miniant::CommandLine::Parse() {
             continue;
         }
 
-        if (argumentUtf8 == "--multi-instance") {
-            options.singleInstance = false;
-            continue;
-        }
-
         if (argumentUtf8 == "--config") {
             if (i + 1 < arguments.size()) {
                 options.configPath = arguments[++i];

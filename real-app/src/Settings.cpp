@@ -275,10 +275,9 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
         ReadBool(*section, "startMinimizedToTray", settings.application.startMinimizedToTray, result.warnings, "application");
         ReadBool(*section, "minimizeToTray", settings.application.minimizeToTray, result.warnings, "application");
         ReadEnum(*section, "closeButtonAction", CLOSE_ACTION_MAP, settings.application.closeButtonAction, result.warnings, "application");
-        ReadBool(*section, "singleInstance", settings.application.singleInstance, result.warnings, "application");
         ReadBool(*section, "startWithWindows", settings.application.startWithWindows, result.warnings, "application");
         WarnUnknownKeys(*section, "application",
-            { "language", "startMinimizedToTray", "minimizeToTray", "closeButtonAction", "singleInstance", "startWithWindows" },
+            { "language", "startMinimizedToTray", "minimizeToTray", "closeButtonAction", "startWithWindows" },
             result.warnings);
     }
 
@@ -293,16 +292,12 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
         }
 
         if (const json* menu = FindSection(*section, "menu")) {
-            ReadBool(*menu, "showStatus", settings.tray.menu.showStatus, result.warnings, "tray.menu");
             ReadBool(*menu, "toggleEnabled", settings.tray.menu.toggleEnabled, result.warnings, "tray.menu");
             ReadBool(*menu, "reinitialize", settings.tray.menu.reinitialize, result.warnings, "tray.menu");
             ReadBool(*menu, "openLog", settings.tray.menu.openLog, result.warnings, "tray.menu");
             ReadBool(*menu, "diagnostics", settings.tray.menu.diagnostics, result.warnings, "tray.menu");
-            ReadBool(*menu, "startWithWindows", settings.tray.menu.startWithWindows, result.warnings, "tray.menu");
-            ReadBool(*menu, "about", settings.tray.menu.about, result.warnings, "tray.menu");
-            ReadBool(*menu, "exit", settings.tray.menu.exit, result.warnings, "tray.menu");
             WarnUnknownKeys(*menu, "tray.menu",
-                { "showStatus", "toggleEnabled", "reinitialize", "openLog", "diagnostics", "startWithWindows", "about", "exit" },
+                { "toggleEnabled", "reinitialize", "openLog", "diagnostics" },
                 result.warnings);
         }
 
@@ -310,11 +305,9 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
     }
 
     if (const json* section = FindSection(root, "audio")) {
-        ReadBool(*section, "enabledOnStartup", settings.audio.enabledOnStartup, result.warnings, "audio");
         ReadEnum(*section, "dataFlow", DATA_FLOW_MAP, settings.audio.dataFlow, result.warnings, "audio");
         ReadEnum(*section, "periodSelection", PERIOD_SELECTION_MAP, settings.audio.periodSelection, result.warnings, "audio");
         ReadUnsigned(*section, "requestedPeriodFrames", settings.audio.requestedPeriodFrames, 0xFFFFFFFFu, result.warnings, "audio");
-        ReadBool(*section, "allowPeriodSnap", settings.audio.allowPeriodSnap, result.warnings, "audio");
 
         if (const json* reinit = FindSection(*section, "reinit")) {
             ReadBool(*reinit, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged, result.warnings, "audio.reinit");
@@ -332,14 +325,13 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
         }
 
         WarnUnknownKeys(*section, "audio",
-            { "enabledOnStartup", "dataFlow", "periodSelection", "requestedPeriodFrames", "allowPeriodSnap", "reinit" },
+            { "dataFlow", "periodSelection", "requestedPeriodFrames", "reinit" },
             result.warnings);
     }
 
     if (const json* section = FindSection(root, "performance")) {
         ReadEnum(*section, "processPriority", PROCESS_PRIORITY_MAP, settings.performance.processPriority, result.warnings, "performance");
-        ReadBool(*section, "disablePowerThrottling", settings.performance.disablePowerThrottling, result.warnings, "performance");
-        WarnUnknownKeys(*section, "performance", { "processPriority", "disablePowerThrottling" }, result.warnings);
+        WarnUnknownKeys(*section, "performance", { "processPriority" }, result.warnings);
     }
 
     if (const json* section = FindSection(root, "updates")) {
@@ -459,7 +451,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     application["startMinimizedToTray"] = settings.application.startMinimizedToTray;
     application["minimizeToTray"] = settings.application.minimizeToTray;
     application["closeButtonAction"] = ToString(settings.application.closeButtonAction);
-    application["singleInstance"] = settings.application.singleInstance;
     application["startWithWindows"] = settings.application.startWithWindows;
 
     json& notifications = root["tray"]["notifications"];
@@ -468,24 +459,18 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     notifications["onStateChange"] = settings.tray.notifications.onStateChange;
 
     json& menu = root["tray"]["menu"];
-    menu["showStatus"] = settings.tray.menu.showStatus;
     menu["toggleEnabled"] = settings.tray.menu.toggleEnabled;
     menu["reinitialize"] = settings.tray.menu.reinitialize;
     menu["openLog"] = settings.tray.menu.openLog;
     menu["diagnostics"] = settings.tray.menu.diagnostics;
-    menu["startWithWindows"] = settings.tray.menu.startWithWindows;
-    menu["about"] = settings.tray.menu.about;
-    menu["exit"] = settings.tray.menu.exit;
 
     json& tray = root["tray"];
     tray["enabled"] = settings.tray.enabled;
 
     json& audio = root["audio"];
-    audio["enabledOnStartup"] = settings.audio.enabledOnStartup;
     audio["dataFlow"] = ToString(settings.audio.dataFlow);
     audio["periodSelection"] = ToString(settings.audio.periodSelection);
     audio["requestedPeriodFrames"] = settings.audio.requestedPeriodFrames;
-    audio["allowPeriodSnap"] = settings.audio.allowPeriodSnap;
 
     json& reinit = root["audio"]["reinit"];
     reinit["defaultDeviceChanged"] = settings.audio.reinit.defaultDeviceChanged;
@@ -500,7 +485,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
 
     json& performance = root["performance"];
     performance["processPriority"] = ToString(settings.performance.processPriority);
-    performance["disablePowerThrottling"] = settings.performance.disablePowerThrottling;
 
     json& updates = root["updates"];
     updates["checkOnStartup"] = settings.updates.checkOnStartup;
@@ -536,7 +520,6 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.Key(4, "startMinimizedToTray", settings.application.startMinimizedToTray, text(Str::CfgStartMinimizedToTray), true);
     document.Key(4, "minimizeToTray", settings.application.minimizeToTray, text(Str::CfgMinimizeToTray), true);
     document.Key(4, "closeButtonAction", ToString(settings.application.closeButtonAction), text(Str::CfgCloseButtonAction), true);
-    document.Key(4, "singleInstance", settings.application.singleInstance, text(Str::CfgSingleInstance), true);
     document.Key(4, "startWithWindows", settings.application.startWithWindows, text(Str::CfgStartWithWindows), false);
     document.SectionClose(2, true);
     document.Blank();
@@ -549,24 +532,18 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.Key(6, "onStateChange", settings.tray.notifications.onStateChange, text(Str::CfgNotifyOnStateChange), false);
     document.SectionClose(4, true);
     document.SectionOpen(4, "menu", text(Str::CfgMenuSection));
-    document.Key(6, "showStatus", settings.tray.menu.showStatus, text(Str::CfgMenuShowStatus), true);
     document.Key(6, "toggleEnabled", settings.tray.menu.toggleEnabled, text(Str::CfgMenuToggle), true);
     document.Key(6, "reinitialize", settings.tray.menu.reinitialize, text(Str::CfgMenuReinitialize), true);
     document.Key(6, "openLog", settings.tray.menu.openLog, text(Str::CfgMenuLog), true);
-    document.Key(6, "diagnostics", settings.tray.menu.diagnostics, text(Str::CfgMenuDiagnostics), true);
-    document.Key(6, "startWithWindows", settings.tray.menu.startWithWindows, text(Str::CfgMenuStartWithWindows), true);
-    document.Key(6, "about", settings.tray.menu.about, text(Str::CfgMenuAbout), true);
-    document.Key(6, "exit", settings.tray.menu.exit, text(Str::CfgMenuExit), false);
+    document.Key(6, "diagnostics", settings.tray.menu.diagnostics, text(Str::CfgMenuDiagnostics), false);
     document.SectionClose(4, false);
     document.SectionClose(2, true);
     document.Blank();
 
     document.SectionOpen(2, "audio", text(Str::CfgAudioSection));
-    document.Key(4, "enabledOnStartup", settings.audio.enabledOnStartup, text(Str::CfgEnabledOnStartup), true);
     document.Key(4, "dataFlow", ToString(settings.audio.dataFlow), text(Str::CfgDataFlow), true);
     document.Key(4, "periodSelection", ToString(settings.audio.periodSelection), text(Str::CfgPeriodSelection), true);
     document.Key(4, "requestedPeriodFrames", settings.audio.requestedPeriodFrames, text(Str::CfgRequestedPeriodFrames), true);
-    document.Key(4, "allowPeriodSnap", settings.audio.allowPeriodSnap, text(Str::CfgAllowPeriodSnap), true);
     document.SectionOpen(4, "reinit", text(Str::CfgReinitSection));
     document.Key(6, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged, text(Str::CfgReinitDeviceChanged), true);
     document.Key(6, "deviceStateChanged", settings.audio.reinit.deviceStateChanged, text(Str::CfgReinitDeviceState), true);
@@ -582,8 +559,7 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.Blank();
 
     document.SectionOpen(2, "performance", text(Str::CfgPerformanceSection));
-    document.Key(4, "processPriority", ToString(settings.performance.processPriority), text(Str::CfgProcessPriority), true);
-    document.Key(4, "disablePowerThrottling", settings.performance.disablePowerThrottling, text(Str::CfgDisablePowerThrottling), false);
+    document.Key(4, "processPriority", ToString(settings.performance.processPriority), text(Str::CfgProcessPriority), false);
     document.SectionClose(2, true);
     document.Blank();
 

@@ -38,6 +38,10 @@ public:
 
     bool IsActive() const;
 
+    // The last Apply() found no default device at all (none is connected or
+    // the audio service has not listed them yet).
+    bool HasNoDefaultDevice() const;
+
     const std::vector<Windows::WasapiLatency::AudioStreamInfo>& GetStreams() const;
 
     // Short status line, e.g. "2.67 ms - Speakers (Realtek Audio)".
@@ -59,6 +63,7 @@ private:
     std::vector<Windows::WasapiLatency::MinimumLatencyAudioClient> m_streams;
     std::vector<Windows::WasapiLatency::AudioStreamInfo> m_streamsInfo;
     bool m_notificationsRegistered = false;
+    bool m_noDefaultDevice = false;
 };
 
 }

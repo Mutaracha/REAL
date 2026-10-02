@@ -11,6 +11,7 @@
 
 #include <shellapi.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -21,8 +22,9 @@ namespace {
 
 const wchar_t ABOUT_CLASS_NAME[] = L"REAL.AboutWindow";
 
-// The width follows the two lines of the sentence about the program: a wider
-// window would only add empty space on the right.
+// The window is created with this width; the content decides the real one:
+// the widest line (usually a line of the sentence about the program) with the
+// same margin on the left and on the right (see ContentWidth).
 const int WINDOW_WIDTH = 440;
 const int WINDOW_HEIGHT = 264;
 
@@ -32,6 +34,11 @@ const int LINE_HEIGHT = 20;
 const int ROW_HEIGHT = 24;
 const int LABEL_WIDTH = 130;
 const int NAME_HEIGHT = 30;
+// The space between the icon and the name next to it.
+const int ICON_GAP = 14;
+// A measured line gets these design pixels of reserve: the rounding between
+// real and design pixels must never push its last word to the next line.
+const int TEXT_SLACK = 2;
 
 const int NAME_ID = 2001;
 const int DESCRIPTION_ID = 2002;
@@ -86,6 +93,9 @@ struct Context {
     std::vector<HWND> controls;
     std::wstring settingsPath;
     bool done = false;
+
+    // The width of the client area in design pixels (see ContentWidth).
+    int width = WINDOW_WIDTH;
 };
 
 bool IsLinkId(int id) {
@@ -138,15 +148,74 @@ void ReloadIcon(Context& context) {
         context.Scale(ICON_SIZE), context.Scale(ICON_SIZE), LR_DEFAULTCOLOR));
 }
 
+// The width of a text in design pixels, rounded up: the real width of the
+// control is never smaller than the text.
+int DesignWidth(const Context& context, HFONT font, const std::wstring& text) {
+    const int measured = MeasureTextWidth(font, text);
+    const int dpi = static_cast<int>(context.dpi);
+
+    return measured > 0 && dpi > 0 ? (measured * 96 + dpi - 1) / dpi : 0;
+}
+
+// The widest line of the window between its margins: the lines of the sentence
+// about the program, the name, the description and the version next to the
+// icon, the links after their labels. The path of the settings file does not
+// count: a long one loses its middle instead of widening the window.
+int ContentWidth(const Context& context) {
+    int widest = 0;
+
+    // The break of the sentence is a part of the text itself.
+    const std::wstring sentence = Lang::Wide(Lang::Str::AboutText);
+    size_t start = 0;
+
+    while (start <= sentence.size()) {
+        const size_t end = sentence.find(L'\n', start);
+        const std::wstring line = sentence.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start);
+        widest = (std::max)(widest, DesignWidth(context, context.font, line));
+
+        if (end == std::wstring::npos) {
+            break;
+        }
+
+        start = end + 1;
+    }
+
+    const int textLeft = ICON_SIZE + ICON_GAP;
+    widest = (std::max)(widest, textLeft + DesignWidth(context, context.nameFont, AppInfo::NAME));
+    widest = (std::max)(widest, textLeft + DesignWidth(context, context.font, AppInfo::DESCRIPTION));
+    widest = (std::max)(
+        widest, textLeft + DesignWidth(context, context.font, Text::ToWide(AppInfo::DisplayVersion())));
+
+    for (int i = 0; i < LINK_COUNT; ++i) {
+        widest = (std::max)(widest, LABEL_WIDTH + DesignWidth(context, context.linkFont, LinkText(i)));
+    }
+
+    return widest + TEXT_SLACK;
+}
+
 // The fonts and the controls of the window: built once and built again when the
-// DPI changes (the design coordinates stay the same).
+// DPI changes (the design coordinates stay the same). The window takes the
+// width of its content.
 void BuildContent(Context& context, const std::wstring& settingsPath) {
     context.font = Dpi::CreateUiFont(context.dpi);
     context.nameFont = Dpi::CreateNameFont(context.dpi);
     context.linkFont = Dpi::CreateLinkFont(context.dpi);
 
-    const int textLeft = MARGIN + ICON_SIZE + 14;
-    const int textWidth = WINDOW_WIDTH - textLeft - MARGIN;
+    const int contentWidth = ContentWidth(context);
+    context.width = contentWidth + 2 * MARGIN;
+
+    if (context.window != nullptr) {
+        RECT window = { 0, 0, context.Scale(context.width), context.Scale(WINDOW_HEIGHT) };
+        Dpi::AdjustWindowRect(
+            window, static_cast<DWORD>(::GetWindowLongPtrW(context.window, GWL_STYLE)), context.dpi);
+
+        ::SetWindowPos(
+            context.window, nullptr, 0, 0, window.right - window.left, window.bottom - window.top,
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    const int textLeft = MARGIN + ICON_SIZE + ICON_GAP;
+    const int textWidth = context.width - textLeft - MARGIN;
 
     // The name of the program, large and bold, next to its icon.
     CreateControl(context, L"STATIC", AppInfo::NAME, SS_LEFT | SS_CENTERIMAGE,
@@ -162,7 +231,7 @@ void BuildContent(Context& context, const std::wstring& settingsPath) {
     // The sentence about the program, in the language of the interface: two
     // lines, the break is a part of the text itself.
     CreateControl(context, L"STATIC", Lang::Wide(Lang::Str::AboutText),
-        SS_LEFT, 0, MARGIN, y, WINDOW_WIDTH - 2 * MARGIN, 2 * LINE_HEIGHT, context.font);
+        SS_LEFT, 0, MARGIN, y, contentWidth, 2 * LINE_HEIGHT, context.font);
 
     y += 2 * LINE_HEIGHT + 8;
 
@@ -190,10 +259,10 @@ void BuildContent(Context& context, const std::wstring& settingsPath) {
     CreateControl(context, L"STATIC", Lang::Wide(Lang::Str::AboutSettings), SS_LEFT | SS_CENTERIMAGE,
         SETTINGS_LABEL_ID, MARGIN, y, LABEL_WIDTH, ROW_HEIGHT, context.font);
     // A long path loses its middle, not its end: the name of the file stays
-    // visible, the same way as in the Options window.
+    // visible, the same way as in the settings window.
     CreateControl(context, L"STATIC", settingsPath, SS_LEFT | SS_CENTERIMAGE | SS_PATHELLIPSIS,
         SETTINGS_PATH_ID, MARGIN + LABEL_WIDTH, y,
-        WINDOW_WIDTH - 2 * MARGIN - LABEL_WIDTH, ROW_HEIGHT, context.font);
+        contentWidth - LABEL_WIDTH, ROW_HEIGHT, context.font);
 }
 
 void DestroyContent(Context& context) {
@@ -408,6 +477,21 @@ void miniant::Windows::ShowAboutWindow(HWND owner, HINSTANCE instance, const std
 
     BuildContent(context, settingsPath);
 
+    // The window has got the width of its content: it is placed near the main
+    // window again for that size.
+    RECT fitted = {};
+    if (::GetWindowRect(window, &fitted) != FALSE) {
+        PlaceNearOwner(owner, fitted.right - fitted.left, fitted.bottom - fitted.top, windowX, windowY);
+
+        if (windowX != CW_USEDEFAULT && windowY != CW_USEDEFAULT) {
+            ::SetWindowPos(window, nullptr, windowX, windowY, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
+
+    // The state of the owner is given back as it was: another modal window of
+    // the program may have disabled it before.
+    const bool ownerWasEnabled = owner != nullptr && ::IsWindowEnabled(owner) != FALSE;
+
     if (owner != nullptr) {
         ::EnableWindow(owner, FALSE);
     }
@@ -439,8 +523,11 @@ void miniant::Windows::ShowAboutWindow(HWND owner, HINSTANCE instance, const std
     }
 
     if (owner != nullptr) {
-        ::EnableWindow(owner, TRUE);
-        ::SetForegroundWindow(owner);
+        ::EnableWindow(owner, ownerWasEnabled ? TRUE : FALSE);
+
+        if (ownerWasEnabled && ::IsWindowVisible(owner) != FALSE) {
+            ::SetForegroundWindow(owner);
+        }
     }
 
     if (context.window != nullptr && ::IsWindow(context.window) != FALSE) {

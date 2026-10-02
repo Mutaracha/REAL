@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <ctime>
+#include <vector>
 
 using namespace miniant::Windows;
 using namespace miniant::Windows::Diagnostics;
@@ -223,6 +224,91 @@ int GetDpiScalePercent() {
     return dpi != 0 ? ::MulDiv(static_cast<int>(dpi), 100, 96) : 100;
 }
 
+namespace {
+
+// The processors of the machine and the ones Windows keeps for real-time audio
+// work. While a stream with a small buffer runs, Windows can reserve a processor
+// for the audio engine (a CPU set allocated with the RealTime flag): other
+// programs get it last, and monitoring tools show it underused.
+// GetSystemCpuSetInformation exists since Windows 10, so it is looked up at
+// run time.
+std::string DescribeProcessors() {
+    using GetSystemCpuSetInformationFn = BOOL(WINAPI*)(PSYSTEM_CPU_SET_INFORMATION, ULONG, PULONG, HANDLE, ULONG);
+
+    const HMODULE kernel = ::GetModuleHandleW(L"kernel32.dll");
+    const auto query = kernel != nullptr
+        ? reinterpret_cast<GetSystemCpuSetInformationFn>(
+              reinterpret_cast<void*>(::GetProcAddress(kernel, "GetSystemCpuSetInformation")))
+        : nullptr;
+
+    std::vector<unsigned char> buffer;
+    ULONG length = 0;
+
+    if (query != nullptr) {
+        // The first call reports the size of the list.
+        query(nullptr, 0, &length, ::GetCurrentProcess(), 0);
+
+        if (length > 0) {
+            buffer.resize(length);
+
+            if (query(reinterpret_cast<PSYSTEM_CPU_SET_INFORMATION>(buffer.data()), length, &length,
+                    ::GetCurrentProcess(), 0) == FALSE) {
+                buffer.clear();
+            }
+        }
+    }
+
+    if (buffer.empty()) {
+        return fmt::format(
+            miniant::Lang::Utf8(miniant::Lang::Str::DiagCpu),
+            miniant::Lang::Utf8(miniant::Lang::Str::DiagUnknown),
+            miniant::Lang::Utf8(miniant::Lang::Str::DiagUnknown));
+    }
+
+    // The flags of a CPU set (winnt.h): allocated to some process, allocated to
+    // the process the question is asked for, reserved for real-time work.
+    constexpr BYTE ALLOCATED = 0x2;
+    constexpr BYTE ALLOCATED_TO_TARGET_PROCESS = 0x4;
+    constexpr BYTE REAL_TIME = 0x8;
+
+    size_t count = 0;
+    std::string reserved;
+
+    // The entries have a size of their own: the list may grow in later versions.
+    size_t offset = 0;
+    while (offset + sizeof(SYSTEM_CPU_SET_INFORMATION) <= length) {
+        const auto* entry = reinterpret_cast<const SYSTEM_CPU_SET_INFORMATION*>(buffer.data() + offset);
+        if (entry->Size == 0) {
+            break;
+        }
+
+        if (entry->Type == CpuSetInformation) {
+            ++count;
+
+            const BYTE flags = entry->CpuSet.AllFlags;
+            if ((flags & REAL_TIME) != 0 && (flags & (ALLOCATED | ALLOCATED_TO_TARGET_PROCESS)) != 0) {
+                if (!reserved.empty()) {
+                    reserved += ", ";
+                }
+
+                // The number Task Manager shows: processors are counted across groups.
+                const unsigned int index =
+                    static_cast<unsigned int>(entry->CpuSet.Group) * 64u + entry->CpuSet.LogicalProcessorIndex;
+                reserved += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagCpuItem), index);
+            }
+        }
+
+        offset += entry->Size;
+    }
+
+    return fmt::format(
+        miniant::Lang::Utf8(miniant::Lang::Str::DiagCpu),
+        count,
+        reserved.empty() ? std::string(miniant::Lang::Utf8(miniant::Lang::Str::DiagCpuNone)) : reserved);
+}
+
+}
+
 std::string miniant::Windows::Diagnostics::GetWindowsVersion() {
     // RtlGetVersion reports the real version, unlike GetVersionEx which lies
     // unless the executable is manifested for the newest Windows.
@@ -341,6 +427,7 @@ std::string miniant::Windows::Diagnostics::BuildReport(
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagGenerated), timestamp);
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagWindows), GetWindowsVersion());
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagScale), GetDpiScalePercent());
+    text += DescribeProcessors();
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagExecutable), Text::ToUtf8(Filesystem::GetExecutablePath()));
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagSettings), Text::ToUtf8(settingsPath));
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagConfig), Config::Describe(settings));

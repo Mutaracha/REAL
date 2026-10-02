@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "Dpi.h"
+#include "TextMetrics.h"
 
 #include "../../res/resource.h"
 #include "../AppMessages.h"
@@ -21,14 +22,13 @@ const int WINDOW_WIDTH = 780;
 const int WINDOW_HEIGHT = 480;
 
 const int STATUS_HEIGHT = 26;
-const int BUTTON_HEIGHT = 30;
 const int MARGIN = 8;
 
 // The log view keeps the newest part of the session: past this length the
 // oldest half is dropped (see AppendLogLines).
 const size_t MAX_LOG_LENGTH = 200000;
 
-// The bottom row holds the two actions a user needs most: activate the audio
+// The bottom row holds the two actions a user needs most: restart the audio
 // streams and close the program. The window is hidden to the tray by its close
 // button, so a button for that is not needed.
 const struct {
@@ -42,7 +42,7 @@ const struct {
 };
 
 // The "File" menu: the states of the program and the exit. The items that open
-// a file are in the "Diagnostics" menu, the parameters are in "Options".
+// a file are in the "Diagnostics" menu, the settings are in "Options".
 const UINT MENU_FILE_TOGGLE_ID = 101;
 const UINT MENU_FILE_START_WITH_WINDOWS_ID = 102;
 const UINT MENU_FILE_EXIT_ID = 103;
@@ -51,15 +51,14 @@ const UINT MENU_FILE_EXIT_ID = 103;
 const UINT MENU_DIAGNOSTICS_REPORT_ID = 105;
 const UINT MENU_DIAGNOSTICS_LOG_ID = 106;
 
-// "Options" and "About" are items of the menu bar itself: the menu of a window
-// can hold plain items next to its popups, and a click on one of them sends the
-// very same command a drop-down entry would.
-const UINT MENU_OPTIONS_ID = 107;
+// "Options" opens a drop-down with "Settings", the window that the tray menu
+// opens by the same name. "About" is an item of the menu bar itself: the menu
+// of a window can hold plain items next to its popups, and a click on one of
+// them sends the very same command a drop-down entry would.
+const UINT MENU_OPTIONS_SETTINGS_ID = 107;
 const UINT MENU_ABOUT_ID = 108;
 
 constexpr size_t BUTTON_COUNT = sizeof(BUTTONS) / sizeof(BUTTONS[0]);
-
-const int BUTTON_WIDTH = 190;
 
 }
 
@@ -227,7 +226,13 @@ void MainWindow::ApplyLanguage() {
             MENU_DIAGNOSTICS_LOG_ID, miniant::Lang::Wide(miniant::Lang::Str::ButtonOpenLog).c_str());
     }
 
-    if (m_menu != nullptr && m_fileMenu != nullptr && m_diagnosticsMenu != nullptr) {
+    if (m_optionsMenu != nullptr) {
+        ::ModifyMenuW(
+            m_optionsMenu, 0, MF_BYPOSITION | MF_STRING | MF_UNCHECKED,
+            MENU_OPTIONS_SETTINGS_ID, miniant::Lang::Wide(miniant::Lang::Str::TraySettings).c_str());
+    }
+
+    if (m_menu != nullptr && m_fileMenu != nullptr && m_optionsMenu != nullptr && m_diagnosticsMenu != nullptr) {
         ::ModifyMenuW(
             m_menu,
             0,
@@ -239,8 +244,8 @@ void MainWindow::ApplyLanguage() {
         ::ModifyMenuW(
             m_menu,
             1,
-            MF_BYPOSITION | MF_STRING,
-            MENU_OPTIONS_ID,
+            MF_BYPOSITION | MF_STRING | MF_POPUP,
+            reinterpret_cast<UINT_PTR>(m_optionsMenu),
             miniant::Lang::Wide(miniant::Lang::Str::ButtonOptions).c_str());
 
         ::ModifyMenuW(
@@ -492,9 +497,10 @@ void MainWindow::CreateControls() {
 
     m_menu = ::CreateMenu();
     m_fileMenu = ::CreatePopupMenu();
+    m_optionsMenu = ::CreatePopupMenu();
     m_diagnosticsMenu = ::CreatePopupMenu();
 
-    if (m_menu != nullptr && m_fileMenu != nullptr && m_diagnosticsMenu != nullptr) {
+    if (m_menu != nullptr && m_fileMenu != nullptr && m_optionsMenu != nullptr && m_diagnosticsMenu != nullptr) {
         // "File": the state of the latency reduction, the autostart and the exit.
         ::AppendMenuW(
             m_fileMenu, MF_STRING | MF_CHECKED, MENU_FILE_TOGGLE_ID,
@@ -510,6 +516,11 @@ void MainWindow::CreateControls() {
             m_fileMenu, MF_STRING, MENU_FILE_EXIT_ID,
             miniant::Lang::Wide(miniant::Lang::Str::ButtonExit).c_str());
 
+        // "Options": the settings window.
+        ::AppendMenuW(
+            m_optionsMenu, MF_STRING, MENU_OPTIONS_SETTINGS_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::TraySettings).c_str());
+
         // "Diagnostics": the report and the log file.
         ::AppendMenuW(
             m_diagnosticsMenu, MF_STRING, MENU_DIAGNOSTICS_REPORT_ID,
@@ -524,7 +535,7 @@ void MainWindow::CreateControls() {
             miniant::Lang::Wide(miniant::Lang::Str::ButtonFileMenu).c_str());
 
         ::AppendMenuW(
-            m_menu, MF_STRING, MENU_OPTIONS_ID,
+            m_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(m_optionsMenu),
             miniant::Lang::Wide(miniant::Lang::Str::ButtonOptions).c_str());
 
         ::AppendMenuW(
@@ -558,21 +569,23 @@ void MainWindow::LayoutControls() {
     const int statusTop = height - S(MARGIN) - S(STATUS_HEIGHT);
     ::MoveWindow(m_status, S(MARGIN), statusTop, width - 2 * S(MARGIN), S(STATUS_HEIGHT), TRUE);
 
-    const int buttonsTop = statusTop - S(4) - S(BUTTON_HEIGHT);
+    const int buttonsTop = statusTop - S(4) - S(STANDARD_BUTTON_HEIGHT);
     const int logTop = S(MARGIN);
     const int logHeight = std::max(S(40), buttonsTop - logTop - S(4));
 
     ::MoveWindow(m_log, S(MARGIN), logTop, width - 2 * S(MARGIN), logHeight, TRUE);
 
     // "Restart" is aligned to the left edge of the window, "Exit" to the right
-    // one; the middle of the row stays empty.
-    const int buttonWidth = std::min(S(BUTTON_WIDTH), std::max(S(80), (width - 3 * S(MARGIN)) / 2));
+    // one; the middle of the row stays empty. The buttons have the size of the
+    // buttons of the settings window (see StandardButtonWidth).
+    const int buttonWidth = std::min(
+        S(StandardButtonWidth(m_uiFont, m_dpi)), std::max(S(60), (width - 3 * S(MARGIN)) / 2));
 
     for (size_t i = 0; i < m_buttons.size() && i < BUTTON_COUNT; ++i) {
         const bool left = BUTTONS[i].left;
         const int x = left ? S(MARGIN) : width - S(MARGIN) - buttonWidth;
 
-        ::MoveWindow(m_buttons[i].first, x, buttonsTop, buttonWidth, S(BUTTON_HEIGHT), TRUE);
+        ::MoveWindow(m_buttons[i].first, x, buttonsTop, buttonWidth, S(STANDARD_BUTTON_HEIGHT), TRUE);
     }
 }
 
@@ -581,6 +594,7 @@ void MainWindow::DestroyResources() {
         ::DestroyMenu(m_menu);
         m_menu = nullptr;
         m_fileMenu = nullptr;
+        m_optionsMenu = nullptr;
         m_diagnosticsMenu = nullptr;
     }
 
@@ -675,7 +689,7 @@ LRESULT MainWindow::WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam) 
             }
 
             if (notification == 0) {
-                if (id == MENU_OPTIONS_ID) {
+                if (id == MENU_OPTIONS_SETTINGS_ID) {
                     RaiseCommand(miniant::Command::OpenSettings);
                     return 0;
                 }

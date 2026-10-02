@@ -10,16 +10,17 @@ This is a fork of [miniant-git/REAL](https://github.com/miniant-git/REAL) (v0.2.
 that is still maintained and adds quality-of-life features:
 
 * proper window that can be closed/minimised to the system tray, with a menu bar
-  (**File**: the mode, the autostart, exit; **Options**; **Diagnostics**; **About**)
+  (**File**: the mode, the autostart, exit; **Options → Settings**; **Diagnostics**; **About**)
   and only the state-changing buttons at the bottom
-* tray menu: enable/disable, restart the activation, log, diagnostics, autostart, exit
-* activation of the audio streams without restarting the application — automatically
+* tray menu: the status, **REAL is running** (on/off), **Restart now** — the log,
+  diagnostics — **Settings** — **Exit**
+* restart of the audio streams without restarting the application — automatically
   on device changes, sleep/resume and session unlock, manually via the tray menu,
   the window button or a hotkey
 * no forced update checks: checking is optional and never closes the application
 * external settings file next to the executable (`real.settings.json`), edited
-  either in the **Options** window of the program or in a text editor
-* Windows 11 tweaks (power throttling, informative HRESULT diagnostics)
+  either in the **Settings** window of the program or in a text editor
+* Windows 11 tweaks (EcoQoS for the idle process of REAL, informative HRESULT diagnostics)
 
 ## Features
 
@@ -31,7 +32,7 @@ that is still maintained and adds quality-of-life features:
   added/removed, after resume from sleep or after the audio service restarts;
   the mode is switched back on when it was off (`reinit.enableWhenDisabled`)
 * Minimises to the system tray; the tray icon survives an `explorer.exe` restart
-* Global hotkeys (default `Ctrl+Alt+L` — toggle, `Ctrl+Alt+R` — restart the activation)
+* Global hotkeys (default `Ctrl+Alt+L` — toggle, `Ctrl+Alt+R` — restart the audio streams)
 * Optional autostart with Windows
 * Optional update check at startup only (off by default, never installed
   silently, no runtime requests; the repository is fixed in the build)
@@ -43,7 +44,8 @@ that is still maintained and adds quality-of-life features:
 * One notification per device outage instead of one per retry; if the device
   stays silent for `audio.reinit.failureTimeoutMs` (60 s), the mode is switched
   off and the device is not polled anymore
-* Single instance: `REAL.exe --reinit` talks to the running instance
+* Always a single instance: a second start (`REAL.exe --reinit` and the like)
+  passes its command to the running one and exits
 
 ## Requirements
 
@@ -83,13 +85,12 @@ used by the audio engine, for example `2.67 ms - Speakers (Realtek Audio)`.
 | `--config <path>` | Use another settings file |
 | `--no-config` | Ignore the settings file, use built-in defaults |
 | `--log-level <level>` | `off`, `error`, `warn`, `info`, `debug`, `trace` |
-| `--multi-instance` | Do not reuse an already running instance |
 
 Commands for a running instance (the command is passed to it and this process exits):
 
 | Option | Description |
 |---|---|
-| `--reinit` | Restart the activation: re-create the audio streams (scripts, shortcuts) |
+| `--reinit` | Restart: re-create the audio streams (scripts, shortcuts) |
 | `--enable` / `--disable` | Enable / disable the latency reduction |
 | `--exit` | Close the running instance |
 
@@ -102,7 +103,7 @@ Commands that run in this process:
 | `--version` | Show the version |
 
 Options are case-insensitive. An unknown option is reported in the log and
-ignored. `--tray`, `--log-level` and `--multi-instance` hold for that run only:
+ignored. `--tray`, `--no-tray` and `--log-level` hold for that run only:
 they are never written to the settings file, and the autostart entry follows the
 file.
 
@@ -110,7 +111,8 @@ file.
 
 `real.settings.json` is created next to `REAL.exe` on the first run. It is plain
 JSON (`//` and `/* */` comments are allowed) and every option is explained by a
-comment. **Options** in the menu bar opens a window with the same parameters: it
+comment. **Options → Settings** in the menu bar (or **Settings** in the tray menu)
+opens a window with the same parameters: it
 writes that very file, so the file stays the source of truth, and the button
 **Open the file** keeps the manual way available (together with `--config`),
 **Reload** reads the file into the window again. Command-line options override the
@@ -126,7 +128,7 @@ The most important options:
 ```jsonc
 {
   "application": { "minimizeToTray": true, "closeButtonAction": "minimize" },
-  "audio":       { "dataFlow": "render", "allowPeriodSnap": true },  // all default devices (default + communication)
+  "audio":       { "dataFlow": "render", "periodSelection": "min" },  // all default devices (default + communication)
   "updates":     { "checkOnStartup": false }, // one check at startup when true
   "logging":     { "level": "info" }          // "off" switches the log file off
 }
@@ -192,10 +194,12 @@ driver supports.
 ### What are the downsides?
 
 The buffer runs out faster and has to be refilled more often, which increases the
-chance of audible cracks when the CPU is busy. Windows also keeps CPU resources
-ready for the audio subsystem while such a stream exists (some monitoring tools
-show one busy core). REAL mitigates the second effect by lowering its own priority
-and disabling power throttling (`performance.disablePowerThrottling`).
+chance of audible cracks when the CPU is busy. Windows may also reserve a processor
+for the audio engine while such a stream exists: other programs get it last, and
+monitoring tools show it underused. This is the low latency mode of Windows
+itself; the diagnostics report shows such a processor in its CPU line. The
+priority of the REAL process does not change either effect: the sound is
+processed by the Windows Audio service, not by REAL.
 
 ### How do I report a problem?
 
