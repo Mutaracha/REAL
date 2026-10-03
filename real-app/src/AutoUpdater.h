@@ -9,10 +9,12 @@
 namespace miniant::AutoUpdater {
 
 struct UpdateInfo {
+    // false - the project has not published a release yet: a normal answer,
+    // not a failure, and the other fields are empty.
+    bool published = true;
     Version version;
     std::string tag;
     std::string releaseUrl;
-    std::string releaseNotes;
 };
 
 // Update checks are never forced and never happen while the application is

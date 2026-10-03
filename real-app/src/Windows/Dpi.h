@@ -15,8 +15,9 @@ UINT ForSystem();
 // DPI: MulDiv rounds the way the system does, so the numbers do not drift.
 int Scale(int value, UINT dpi);
 
-// The frame of a window for the client area in the pixels of the given DPI.
-void AdjustWindowRect(RECT& rect, DWORD style, UINT dpi);
+// The frame of a window for the client area in the pixels of the given DPI;
+// a window with a menu bar gets the bar added as well.
+void AdjustWindowRect(RECT& rect, DWORD style, UINT dpi, bool hasMenu = false);
 
 // The fonts of the interface, for the given DPI: the message font of the system
 // (so that the user's font size and face are respected), its slightly larger

@@ -10,11 +10,9 @@ const int MINIMUM_BUTTON_WIDTH = 75;
 // The space between the caption of a button and its border, on each side.
 const int BUTTON_TEXT_MARGIN = 12;
 
-// Every caption of a push button in the program: the main window and the
-// settings window use one width, so a button looks the same everywhere.
+// Every caption of a push button with a text: the settings window has them
+// all, and one width keeps the two rows of buttons even.
 const miniant::Lang::Str BUTTON_CAPTIONS[] = {
-    miniant::Lang::Str::ButtonReinitialize,
-    miniant::Lang::Str::ButtonExit,
     miniant::Lang::Str::SettingsOpenFile,
     miniant::Lang::Str::SettingsReload,
     miniant::Lang::Str::SettingsCancel,

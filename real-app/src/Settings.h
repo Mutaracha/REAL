@@ -36,9 +36,10 @@ enum class ProcessPriority {
 struct ReinitSettings {
     bool defaultDeviceChanged = true;
     bool deviceStateChanged = true;
-    // A device that is plugged back in appears as a new endpoint, so this flag
-    // matters for the "device was switched off, then on again" case.
-    bool deviceAdded = true;
+    // An endpoint that did not exist before. A device that is plugged back in
+    // keeps its endpoint and only changes its state (deviceStateChanged), so
+    // this flag is off by default.
+    bool deviceAdded = false;
     bool deviceRemoved = false;
     bool resumeFromSleep = true;
     bool sessionUnlock = true;
@@ -54,14 +55,14 @@ struct ApplicationSettings {
     std::string language = "auto";
     bool startMinimizedToTray = false;
     bool minimizeToTray = true;
-    CloseAction closeButtonAction = CloseAction::Minimize;
+    CloseAction closeButtonAction = CloseAction::Exit;
     bool startWithWindows = false;
 };
 
 struct NotificationSettings {
     bool onError = true;
     bool onDeviceChange = true;
-    bool onStateChange = false;
+    bool onStateChange = true;
 };
 
 // The items of the tray menu that can be hidden. The status line, "Settings"
@@ -92,16 +93,15 @@ struct PerformanceSettings {
 };
 
 struct UpdateSettings {
-    // The only setting: a single check at startup. Off by default, so there is
-    // no network request at all unless the user asks for it; the application
-    // never checks again while it is running and never installs anything by
-    // itself. The releases are read from the project this build belongs to, so
-    // there is no repository setting either.
-    bool checkOnStartup = false;
+    // The only setting: a single check at startup (false - no network request
+    // at all). The application never checks again while it is running and
+    // never installs anything by itself. The releases are read from the
+    // project this build belongs to, so there is no repository setting either.
+    bool checkOnStartup = true;
 };
 
 struct HotkeySettings {
-    bool enabled = true;
+    bool enabled = false;
     std::string toggleEnabled = "Ctrl+Alt+L";
     std::string reinitialize = "Ctrl+Alt+R";
 };
@@ -109,9 +109,9 @@ struct HotkeySettings {
 struct LoggingSettings {
     // These settings describe the log file only: the window of the program
     // always shows the operations at the info level and does not depend on
-    // them. "off" switches the file off, any other value switches it on and
-    // tells how detailed it is (see Log::Initialize).
-    std::string level = "info";
+    // them. "off" (the default) switches the file off, any other value
+    // switches it on and tells how detailed it is (see Log::Initialize).
+    std::string level = "off";
     std::string filePath = "REAL.log";
     int maxFileSizeMb = 1;
     int maxFiles = 3;

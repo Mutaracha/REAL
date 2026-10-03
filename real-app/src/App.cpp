@@ -966,9 +966,13 @@ void App::StartUpdateCheck() {
         std::string details;
         std::string url;
 
+        // A project without releases is a normal answer: the journal says so,
+        // without a balloon (only a failure or a newer version gets one).
         if (!release) {
             message = std::string(Lang::Utf8(Str::NotifyUpdateFailed));
             details = release.error();
+        } else if (!release->published) {
+            message = std::string(Lang::Utf8(Str::LogNoReleases));
         } else if (release->version > AppInfo::VERSION) {
             message = fmt::format(Lang::Utf8(Str::NotifyUpdateAvailable), release->version.ToString());
             url = release->releaseUrl;

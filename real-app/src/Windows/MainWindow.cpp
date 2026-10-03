@@ -1,13 +1,14 @@
 #include "MainWindow.h"
 
 #include "Dpi.h"
-#include "TextMetrics.h"
 
 #include "../../res/resource.h"
 #include "../AppMessages.h"
 #include "../Lang.h"
 #include "../Log.h"
 #include "../Text.h"
+
+#include <commctrl.h>
 
 #include <algorithm>
 
@@ -18,8 +19,9 @@ namespace {
 
 const wchar_t WINDOW_CLASS_NAME[] = L"REAL.MainWindow";
 
-const int WINDOW_WIDTH = 780;
-const int WINDOW_HEIGHT = 480;
+// The client area under the menu bar.
+const int WINDOW_WIDTH = 680;
+const int WINDOW_HEIGHT = 400;
 
 const int STATUS_HEIGHT = 26;
 const int MARGIN = 8;
@@ -28,37 +30,87 @@ const int MARGIN = 8;
 // oldest half is dropped (see AppendLogLines).
 const size_t MAX_LOG_LENGTH = 200000;
 
-// The bottom row holds the two actions a user needs most: restart the audio
-// streams and close the program. The window is hidden to the tray by its close
-// button, so a button for that is not needed.
-const struct {
-    UINT id;
-    miniant::Lang::Str text;
-    bool left = false;
-    miniant::Command command = miniant::Command::Reinitialize;
-} BUTTONS[] = {
-    { 1, miniant::Lang::Str::ButtonReinitialize, true, miniant::Command::Reinitialize },
-    { 3, miniant::Lang::Str::ButtonExit, false, miniant::Command::Exit },
-};
+// The restart button sits at the right end of the status line: a circular
+// arrow without a caption, the tooltip names it. It is square, as high as the
+// status line, and the text of the status line ends a little before it.
+const UINT RESTART_BUTTON_ID = 1;
+const int STATUS_BUTTON_GAP = 2;
+const int RESTART_GLYPH_HEIGHT = 14;
 
-// The "File" menu: the states of the program and the exit. The items that open
-// a file are in the "Diagnostics" menu, the settings are in "Options".
-const UINT MENU_FILE_TOGGLE_ID = 101;
-const UINT MENU_FILE_START_WITH_WINDOWS_ID = 102;
-const UINT MENU_FILE_EXIT_ID = 103;
+// "Refresh" of the icon font of Windows 10 and 11; a system without that font
+// gets the clockwise open circle arrow of the symbol font.
+const wchar_t ICON_FONT_FACE[] = L"Segoe MDL2 Assets";
+const wchar_t RESTART_GLYPH[] = L"\xE72C";
+const wchar_t FALLBACK_FONT_FACE[] = L"Segoe UI Symbol";
+const wchar_t FALLBACK_RESTART_GLYPH[] = L"\x21BB";
 
-// The sub-menu of "Diagnostics": the report itself and the log file.
-const UINT MENU_DIAGNOSTICS_REPORT_ID = 105;
-const UINT MENU_DIAGNOSTICS_LOG_ID = 106;
+// "REAL": the state of the program, the restart of the audio streams and the
+// exit. The files are in "Diagnostics", the settings in "Options".
+const UINT MENU_PROGRAM_TOGGLE_ID = 101;
+const UINT MENU_PROGRAM_RESTART_ID = 102;
+const UINT MENU_PROGRAM_EXIT_ID = 103;
 
-// "Options" opens a drop-down with "Settings", the window that the tray menu
-// opens by the same name. "About" is an item of the menu bar itself: the menu
-// of a window can hold plain items next to its popups, and a click on one of
-// them sends the very same command a drop-down entry would.
-const UINT MENU_OPTIONS_SETTINGS_ID = 107;
+// "Options": the settings window (the tray menu opens it by the same name) and
+// the autostart.
+const UINT MENU_OPTIONS_SETTINGS_ID = 104;
+const UINT MENU_OPTIONS_START_WITH_WINDOWS_ID = 105;
+
+// "Diagnostics": the report itself and the log file.
+const UINT MENU_DIAGNOSTICS_REPORT_ID = 106;
+const UINT MENU_DIAGNOSTICS_LOG_ID = 107;
+
+// "About" is an item of the menu bar itself: the menu of a window can hold
+// plain items next to its popups, and a click on one of them sends the very
+// same command a drop-down entry would.
 const UINT MENU_ABOUT_ID = 108;
 
-constexpr size_t BUTTON_COUNT = sizeof(BUTTONS) / sizeof(BUTTONS[0]);
+int CALLBACK OnFontFamily(const LOGFONTW*, const TEXTMETRICW*, DWORD, LPARAM parameter) {
+    *reinterpret_cast<bool*>(parameter) = true;
+    return 0;
+}
+
+// Whether a font is installed: the icon font exists since Windows 10.
+bool IsFontInstalled(const wchar_t* face) {
+    const HDC screen = ::GetDC(nullptr);
+    if (screen == nullptr) {
+        return false;
+    }
+
+    LOGFONTW font = {};
+    font.lfCharSet = DEFAULT_CHARSET;
+    ::wcsncpy_s(font.lfFaceName, face, _TRUNCATE);
+
+    bool found = false;
+    ::EnumFontFamiliesExW(screen, &font, OnFontFamily, reinterpret_cast<LPARAM>(&found), 0);
+
+    ::ReleaseDC(nullptr, screen);
+    return found;
+}
+
+bool HasIconFont() {
+    static const bool installed = IsFontInstalled(ICON_FONT_FACE);
+    return installed;
+}
+
+// The tooltip of the restart button: the same text as the menu item.
+void SetToolText(HWND tooltip, HWND owner, HWND tool, UINT message) {
+    if (tooltip == nullptr || tool == nullptr) {
+        return;
+    }
+
+    std::wstring text = miniant::Lang::Wide(miniant::Lang::Str::MenuRestart);
+
+    // The size of the second version of the structure: the common controls of
+    // the program are the classic ones, which do not take the larger one.
+    TTTOOLINFOW info = {};
+    info.cbSize = TTTOOLINFOW_V2_SIZE;
+    info.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+    info.hwnd = owner;
+    info.uId = reinterpret_cast<UINT_PTR>(tool);
+    info.lpszText = text.data();
+
+    ::SendMessageW(tooltip, message, 0, reinterpret_cast<LPARAM>(&info));
+}
 
 }
 
@@ -104,7 +156,7 @@ tl::expected<std::unique_ptr<MainWindow>, WindowsError> MainWindow::Create(HINST
     // another monitor later, and the layout is scaled again).
     const UINT desktopDpi = Dpi::ForSystem();
     RECT desired = { 0, 0, Dpi::Scale(WINDOW_WIDTH, desktopDpi), Dpi::Scale(WINDOW_HEIGHT, desktopDpi) };
-    Dpi::AdjustWindowRect(desired, WS_OVERLAPPEDWINDOW, desktopDpi);
+    Dpi::AdjustWindowRect(desired, WS_OVERLAPPEDWINDOW, desktopDpi, true);
 
     const std::wstring title = miniant::Lang::Wide(miniant::Lang::Str::WindowTitle);
 
@@ -191,77 +243,74 @@ void MainWindow::ApplyLanguage() {
     const std::wstring title = miniant::Lang::Wide(miniant::Lang::Str::WindowTitle);
     ::SetWindowTextW(m_window, title.c_str());
 
-    for (const auto& button : m_buttons) {
-        for (size_t i = 0; i < BUTTON_COUNT; ++i) {
-            if (static_cast<UINT>(::GetDlgCtrlID(button.first)) == BUTTONS[i].id) {
-                ::SetWindowTextW(button.first, miniant::Lang::Wide(BUTTONS[i].text).c_str());
-                break;
-            }
-        }
-    }
-
-    if (m_fileMenu != nullptr) {
-        // The two states carry a check mark: it is redrawn right away, because
+    if (m_programMenu != nullptr) {
+        // The state carries a check mark: it is put back right away, because
         // ModifyMenu drops it.
         ::ModifyMenuW(
-            m_fileMenu, 0, MF_BYPOSITION | MF_STRING | (m_latencyEnabled ? MF_CHECKED : MF_UNCHECKED),
-            MENU_FILE_TOGGLE_ID, miniant::Lang::Wide(miniant::Lang::Str::TrayToggleEnabled).c_str());
+            m_programMenu, 0, MF_BYPOSITION | MF_STRING | (m_latencyEnabled ? MF_CHECKED : MF_UNCHECKED),
+            MENU_PROGRAM_TOGGLE_ID, miniant::Lang::Wide(miniant::Lang::Str::TrayToggleEnabled).c_str());
 
         ::ModifyMenuW(
-            m_fileMenu, 1, MF_BYPOSITION | MF_STRING | (m_startWithWindows ? MF_CHECKED : MF_UNCHECKED),
-            MENU_FILE_START_WITH_WINDOWS_ID, miniant::Lang::Wide(miniant::Lang::Str::TrayStartWithWindows).c_str());
+            m_programMenu, 1, MF_BYPOSITION | MF_STRING | MF_UNCHECKED,
+            MENU_PROGRAM_RESTART_ID, miniant::Lang::Wide(miniant::Lang::Str::MenuRestart).c_str());
 
         ::ModifyMenuW(
-            m_fileMenu, 3, MF_BYPOSITION | MF_STRING | MF_UNCHECKED,
-            MENU_FILE_EXIT_ID, miniant::Lang::Wide(miniant::Lang::Str::ButtonExit).c_str());
+            m_programMenu, 3, MF_BYPOSITION | MF_STRING | MF_UNCHECKED,
+            MENU_PROGRAM_EXIT_ID, miniant::Lang::Wide(miniant::Lang::Str::MenuExit).c_str());
     }
 
     if (m_diagnosticsMenu != nullptr) {
         ::ModifyMenuW(
             m_diagnosticsMenu, 0, MF_BYPOSITION | MF_STRING | MF_UNCHECKED,
-            MENU_DIAGNOSTICS_REPORT_ID, miniant::Lang::Wide(miniant::Lang::Str::ButtonDiagnostics).c_str());
+            MENU_DIAGNOSTICS_REPORT_ID, miniant::Lang::Wide(miniant::Lang::Str::MenuDiagnostics).c_str());
 
         ::ModifyMenuW(
             m_diagnosticsMenu, 1, MF_BYPOSITION | MF_STRING | MF_UNCHECKED,
-            MENU_DIAGNOSTICS_LOG_ID, miniant::Lang::Wide(miniant::Lang::Str::ButtonOpenLog).c_str());
+            MENU_DIAGNOSTICS_LOG_ID, miniant::Lang::Wide(miniant::Lang::Str::MenuOpenLog).c_str());
     }
 
     if (m_optionsMenu != nullptr) {
         ::ModifyMenuW(
             m_optionsMenu, 0, MF_BYPOSITION | MF_STRING | MF_UNCHECKED,
             MENU_OPTIONS_SETTINGS_ID, miniant::Lang::Wide(miniant::Lang::Str::TraySettings).c_str());
+
+        ::ModifyMenuW(
+            m_optionsMenu, 1, MF_BYPOSITION | MF_STRING | (m_startWithWindows ? MF_CHECKED : MF_UNCHECKED),
+            MENU_OPTIONS_START_WITH_WINDOWS_ID, miniant::Lang::Wide(miniant::Lang::Str::MenuStartWithWindows).c_str());
     }
 
-    if (m_menu != nullptr && m_fileMenu != nullptr && m_optionsMenu != nullptr && m_diagnosticsMenu != nullptr) {
+    if (m_menu != nullptr && m_programMenu != nullptr && m_optionsMenu != nullptr && m_diagnosticsMenu != nullptr) {
         ::ModifyMenuW(
             m_menu,
             0,
             MF_BYPOSITION | MF_STRING | MF_POPUP,
-            reinterpret_cast<UINT_PTR>(m_fileMenu),
-            miniant::Lang::Wide(miniant::Lang::Str::ButtonFileMenu).c_str());
+            reinterpret_cast<UINT_PTR>(m_programMenu),
+            miniant::Lang::Wide(miniant::Lang::Str::MenuProgram).c_str());
 
-        // The menu bar: "File", "Options", "Diagnostics", "About".
+        // The menu bar: "REAL", "Options", "Diagnostics", "About".
         ::ModifyMenuW(
             m_menu,
             1,
             MF_BYPOSITION | MF_STRING | MF_POPUP,
             reinterpret_cast<UINT_PTR>(m_optionsMenu),
-            miniant::Lang::Wide(miniant::Lang::Str::ButtonOptions).c_str());
+            miniant::Lang::Wide(miniant::Lang::Str::MenuOptions).c_str());
 
         ::ModifyMenuW(
             m_menu,
             2,
             MF_BYPOSITION | MF_STRING | MF_POPUP,
             reinterpret_cast<UINT_PTR>(m_diagnosticsMenu),
-            miniant::Lang::Wide(miniant::Lang::Str::ButtonDiagnostics).c_str());
+            miniant::Lang::Wide(miniant::Lang::Str::MenuDiagnostics).c_str());
 
         ::ModifyMenuW(
             m_menu,
             3,
             MF_BYPOSITION | MF_STRING,
             MENU_ABOUT_ID,
-            miniant::Lang::Wide(miniant::Lang::Str::ButtonAbout).c_str());
+            miniant::Lang::Wide(miniant::Lang::Str::MenuAbout).c_str());
     }
+
+    SetToolText(m_tooltip, m_window, m_restartButton, TTM_UPDATETIPTEXTW);
 
     if (!m_statusTextSet && m_status != nullptr) {
         ::SetWindowTextW(m_status, miniant::Lang::Wide(miniant::Lang::Str::StatusStarting).c_str());
@@ -274,10 +323,14 @@ void MainWindow::SetMenuChecks(bool latencyEnabled, bool startWithWindows) {
     m_latencyEnabled = latencyEnabled;
     m_startWithWindows = startWithWindows;
 
-    if (m_fileMenu != nullptr) {
-        ::CheckMenuItem(m_fileMenu, MENU_FILE_TOGGLE_ID, MF_BYCOMMAND | (m_latencyEnabled ? MF_CHECKED : MF_UNCHECKED));
+    if (m_programMenu != nullptr) {
         ::CheckMenuItem(
-            m_fileMenu, MENU_FILE_START_WITH_WINDOWS_ID,
+            m_programMenu, MENU_PROGRAM_TOGGLE_ID, MF_BYCOMMAND | (m_latencyEnabled ? MF_CHECKED : MF_UNCHECKED));
+    }
+
+    if (m_optionsMenu != nullptr) {
+        ::CheckMenuItem(
+            m_optionsMenu, MENU_OPTIONS_START_WITH_WINDOWS_ID,
             MF_BYCOMMAND | (m_startWithWindows ? MF_CHECKED : MF_UNCHECKED));
     }
 }
@@ -393,8 +446,20 @@ void MainWindow::CreateFonts() {
         m_monoFont = nullptr;
     }
 
+    if (m_iconFont != nullptr) {
+        ::DeleteObject(m_iconFont);
+        m_iconFont = nullptr;
+    }
+
     m_uiFont = Dpi::CreateUiFont(m_dpi);
     m_monoFont = Dpi::CreateMonoFont(m_dpi);
+
+    // The glyph of the restart button: the height of the character cell is
+    // given, so the arrow keeps its size whatever the font of the system is.
+    m_iconFont = ::CreateFontW(
+        -S(RESTART_GLYPH_HEIGHT), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
+        HasIconFont() ? ICON_FONT_FACE : FALLBACK_FONT_FACE);
 }
 
 // The fonts of every control are replaced: the controls themselves are not
@@ -404,10 +469,10 @@ void MainWindow::ApplyFonts() {
         if (m_status != nullptr) {
             ::SendMessageW(m_status, WM_SETFONT, reinterpret_cast<WPARAM>(m_uiFont), TRUE);
         }
+    }
 
-        for (auto& button : m_buttons) {
-            ::SendMessageW(button.first, WM_SETFONT, reinterpret_cast<WPARAM>(m_uiFont), TRUE);
-        }
+    if (m_iconFont != nullptr && m_restartButton != nullptr) {
+        ::SendMessageW(m_restartButton, WM_SETFONT, reinterpret_cast<WPARAM>(m_iconFont), TRUE);
     }
 
     if (m_monoFont != nullptr && m_log != nullptr) {
@@ -433,7 +498,7 @@ void MainWindow::ResizeToDesignSize() {
     }
 
     RECT desired = { 0, 0, S(WINDOW_WIDTH), S(WINDOW_HEIGHT) };
-    Dpi::AdjustWindowRect(desired, WS_OVERLAPPEDWINDOW, m_dpi);
+    Dpi::AdjustWindowRect(desired, WS_OVERLAPPEDWINDOW, m_dpi, true);
 
     ::SetWindowPos(
         m_window, nullptr, 0, 0,
@@ -480,71 +545,91 @@ void MainWindow::CreateControls() {
         ::SendMessageW(m_log, EM_SETLIMITTEXT, 0, 0);
     }
 
-    for (size_t i = 0; i < BUTTON_COUNT; ++i) {
-        const HWND button = ::CreateWindowExW(
-            0,
-            L"BUTTON",
-            miniant::Lang::Wide(BUTTONS[i].text).c_str(),
-            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
-            0, 0, 0, 0,
-            m_window,
-            reinterpret_cast<HMENU>(static_cast<INT_PTR>(BUTTONS[i].id)),
-            m_instance,
-            nullptr);
+    // The restart button of the status line. Its caption is the glyph of a
+    // circular arrow; the name is in the tooltip.
+    m_restartButton = ::CreateWindowExW(
+        0,
+        L"BUTTON",
+        HasIconFont() ? RESTART_GLYPH : FALLBACK_RESTART_GLYPH,
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_CENTER | BS_VCENTER,
+        0, 0, 0, 0,
+        m_window,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(RESTART_BUTTON_ID)),
+        m_instance,
+        nullptr);
 
-        m_buttons.emplace_back(button, BUTTONS[i].command);
-    }
+    INITCOMMONCONTROLSEX classes = {};
+    classes.dwSize = sizeof(classes);
+    classes.dwICC = ICC_TAB_CLASSES;
+    ::InitCommonControlsEx(&classes);
+
+    m_tooltip = ::CreateWindowExW(
+        WS_EX_TOPMOST,
+        TOOLTIPS_CLASSW,
+        nullptr,
+        WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+        m_window,
+        nullptr,
+        m_instance,
+        nullptr);
+
+    SetToolText(m_tooltip, m_window, m_restartButton, TTM_ADDTOOLW);
 
     m_menu = ::CreateMenu();
-    m_fileMenu = ::CreatePopupMenu();
+    m_programMenu = ::CreatePopupMenu();
     m_optionsMenu = ::CreatePopupMenu();
     m_diagnosticsMenu = ::CreatePopupMenu();
 
-    if (m_menu != nullptr && m_fileMenu != nullptr && m_optionsMenu != nullptr && m_diagnosticsMenu != nullptr) {
-        // "File": the state of the latency reduction, the autostart and the exit.
+    if (m_menu != nullptr && m_programMenu != nullptr && m_optionsMenu != nullptr && m_diagnosticsMenu != nullptr) {
+        // "REAL": the state of the latency reduction, the restart and the exit.
         ::AppendMenuW(
-            m_fileMenu, MF_STRING | MF_CHECKED, MENU_FILE_TOGGLE_ID,
+            m_programMenu, MF_STRING | MF_CHECKED, MENU_PROGRAM_TOGGLE_ID,
             miniant::Lang::Wide(miniant::Lang::Str::TrayToggleEnabled).c_str());
 
         ::AppendMenuW(
-            m_fileMenu, MF_STRING, MENU_FILE_START_WITH_WINDOWS_ID,
-            miniant::Lang::Wide(miniant::Lang::Str::TrayStartWithWindows).c_str());
+            m_programMenu, MF_STRING, MENU_PROGRAM_RESTART_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::MenuRestart).c_str());
 
-        ::AppendMenuW(m_fileMenu, MF_SEPARATOR, 0, nullptr);
+        ::AppendMenuW(m_programMenu, MF_SEPARATOR, 0, nullptr);
 
         ::AppendMenuW(
-            m_fileMenu, MF_STRING, MENU_FILE_EXIT_ID,
-            miniant::Lang::Wide(miniant::Lang::Str::ButtonExit).c_str());
+            m_programMenu, MF_STRING, MENU_PROGRAM_EXIT_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::MenuExit).c_str());
 
-        // "Options": the settings window.
+        // "Options": the settings window and the autostart.
         ::AppendMenuW(
             m_optionsMenu, MF_STRING, MENU_OPTIONS_SETTINGS_ID,
             miniant::Lang::Wide(miniant::Lang::Str::TraySettings).c_str());
 
+        ::AppendMenuW(
+            m_optionsMenu, MF_STRING, MENU_OPTIONS_START_WITH_WINDOWS_ID,
+            miniant::Lang::Wide(miniant::Lang::Str::MenuStartWithWindows).c_str());
+
         // "Diagnostics": the report and the log file.
         ::AppendMenuW(
             m_diagnosticsMenu, MF_STRING, MENU_DIAGNOSTICS_REPORT_ID,
-            miniant::Lang::Wide(miniant::Lang::Str::ButtonDiagnostics).c_str());
+            miniant::Lang::Wide(miniant::Lang::Str::MenuDiagnostics).c_str());
 
         ::AppendMenuW(
             m_diagnosticsMenu, MF_STRING, MENU_DIAGNOSTICS_LOG_ID,
-            miniant::Lang::Wide(miniant::Lang::Str::ButtonOpenLog).c_str());
+            miniant::Lang::Wide(miniant::Lang::Str::MenuOpenLog).c_str());
 
         ::AppendMenuW(
-            m_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(m_fileMenu),
-            miniant::Lang::Wide(miniant::Lang::Str::ButtonFileMenu).c_str());
+            m_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(m_programMenu),
+            miniant::Lang::Wide(miniant::Lang::Str::MenuProgram).c_str());
 
         ::AppendMenuW(
             m_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(m_optionsMenu),
-            miniant::Lang::Wide(miniant::Lang::Str::ButtonOptions).c_str());
+            miniant::Lang::Wide(miniant::Lang::Str::MenuOptions).c_str());
 
         ::AppendMenuW(
             m_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(m_diagnosticsMenu),
-            miniant::Lang::Wide(miniant::Lang::Str::ButtonDiagnostics).c_str());
+            miniant::Lang::Wide(miniant::Lang::Str::MenuDiagnostics).c_str());
 
         ::AppendMenuW(
             m_menu, MF_STRING, MENU_ABOUT_ID,
-            miniant::Lang::Wide(miniant::Lang::Str::ButtonAbout).c_str());
+            miniant::Lang::Wide(miniant::Lang::Str::MenuAbout).c_str());
 
         ::SetMenu(m_window, m_menu);
     }
@@ -564,36 +649,30 @@ void MainWindow::LayoutControls() {
     const int width = client.right - client.left;
     const int height = client.bottom - client.top;
 
-    // The status line is the last strip of the window: the buttons sit above
-    // it, the log fills everything that is left.
+    // The status line is the last strip of the window, the restart button ends
+    // it on the right; the log fills everything above.
     const int statusTop = height - S(MARGIN) - S(STATUS_HEIGHT);
-    ::MoveWindow(m_status, S(MARGIN), statusTop, width - 2 * S(MARGIN), S(STATUS_HEIGHT), TRUE);
+    const int buttonSize = S(STATUS_HEIGHT);
+    const int buttonLeft = width - S(MARGIN) - buttonSize;
+    const int statusWidth = std::max(0, buttonLeft - S(STATUS_BUTTON_GAP) - S(MARGIN));
 
-    const int buttonsTop = statusTop - S(4) - S(STANDARD_BUTTON_HEIGHT);
+    ::MoveWindow(m_status, S(MARGIN), statusTop, statusWidth, S(STATUS_HEIGHT), TRUE);
+
+    if (m_restartButton != nullptr) {
+        ::MoveWindow(m_restartButton, buttonLeft, statusTop, buttonSize, buttonSize, TRUE);
+    }
+
     const int logTop = S(MARGIN);
-    const int logHeight = std::max(S(40), buttonsTop - logTop - S(4));
+    const int logHeight = std::max(S(40), statusTop - S(4) - logTop);
 
     ::MoveWindow(m_log, S(MARGIN), logTop, width - 2 * S(MARGIN), logHeight, TRUE);
-
-    // "Restart" is aligned to the left edge of the window, "Exit" to the right
-    // one; the middle of the row stays empty. The buttons have the size of the
-    // buttons of the settings window (see StandardButtonWidth).
-    const int buttonWidth = std::min(
-        S(StandardButtonWidth(m_uiFont, m_dpi)), std::max(S(60), (width - 3 * S(MARGIN)) / 2));
-
-    for (size_t i = 0; i < m_buttons.size() && i < BUTTON_COUNT; ++i) {
-        const bool left = BUTTONS[i].left;
-        const int x = left ? S(MARGIN) : width - S(MARGIN) - buttonWidth;
-
-        ::MoveWindow(m_buttons[i].first, x, buttonsTop, buttonWidth, S(STANDARD_BUTTON_HEIGHT), TRUE);
-    }
 }
 
 void MainWindow::DestroyResources() {
     if (m_menu != nullptr) {
         ::DestroyMenu(m_menu);
         m_menu = nullptr;
-        m_fileMenu = nullptr;
+        m_programMenu = nullptr;
         m_optionsMenu = nullptr;
         m_diagnosticsMenu = nullptr;
     }
@@ -606,6 +685,11 @@ void MainWindow::DestroyResources() {
     if (m_monoFont != nullptr) {
         ::DeleteObject(m_monoFont);
         m_monoFont = nullptr;
+    }
+
+    if (m_iconFont != nullptr) {
+        ::DeleteObject(m_iconFont);
+        m_iconFont = nullptr;
     }
 }
 
@@ -679,13 +763,10 @@ LRESULT MainWindow::WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam) 
             const UINT id = LOWORD(wParam);
             const UINT notification = HIWORD(wParam);
 
-            if (notification == BN_CLICKED) {
-                for (const auto& button : m_buttons) {
-                    if (::GetDlgCtrlID(button.first) == static_cast<int>(id)) {
-                        RaiseCommand(button.second);
-                        return 0;
-                    }
-                }
+            // The restart button: a control sends its handle along, a menu does not.
+            if (notification == BN_CLICKED && lParam != 0 && id == RESTART_BUTTON_ID) {
+                RaiseCommand(miniant::Command::Reinitialize);
+                return 0;
             }
 
             if (notification == 0) {
@@ -700,16 +781,20 @@ LRESULT MainWindow::WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam) 
                 }
 
                 switch (id) {
-                    case MENU_FILE_TOGGLE_ID:
+                    case MENU_PROGRAM_TOGGLE_ID:
                         RaiseCommand(miniant::Command::ToggleEnabled);
                         return 0;
 
-                    case MENU_FILE_START_WITH_WINDOWS_ID:
-                        RaiseCommand(miniant::Command::ToggleStartWithWindows);
+                    case MENU_PROGRAM_RESTART_ID:
+                        RaiseCommand(miniant::Command::Reinitialize);
                         return 0;
 
-                    case MENU_FILE_EXIT_ID:
+                    case MENU_PROGRAM_EXIT_ID:
                         RaiseCommand(miniant::Command::Exit);
+                        return 0;
+
+                    case MENU_OPTIONS_START_WITH_WINDOWS_ID:
+                        RaiseCommand(miniant::Command::ToggleStartWithWindows);
                         return 0;
 
                     case MENU_DIAGNOSTICS_REPORT_ID:

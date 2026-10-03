@@ -8,107 +8,90 @@
 
 #include <spdlog/fmt/fmt.h>
 
-#include <nlohmann/json.hpp>
-
 #include <Windows.h>
 
 #include <filesystem>
 
-using json = nlohmann::json;
 using namespace miniant::AutoUpdater;
 
 namespace {
 
-constexpr size_t MAX_RELEASE_NOTES_LENGTH = 500;
-
 // One request with a generous timeout: the user has just started the
 // application and is not waiting for it.
 constexpr int REQUEST_TIMEOUT_SECONDS = 15;
+
+const char RELEASE_TAG_PATH[] = "/releases/tag/";
 
 }
 
 AutoUpdater::AutoUpdater(std::string repository):
     m_repository(std::move(repository)) {}
 
+// The latest release is asked from the web site, not from the API: the page
+// "releases/latest" of a project redirects to the page of its latest release,
+// and the address of that page ends with the tag. A project without releases
+// redirects to the list of releases instead. The web site has no limit of
+// requests per hour the way the API has (60 for a request without an account,
+// counted per address, so users behind one address share them).
 tl::expected<UpdateInfo, std::string> AutoUpdater::GetLatestRelease() const {
     if (m_repository.empty()) {
         return tl::make_unexpected(std::string(Lang::Utf8(Lang::Str::ErrNoUpdateRepository)));
     }
 
-    const std::wstring url = L"https://api.github.com/repos/" + Text::ToWide(m_repository) + L"/releases/latest";
+    const std::wstring url = L"https://github.com/" + Text::ToWide(m_repository) + L"/releases/latest";
 
     std::vector<std::pair<std::wstring, std::wstring>> headers;
     headers.emplace_back(L"User-Agent", L"REAL-updater/" + Text::ToWide(AppInfo::VERSION.ToString()));
-    headers.emplace_back(L"Accept", L"application/vnd.github+json");
     headers.emplace_back(L"Cache-Control", L"no-cache");
 
-    const Http::Response response = Http::Get(url, headers, REQUEST_TIMEOUT_SECONDS);
+    const Http::Response response = Http::Get(url, headers, REQUEST_TIMEOUT_SECONDS, false);
     if (!response.networkOk) {
         return tl::make_unexpected(fmt::format(Lang::Utf8(Lang::Str::ErrGithubUnreachable), response.error));
     }
 
-    if (response.statusCode == 404) {
-        return tl::make_unexpected(fmt::format(Lang::Utf8(Lang::Str::ErrNoReleases), m_repository));
-    }
-
     if (response.statusCode == 403 || response.statusCode == 429) {
-        return tl::make_unexpected(fmt::format(Lang::Utf8(Lang::Str::ErrRateLimit), response.statusCode));
+        return tl::make_unexpected(fmt::format(Lang::Utf8(Lang::Str::ErrGithubRefused), response.statusCode));
     }
 
-    if (response.statusCode != 200) {
+    if (response.statusCode < 300 || response.statusCode >= 400) {
+        if (response.statusCode == 200) {
+            return tl::make_unexpected(std::string(Lang::Utf8(Lang::Str::ErrGithubUnexpected)));
+        }
+
         return tl::make_unexpected(fmt::format(Lang::Utf8(Lang::Str::ErrHttpStatus), response.statusCode));
     }
 
-    json release;
-    try {
-        release = json::parse(response.body);
-    } catch (const json::exception& error) {
-        return tl::make_unexpected(fmt::format(Lang::Utf8(Lang::Str::ErrGithubParse), error.what()));
+    if (response.location.empty()) {
+        return tl::make_unexpected(std::string(Lang::Utf8(Lang::Str::ErrGithubUnexpected)));
     }
 
-    if (!release.is_object()) {
-        return tl::make_unexpected(std::string(Lang::Utf8(Lang::Str::ErrGithubUnexpected)));
+    std::string location = response.location;
+    if (location.front() == '/') {
+        location = "https://github.com" + location;
     }
 
     UpdateInfo info;
 
-    const auto urlIt = release.find("html_url");
-    if (urlIt != release.end() && urlIt->is_string()) {
-        info.releaseUrl = urlIt->get<std::string>();
+    const size_t tagPosition = location.find(RELEASE_TAG_PATH);
+    if (tagPosition == std::string::npos) {
+        info.published = false;
+        return info;
     }
 
-    const auto tagIt = release.find("tag_name");
-    if (tagIt != release.end() && tagIt->is_string()) {
-        info.tag = tagIt->get<std::string>();
+    info.releaseUrl = location;
+    info.tag = location.substr(tagPosition + sizeof(RELEASE_TAG_PATH) - 1);
+
+    const size_t tagEnd = info.tag.find_first_of("?#");
+    if (tagEnd != std::string::npos) {
+        info.tag.resize(tagEnd);
     }
 
-    const auto nameIt = release.find("name");
-    if (nameIt != release.end() && nameIt->is_string()) {
-        const std::string name = nameIt->get<std::string>();
-        if (auto version = Version::Find(name)) {
-            info.version = *version;
-        }
-    }
-
-    if (info.version == Version() && !info.tag.empty()) {
-        if (auto version = Version::Find(info.tag)) {
-            info.version = *version;
-        }
+    if (auto version = Version::Find(info.tag)) {
+        info.version = *version;
     }
 
     if (info.version == Version()) {
         return tl::make_unexpected(std::string(Lang::Utf8(Lang::Str::ErrNoReleaseVersion)));
-    }
-
-    const auto bodyIt = release.find("body");
-    if (bodyIt != release.end() && bodyIt->is_string()) {
-        std::string notes = bodyIt->get<std::string>();
-        if (notes.size() > MAX_RELEASE_NOTES_LENGTH) {
-            notes.resize(MAX_RELEASE_NOTES_LENGTH);
-            notes += "...";
-        }
-
-        info.releaseNotes = notes;
     }
 
     return info;

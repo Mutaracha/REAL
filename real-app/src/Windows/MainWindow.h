@@ -16,9 +16,10 @@
 
 namespace miniant::Windows {
 
-// Main application window: shows the current status and the log, and hosts the
-// tray icon. Hiding the window keeps the application (and the audio stream)
-// running in the tray.
+// Main application window: shows the log and the current status (with the
+// restart button at the end of the status line), and hosts the tray icon.
+// Hiding the window keeps the application (and the audio stream) running in
+// the tray.
 class MainWindow {
 public:
     using CommandHandler = std::function<void(miniant::Command)>;
@@ -82,7 +83,7 @@ private:
     HINSTANCE m_instance = nullptr;
 
     HMENU m_menu = nullptr;
-    HMENU m_fileMenu = nullptr;
+    HMENU m_programMenu = nullptr;
     HMENU m_optionsMenu = nullptr;
     HMENU m_diagnosticsMenu = nullptr;
     bool m_latencyEnabled = true;
@@ -91,11 +92,13 @@ private:
     HWND m_status = nullptr;
     HWND m_log = nullptr;
     UINT m_dpi = 96;
-    std::vector<std::pair<HWND, miniant::Command>> m_buttons;
+    HWND m_restartButton = nullptr;
+    HWND m_tooltip = nullptr;
     bool m_statusTextSet = false;
 
     HFONT m_uiFont = nullptr;
     HFONT m_monoFont = nullptr;
+    HFONT m_iconFont = nullptr;
 
     std::unique_ptr<TrayIcon> m_tray;
     UINT m_taskbarCreatedMessage = 0;

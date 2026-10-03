@@ -109,12 +109,12 @@ int miniant::Windows::Dpi::Scale(int value, UINT dpi) {
     return ::MulDiv(value, static_cast<int>(dpi), 96);
 }
 
-void miniant::Windows::Dpi::AdjustWindowRect(RECT& rect, DWORD style, UINT dpi) {
+void miniant::Windows::Dpi::AdjustWindowRect(RECT& rect, DWORD style, UINT dpi, bool hasMenu) {
     static const AdjustWindowRectExForDpiFunction adjust =
         FromUser32<AdjustWindowRectExForDpiFunction>("AdjustWindowRectExForDpi");
 
     if (adjust != nullptr) {
-        adjust(&rect, style, FALSE, 0, dpi);
+        adjust(&rect, style, hasMenu ? TRUE : FALSE, 0, dpi);
         return;
     }
 
@@ -123,7 +123,7 @@ void miniant::Windows::Dpi::AdjustWindowRect(RECT& rect, DWORD style, UINT dpi) 
     const UINT systemDpi = ForSystem();
 
     RECT frame = { 0, 0, rect.right - rect.left, rect.bottom - rect.top };
-    ::AdjustWindowRectEx(&frame, style, FALSE, 0);
+    ::AdjustWindowRectEx(&frame, style, hasMenu ? TRUE : FALSE, 0);
 
     rect.left = ::MulDiv(frame.left, static_cast<int>(dpi), static_cast<int>(systemDpi));
     rect.top = ::MulDiv(frame.top, static_cast<int>(dpi), static_cast<int>(systemDpi));

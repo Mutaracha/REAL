@@ -10,14 +10,15 @@ This is a fork of [miniant-git/REAL](https://github.com/miniant-git/REAL) (v0.2.
 that is still maintained and adds quality-of-life features:
 
 * proper window that can be closed/minimised to the system tray, with a menu bar
-  (**File**: the mode, the autostart, exit; **Options → Settings**; **Diagnostics**; **About**)
-  and only the state-changing buttons at the bottom
+  (**REAL**: the mode, restart, exit; **Options**: Settings, Start with Windows;
+  **Diagnostics**; **About**) and a small restart button at the end of the status line
 * tray menu: the status, **REAL is running** (on/off), **Restart now** — the log,
   diagnostics — **Settings** — **Exit**
 * restart of the audio streams without restarting the application — automatically
-  on device changes, sleep/resume and session unlock, manually via the tray menu,
-  the window button or a hotkey
-* no forced update checks: checking is optional and never closes the application
+  on device changes, sleep/resume and session unlock, manually via the menus, the
+  restart button of the window or a hotkey
+* no forced updates: one check at startup (can be switched off), nothing is
+  downloaded or installed, the application is never closed for it
 * external settings file next to the executable (`real.settings.json`), edited
   either in the **Settings** window of the program or in a text editor
 * Windows 11 tweaks (EcoQoS for the idle process of REAL, informative HRESULT diagnostics)
@@ -29,13 +30,16 @@ that is still maintained and adds quality-of-life features:
   default buffer (Bluetooth, HDMI, some vendor drivers) are reported instead of
   holding a stream that changes nothing
 * Automatic re-application when the default device changes, when a device is
-  added/removed, after resume from sleep or after the audio service restarts;
-  the mode is switched back on when it was off (`reinit.enableWhenDisabled`)
+  switched on or off (plugged in or out), after resume from sleep or after the
+  audio service restarts; the mode is switched back on when it was off
+  (`reinit.enableWhenDisabled`)
 * Minimises to the system tray; the tray icon survives an `explorer.exe` restart
-* Global hotkeys (default `Ctrl+Alt+L` — toggle, `Ctrl+Alt+R` — restart the audio streams)
+* Global hotkeys, off by default (`Ctrl+Alt+L` — toggle, `Ctrl+Alt+R` — restart the
+  audio streams)
 * Optional autostart with Windows
-* Optional update check at startup only (off by default, never installed
-  silently, no runtime requests; the repository is fixed in the build)
+* Update check at startup only (on by default, `updates.checkOnStartup`): one
+  request to the page of the latest release on github.com, nothing is installed
+  silently, no requests while running; the repository is fixed in the build
 * Interface and log in English or Russian, picked from the Windows UI language
   on the first run (`application.language`: `auto`, `en`, `ru`)
 * Settings in a plain JSON file that documents every option with comments
@@ -127,10 +131,10 @@ The most important options:
 
 ```jsonc
 {
-  "application": { "minimizeToTray": true, "closeButtonAction": "minimize" },
+  "application": { "minimizeToTray": true, "closeButtonAction": "exit" },
   "audio":       { "dataFlow": "render", "periodSelection": "min" },  // all default devices (default + communication)
-  "updates":     { "checkOnStartup": false }, // one check at startup when true
-  "logging":     { "level": "info" }          // "off" switches the log file off
+  "updates":     { "checkOnStartup": true },  // one check at startup, false - no request at all
+  "logging":     { "level": "off" }           // "info" (or another level) writes REAL.log
 }
 ```
 
@@ -210,7 +214,8 @@ active audio endpoints of the direction selected by `audio.dataFlow`, their
 driver version and the periods they support, so the reason is visible without
 guesswork. The blocks of the report are separated with `--- ... ---` lines, and
 the periods of a device are listed one per line. The application log
-(`REAL.log`) is written next to the executable as well.
+(`REAL.log`) is off by default: pick a level in **Settings → Other → Log** when a
+problem has to be traced.
 
 Every version the program shows (the About window, `--version`, the diagnostics
 report, the first line of the log) carries the build identification:
@@ -227,21 +232,23 @@ audio (10 ms by design), HDMI/DisplayPort receivers, vendor drivers
 
 ### The device changed and the effect disappeared
 
-REAL re-applies the low latency mode automatically (default device changes,
-device add/remove, resume from sleep, session unlock, audio service restart, plus
-a check every 30 seconds). The limits are configurable in `audio.reinit`. If the
+REAL re-applies the low latency mode automatically (default device changes, a
+device switched on or off, resume from sleep, session unlock, audio service
+restart, plus a check every 30 seconds). The limits are configurable in `audio.reinit`. If the
 device does not answer, the retries back off and a single balloon is shown; after
 `reinit.failureTimeoutMs` the mode is switched off and the device is not polled
 until it appears again. To force it manually: tray menu → **Restart now**,
-press `Ctrl+Alt+R`, the **Restart** button in the window, or run
-`REAL.exe --reinit` — this also switches the mode back on when it was off.
+**REAL → Restart** in the menu bar, the round arrow at the end of the status line,
+`Ctrl+Alt+R` (when the hotkeys are on) or `REAL.exe --reinit` — this also
+switches the mode back on when it was off.
 
 ### Where are the logs?
 
-`REAL.log` next to the executable (configurable in `logging`; the window of the
-program always shows the operations at the `info` level, whatever the settings
-say about the file, and `logging.level = "off"` means no file at all). Use
-**Log file** in the tray menu, or *Diagnostics → Open the log* in the window.
+The log file is off by default (`logging.level = "off"`). Any other level
+writes `REAL.log` next to the executable (path and rotation in `logging`); the
+window of the program always shows the operations at the `info` level, whatever
+the settings say about the file. Use **Log file** in the tray menu, or
+*Diagnostics → Open the log* in the window.
 HRESULT failures are reported with their symbolic name, e.g.
 `AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890008)`.
 

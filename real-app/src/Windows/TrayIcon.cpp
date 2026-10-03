@@ -236,9 +236,17 @@ void TrayIcon::ShowContextMenu(const POINT& anchor) {
     // already, so a group whose items are all hidden leaves no empty line.
 
     // The status, the switch of the mode and the restart: the status line is
-    // always there, so the first group is never empty.
-    const std::wstring status = m_state.statusText.empty() ? Wide(Str::StatusStarting) : m_state.statusText;
-    ::AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, Truncate(status, 90).c_str());
+    // always there, so the first group is never empty. It is shown whole, the
+    // menu is as wide as it; an ampersand in a device name is doubled, so it
+    // is not taken for the mark of an access key.
+    std::wstring status = m_state.statusText.empty() ? Wide(Str::StatusStarting) : m_state.statusText;
+    size_t ampersand = status.find(L'&');
+    while (ampersand != std::wstring::npos) {
+        status.insert(ampersand, 1, L'&');
+        ampersand = status.find(L'&', ampersand + 2);
+    }
+
+    ::AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, status.c_str());
 
     if (m_state.toggleEnabled) {
         ::AppendMenuW(menu, MF_STRING | (m_state.enabled ? MF_CHECKED : 0), MENU_ID_TOGGLE, Wide(Str::TrayToggleEnabled).c_str());

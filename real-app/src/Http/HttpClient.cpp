@@ -39,7 +39,8 @@ using InternetHandle = std::unique_ptr<void, InternetHandleCloser>;
 Response miniant::Http::Get(
     const std::wstring& url,
     const std::vector<std::pair<std::wstring, std::wstring>>& headers,
-    int timeoutSeconds) {
+    int timeoutSeconds,
+    bool followRedirects) {
     Response response;
 
     if (url.empty()) {
@@ -63,7 +64,9 @@ Response miniant::Http::Get(
     const int timeoutMs = (timeoutSeconds > 0 ? timeoutSeconds : 15) * 1000;
     ::WinHttpSetTimeouts(static_cast<HINTERNET>(session.get()), timeoutMs, timeoutMs, timeoutMs, timeoutMs);
 
-    DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
+    DWORD redirectPolicy = followRedirects
+        ? WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS
+        : WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
     ::WinHttpSetOption(static_cast<HINTERNET>(session.get()), WINHTTP_OPTION_REDIRECT_POLICY, &redirectPolicy, sizeof(redirectPolicy));
 
     DWORD protocols = SUPPORTED_SECURE_PROTOCOLS;
@@ -160,6 +163,33 @@ Response miniant::Http::Get(
 
     response.statusCode = statusCode;
     response.networkOk = true;
+
+    // The address of a redirect: the size is asked first, then the header is
+    // read into a buffer of that size (in bytes, with the terminating zero).
+    if (!followRedirects && statusCode >= 300 && statusCode < 400) {
+        DWORD locationSize = 0;
+        ::WinHttpQueryHeaders(
+            static_cast<HINTERNET>(request.get()),
+            WINHTTP_QUERY_LOCATION,
+            WINHTTP_HEADER_NAME_BY_INDEX,
+            WINHTTP_NO_OUTPUT_BUFFER,
+            &locationSize,
+            WINHTTP_NO_HEADER_INDEX);
+
+        if (::GetLastError() == ERROR_INSUFFICIENT_BUFFER && locationSize > 0) {
+            std::wstring location(locationSize / sizeof(wchar_t) + 1, L'\0');
+            if (::WinHttpQueryHeaders(
+                static_cast<HINTERNET>(request.get()),
+                WINHTTP_QUERY_LOCATION,
+                WINHTTP_HEADER_NAME_BY_INDEX,
+                location.data(),
+                &locationSize,
+                WINHTTP_NO_HEADER_INDEX) != FALSE) {
+                location.resize(locationSize / sizeof(wchar_t));
+                response.location = Text::ToUtf8(location);
+            }
+        }
+    }
 
     char buffer[4096];
     for (;;) {

@@ -84,7 +84,9 @@ jobs:
             Add-Log "== first instance =="
             (Get-Item $exe).VersionInfo | Out-String | Out-File -Append -Encoding utf8 $log
 
-            $main = Start-Real "${{ env.BUILD_DIR }}/Release" @('--tray', '--no-config')
+            # The log file is off by default: the runs that are checked through
+            # REAL.log switch it on for themselves (a launch key holds for one run).
+            $main = Start-Real "${{ env.BUILD_DIR }}/Release" @('--tray', '--no-config', '--log-level', 'info')
             Start-Sleep -Seconds 6
             Add-Log "main pid=$($main.Id) alive=$(-not $main.HasExited)"
             if ($main.HasExited) { throw "the application exited immediately with code $($main.ExitCode)" }
@@ -111,7 +113,7 @@ jobs:
             New-Item -ItemType Directory -Force -Path $work | Out-Null
             Copy-Item $exe (Join-Path $work "REAL.exe")
 
-            $first = Start-Real $work @('--tray')
+            $first = Start-Real $work @('--tray', '--log-level', 'info')
             Start-Sleep -Seconds 6
             Add-Log "first instance alive=$(-not $first.HasExited)"
             if ($first.HasExited) { throw "the application exited immediately in the settings test" }
@@ -125,7 +127,7 @@ jobs:
             Get-Content $settings -TotalCount 14 | Out-File -Append -Encoding utf8 $log
 
             # Second start: the generated file must load without any warning.
-            $strict = Start-Real $work @('--tray')
+            $strict = Start-Real $work @('--tray', '--log-level', 'info')
             Start-Sleep -Seconds 6
             $exitStrict = Start-Real $work @('--exit')
             if (-not $exitStrict.WaitForExit(20000)) { throw "the second settings-test instance did not exit" }
@@ -145,7 +147,7 @@ jobs:
 
             # --diagnose must produce a report even on a runner without audio.
             Add-Log "== diagnostics report =="
-            $diag = Start-Real $work @('--no-config', '--diagnose')
+            $diag = Start-Real $work @('--no-config', '--diagnose', '--log-level', 'info')
             if (-not $diag.WaitForExit(60000)) { throw "the diagnostics command did not finish" }
             Add-Log "diagnostics exit code $($diag.ExitCode)"
             $workLog = Join-Path $work "REAL.log"

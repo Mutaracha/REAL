@@ -15,16 +15,17 @@ enum class Language {
 // Keep this list and the table in Lang.cpp in sync: every identifier must have
 // an English and a Russian text.
 enum class Str {
-    // Main window
+    // Main window: the menu bar and the restart button of the status line
     WindowTitle,
     StatusStarting,
-    ButtonReinitialize,
-    ButtonFileMenu,
-    ButtonOptions,
-    ButtonOpenLog,
-    ButtonDiagnostics,
-    ButtonAbout,
-    ButtonExit,
+    MenuProgram,
+    MenuRestart,
+    MenuExit,
+    MenuOptions,
+    MenuStartWithWindows,
+    MenuDiagnostics,
+    MenuOpenLog,
+    MenuAbout,
 
     // Tray menu
     TrayToggleEnabled,
@@ -32,7 +33,6 @@ enum class Str {
     TrayLog,
     TrayDiagnostics,
     TraySettings,
-    TrayStartWithWindows,
     TrayExit,
 
     // Status line
@@ -79,6 +79,7 @@ enum class Str {
     LogFileMissing,
     LogUpdatesDisabled,
     LogUpdateRunning,
+    LogNoReleases,
     LogReinitInvalid,
     LogResumeApply,
     LogHotkeyRegisterFailed,
@@ -129,10 +130,8 @@ enum class Str {
     ErrEmptyUrl,
     ErrNoUpdateRepository,
     ErrGithubUnreachable,
-    ErrNoReleases,
-    ErrRateLimit,
+    ErrGithubRefused,
     ErrHttpStatus,
-    ErrGithubParse,
     ErrGithubUnexpected,
     ErrNoReleaseVersion,
     ErrDeleteLeftover,
