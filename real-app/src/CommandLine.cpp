@@ -2,6 +2,7 @@
 
 #include "AppVersion.h"
 #include "Lang.h"
+#include "Settings.h"
 #include "Text.h"
 
 #include <Windows.h>
@@ -107,7 +108,16 @@ Options miniant::CommandLine::Parse() {
 
         if (argumentUtf8 == "--log-level") {
             if (i + 1 < arguments.size()) {
-                options.logLevel = Text::ToLowerAscii(Text::ToUtf8(arguments[++i]));
+                // A word that is not a level is reported and changes nothing.
+                const std::string value = Text::ToUtf8(arguments[++i]);
+                std::string level;
+
+                if (Config::NormalizeLogLevel(value, level)) {
+                    options.logLevel = level;
+                } else {
+                    options.errors.push_back(fmt::format(
+                        Lang::Utf8(Lang::Str::ArgLogLevelUnknown), value, Config::LOG_LEVELS_ALLOWED));
+                }
             } else {
                 options.errors.push_back(Lang::Utf8(Lang::Str::ArgLogLevelNeedsValue));
             }

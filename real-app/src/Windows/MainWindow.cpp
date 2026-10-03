@@ -17,8 +17,6 @@ using namespace miniant::Windows;
 
 namespace {
 
-const wchar_t WINDOW_CLASS_NAME[] = L"REAL.MainWindow";
-
 // The client area under the menu bar.
 const int WINDOW_WIDTH = 680;
 const int WINDOW_HEIGHT = 400;
@@ -130,7 +128,7 @@ MainWindow::~MainWindow() {
     m_window = nullptr;
 
     DestroyResources();
-    ::UnregisterClassW(WINDOW_CLASS_NAME, m_instance);
+    ::UnregisterClassW(MAIN_WINDOW_CLASS_NAME, m_instance);
 }
 
 tl::expected<std::unique_ptr<MainWindow>, WindowsError> MainWindow::Create(HINSTANCE instance) {
@@ -145,7 +143,7 @@ tl::expected<std::unique_ptr<MainWindow>, WindowsError> MainWindow::Create(HINST
     windowClass.hIconSm = windowClass.hIcon;
     windowClass.hCursor = ::LoadCursorW(nullptr, IDC_ARROW);
     windowClass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
-    windowClass.lpszClassName = WINDOW_CLASS_NAME;
+    windowClass.lpszClassName = MAIN_WINDOW_CLASS_NAME;
 
     if (::RegisterClassExW(&windowClass) == 0) {
         return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::LogWindowClassFailed)));
@@ -162,7 +160,7 @@ tl::expected<std::unique_ptr<MainWindow>, WindowsError> MainWindow::Create(HINST
 
     const HWND window = ::CreateWindowExW(
         0,
-        WINDOW_CLASS_NAME,
+        MAIN_WINDOW_CLASS_NAME,
         title.c_str(),
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT,
@@ -444,21 +442,6 @@ void MainWindow::RaiseCommand(miniant::Command command) {
 }
 
 void MainWindow::CreateFonts() {
-    if (m_uiFont != nullptr) {
-        ::DeleteObject(m_uiFont);
-        m_uiFont = nullptr;
-    }
-
-    if (m_monoFont != nullptr) {
-        ::DeleteObject(m_monoFont);
-        m_monoFont = nullptr;
-    }
-
-    if (m_iconFont != nullptr) {
-        ::DeleteObject(m_iconFont);
-        m_iconFont = nullptr;
-    }
-
     m_uiFont = Dpi::CreateUiFont(m_dpi);
     m_monoFont = Dpi::CreateMonoFont(m_dpi);
 
@@ -493,8 +476,19 @@ void MainWindow::ApplyDpi(UINT dpi) {
 
     miniant::Log::Debug(miniant::Lang::Utf8(miniant::Lang::Str::LogInterfaceScale), ::MulDiv(m_dpi, 100, 96));
 
+    // A control keeps drawing with the font it was given: the old fonts are
+    // deleted only when every control has got its new one.
+    const HFONT oldFonts[] = { m_uiFont, m_monoFont, m_iconFont };
+
     CreateFonts();
     ApplyFonts();
+
+    for (const HFONT font : oldFonts) {
+        if (font != nullptr) {
+            ::DeleteObject(font);
+        }
+    }
+
     LayoutControls();
 }
 
@@ -843,6 +837,15 @@ LRESULT MainWindow::WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam) 
             return 0;
 
         case WM_DESTROY:
+            // The menu bar and its menus go with the window: their handles must
+            // not be destroyed a second time (see DestroyResources).
+            if (m_menu != nullptr && ::GetMenu(m_window) == m_menu) {
+                m_menu = nullptr;
+                m_programMenu = nullptr;
+                m_optionsMenu = nullptr;
+                m_diagnosticsMenu = nullptr;
+            }
+
             ::PostQuitMessage(0);
             return 0;
 

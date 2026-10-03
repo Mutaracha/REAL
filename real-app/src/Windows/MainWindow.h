@@ -16,6 +16,10 @@
 
 namespace miniant::Windows {
 
+// The class of the main window: a second start of the program finds the
+// running copy by it (see SignalRunningInstance).
+inline constexpr wchar_t MAIN_WINDOW_CLASS_NAME[] = L"REAL.MainWindow";
+
 // Main application window: shows the log and the current status (with the
 // restart button at the end of the status line), and hosts the tray icon.
 // Hiding the window keeps the application (and the audio stream) running in
@@ -73,6 +77,8 @@ private:
 
     void CreateControls();
     void LayoutControls();
+    // Creates the fonts for the current DPI; the fonts they replace are
+    // deleted by the caller once the controls have the new ones.
     void CreateFonts();
     void ApplyFonts();
     void ApplyDpi(UINT dpi);

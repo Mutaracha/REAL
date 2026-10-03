@@ -11,9 +11,11 @@
 #include "Log.h"
 #include "Text.h"
 #include "Windows/AboutWindow.h"
+#include "Windows/Autostart.h"
 #include "Windows/Diagnostics.h"
 #include "Windows/Filesystem.h"
 #include "Windows/SettingsWindow.h"
+#include "Windows/SingleInstance.h"
 
 #include <spdlog/fmt/fmt.h>
 
@@ -37,8 +39,14 @@ constexpr unsigned int MAXIMUM_AUDIO_RETRY_MS = 30000;
 constexpr unsigned int FAILURE_TIMEOUT_MS = 60000;
 constexpr const wchar_t* DIAGNOSTICS_FILE_NAME = L"REAL-diagnostics.txt";
 
-const wchar_t RUN_KEY_PATH[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-const wchar_t RUN_VALUE_NAME[] = L"REAL";
+const wchar_t INSTANCE_MUTEX_NAME[] = L"Local\\REAL.SingleInstance";
+
+// How long the running copy may take to process a command of a second start,
+// and how long a second start waits for a copy that is just ending (or just
+// starting and has no window yet), asking every POLL_MS.
+constexpr UINT SIGNAL_TIMEOUT_MS = 3000;
+constexpr ULONGLONG HAND_OVER_WAIT_MS = 10000;
+constexpr DWORD HAND_OVER_POLL_MS = 200;
 
 const wchar_t SIGNAL_SHOW[] = L"REAL.Signal.Show";
 const wchar_t SIGNAL_REINITIALIZE[] = L"REAL.Signal.Reinitialize";
@@ -359,7 +367,7 @@ bool App::InitializeUi() {
     }
 
     Log::Buffer().SetNotifyHandler([windowHandle]() {
-        ::PostMessageW(windowHandle, WM_APP_LOG_LINES, 0, 0);
+        return ::PostMessageW(windowHandle, WM_APP_LOG_LINES, 0, 0) != FALSE;
         });
 
     m_window->AppendLogLines(Log::Buffer().TakePending());
@@ -474,16 +482,17 @@ bool App::HandOverToRunningInstance(int& exitCode) {
         Lang::Set(Lang::Detect());
     }
 
-    m_instanceMutex = ::CreateMutexW(nullptr, TRUE, L"Local\\REAL.SingleInstance");
-    if (m_instanceMutex == nullptr) {
+    const Windows::SingleInstance::State state = m_singleInstance.Acquire(INSTANCE_MUTEX_NAME);
+
+    if (state == Windows::SingleInstance::State::Unknown) {
         // Without the mutex another copy cannot be detected: the program starts
         // and says why in the journal (the log does not exist yet, the line waits).
-        const std::string error = Windows::DescribeLastError();
+        const std::string error = Windows::DescribeError(m_singleInstance.Error());
         m_startupMessages.emplace_back(StartupLevel::Warn, fmt::format(Lang::Utf8(Str::LogMutexFailed), error));
         return false;
     }
 
-    if (::GetLastError() != ERROR_ALREADY_EXISTS) {
+    if (state == Windows::SingleInstance::State::First) {
         return false;
     }
 
@@ -497,14 +506,36 @@ bool App::HandOverToRunningInstance(int& exitCode) {
         default: break;
     }
 
-    if (NotifyRunningInstance(signal)) {
-        // The running copy shows its window; a console the command was
-        // typed in gets one line about it.
-        if (m_options.action == CommandLine::Action::Run) {
-            WriteToParentConsole(std::string(Lang::Utf8(Str::OpAlreadyRunning)) + "\n");
+    const ULONGLONG deadline = ::GetTickCount64() + HAND_OVER_WAIT_MS;
+
+    for (;;) {
+        const Windows::SignalResult result =
+            Windows::SignalRunningInstance(Windows::MAIN_WINDOW_CLASS_NAME, signal, SIGNAL_TIMEOUT_MS);
+
+        if (result == Windows::SignalResult::Delivered) {
+            // The running copy shows its window; a console the command was
+            // typed in gets one line about it.
+            if (m_options.action == CommandLine::Action::Run) {
+                WriteToParentConsole(std::string(Lang::Utf8(Str::OpAlreadyRunning)) + "\n");
+            }
+
+            return true;
         }
 
-        return true;
+        if (result == Windows::SignalResult::NotResponding) {
+            break;
+        }
+
+        // No window: the running copy is ending (or is still starting). Once it
+        // has ended, this start becomes the running copy; "--exit" has nothing
+        // left to close then.
+        if (m_singleInstance.WaitForOwnership(HAND_OVER_POLL_MS)) {
+            return m_options.action == CommandLine::Action::Exit;
+        }
+
+        if (::GetTickCount64() >= deadline) {
+            break;
+        }
     }
 
     // The running copy does not answer. A second copy is never started:
@@ -523,24 +554,6 @@ void App::ReportInstanceNotResponding() const {
     if (!WriteToParentConsole(text + "\n")) {
         ::MessageBoxW(nullptr, Text::ToWide(text).c_str(), std::wstring(AppInfo::NAME).c_str(), MB_OK | MB_ICONWARNING);
     }
-}
-
-bool App::NotifyRunningInstance(UINT message) const {
-    if (message == 0) {
-        return false;
-    }
-
-    DWORD_PTR result = 0;
-    const LRESULT sent = ::SendMessageTimeoutW(
-        HWND_BROADCAST,
-        message,
-        0,
-        0,
-        SMTO_ABORTIFHUNG | SMTO_NORMAL,
-        3000,
-        &result);
-
-    return sent != 0;
 }
 
 void App::ApplyPerformanceSettings() {
@@ -926,9 +939,12 @@ void App::StartUpdateCheck() {
     const std::string repository = AppInfo::GITHUB_REPOSITORY;
     const HWND windowHandle = m_window != nullptr ? m_window->GetHWindow() : nullptr;
 
-    m_updateThread = std::thread([this, repository, windowHandle]() {
+    m_updateCancellation = std::make_shared<Http::Cancellation>();
+    const std::shared_ptr<Http::Cancellation> cancellation = m_updateCancellation;
+
+    m_updateThread = std::thread([this, repository, windowHandle, cancellation]() {
         AutoUpdater::AutoUpdater updater(repository);
-        auto release = updater.GetLatestRelease();
+        auto release = updater.GetLatestRelease(cancellation.get());
 
         std::string message;
         std::string details;
@@ -959,6 +975,16 @@ void App::StartUpdateCheck() {
             ::PostMessageW(windowHandle, WM_APP_UPDATE_RESULT, 0, 0);
         }
         });
+}
+
+void App::CancelUpdateCheck() {
+    if (m_updateCancellation) {
+        m_updateCancellation->Cancel();
+    }
+
+    if (m_updateThread.joinable()) {
+        m_updateThread.join();
+    }
 }
 
 void App::FinishUpdateCheck() {
@@ -1065,6 +1091,12 @@ void App::OnCommand(Command command) {
         case Command::Exit:
             m_exitCode = 0;
             Log::Operation(Lang::Utf8(Str::OpExiting));
+
+            // Everything that matters is done before the window goes: when
+            // Windows ends the session (WM_ENDSESSION), the process may be ended
+            // as soon as the window has answered.
+            StopWork();
+
             if (m_window != nullptr) {
                 ::DestroyWindow(m_window->GetHWindow());
             }
@@ -1245,17 +1277,25 @@ void App::OnDeviceEvent(WPARAM wParam, LPARAM lParam) {
         return;
     }
 
-    // Windows sends a burst of events for one change: the restart waits for the
-    // last of them (0 - the smallest pause of a timer).
     m_deviceEventPending = true;
-    ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent));
+    ScheduleDeviceRestart();
+}
+
+// Windows sends a burst of events for one change, and the list of the devices
+// is not ready right after a resume: the restart waits for the last event of a
+// burst. A timer that is set again starts over.
+void App::ScheduleDeviceRestart() {
+    if (m_window == nullptr || m_workStopped) {
+        return;
+    }
+
     ::SetTimer(
         m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent),
         static_cast<UINT>(m_settings.audio.reinit.debounceMs), nullptr);
 }
 
 void App::ScheduleAudioRetry() {
-    if (m_window == nullptr || m_shuttingDown) {
+    if (m_window == nullptr || m_workStopped) {
         return;
     }
 
@@ -1415,35 +1455,10 @@ void App::OnSystemResume(bool sessionUnlock, const std::wstring& reason) {
         return;
     }
 
-    // The device list is not ready immediately after a resume; the same pause
-    // as for the device notifications is used, with the same timer (the line
-    // about the restart is written when it fires).
+    // The same pause as for the device notifications, with the same timer (the
+    // line about the restart is written when it fires).
     m_resumeReason = reason;
-    ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent));
-    ::SetTimer(
-        m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent),
-        static_cast<UINT>(m_settings.audio.reinit.debounceMs), nullptr);
-}
-
-std::wstring App::ReadAutostartCommand() const {
-    HKEY key = nullptr;
-    if (::RegOpenKeyExW(HKEY_CURRENT_USER, RUN_KEY_PATH, 0, KEY_READ, &key) != ERROR_SUCCESS) {
-        return {};
-    }
-
-    // The value is not guaranteed to end with a zero: the last character of
-    // the buffer is never given to the registry, so it always does.
-    wchar_t buffer[1025] = {};
-    DWORD size = sizeof(buffer) - sizeof(wchar_t);
-    DWORD type = 0;
-    const LONG result = ::RegQueryValueExW(key, RUN_VALUE_NAME, nullptr, &type, reinterpret_cast<LPBYTE>(buffer), &size);
-    ::RegCloseKey(key);
-
-    if (result != ERROR_SUCCESS || type != REG_SZ) {
-        return {};
-    }
-
-    return buffer;
+    ScheduleDeviceRestart();
 }
 
 // The command line the entry has to contain: the program with the start mode
@@ -1460,26 +1475,11 @@ std::wstring App::AutostartCommand() const {
 }
 
 bool App::WriteAutostartCommand() {
-    HKEY key = nullptr;
-    if (::RegCreateKeyExW(HKEY_CURRENT_USER, RUN_KEY_PATH, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
-        Log::Error(Lang::Utf8(Str::LogAutostartOpenFailed), Windows::DescribeLastError());
-        return false;
-    }
+    // The registry returns its error code instead of setting the last error.
+    const unsigned long error = Windows::Autostart::Write(AutostartCommand());
 
-    const std::wstring command = AutostartCommand();
-
-    const LONG result = ::RegSetValueExW(
-        key,
-        RUN_VALUE_NAME,
-        0,
-        REG_SZ,
-        reinterpret_cast<const BYTE*>(command.c_str()),
-        static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
-
-    ::RegCloseKey(key);
-
-    if (result != ERROR_SUCCESS) {
-        Log::Error(Lang::Utf8(Str::LogAutostartWriteFailed), Windows::DescribeLastError());
+    if (error != 0) {
+        Log::Error(Lang::Utf8(Str::LogAutostartWriteFailed), Windows::DescribeError(error));
         return false;
     }
 
@@ -1487,7 +1487,7 @@ bool App::WriteAutostartCommand() {
 }
 
 void App::ApplyStartWithWindows() {
-    const std::wstring current = ReadAutostartCommand();
+    const std::wstring current = Windows::Autostart::Read();
 
     if (!m_fileSettings.application.startWithWindows) {
         if (!current.empty()) {
@@ -1519,14 +1519,12 @@ void App::SetStartWithWindows(bool enabled) {
         return;
     }
 
-    HKEY key = nullptr;
-    if (::RegCreateKeyExW(HKEY_CURRENT_USER, RUN_KEY_PATH, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
-        Log::Error(Lang::Utf8(Str::LogAutostartOpenFailed), Windows::DescribeLastError());
+    const unsigned long error = Windows::Autostart::Remove();
+
+    if (error != 0) {
+        Log::Error(Lang::Utf8(Str::LogAutostartRemoveFailed), Windows::DescribeError(error));
         return;
     }
-
-    ::RegDeleteValueW(key, RUN_VALUE_NAME);
-    ::RegCloseKey(key);
 
     Log::Operation(Lang::Utf8(Str::OpAutostart), Lang::Utf8(Str::ValueOff));
 }
@@ -1549,6 +1547,34 @@ void App::PrintStartupText(const std::wstring& text) const {
     ::MessageBoxW(nullptr, text.c_str(), title.c_str(), MB_OK | MB_ICONINFORMATION);
 }
 
+void App::StopWork() {
+    if (m_workStopped) {
+        return;
+    }
+
+    m_workStopped = true;
+
+    // A check of updates that waits for the network is interrupted, not
+    // waited for.
+    CancelUpdateCheck();
+
+    if (m_window != nullptr) {
+        const HWND window = m_window->GetHWindow();
+
+        ::KillTimer(window, static_cast<UINT_PTR>(TimerId::Validate));
+        ::KillTimer(window, static_cast<UINT_PTR>(TimerId::DeviceEvent));
+        ::KillTimer(window, static_cast<UINT_PTR>(TimerId::AudioRetry));
+
+        // Before the window is destroyed: afterwards the call fails.
+        ::WTSUnRegisterSessionNotification(window);
+    }
+
+    m_audio.Shutdown();
+
+    Log::Info(Lang::Utf8(Str::LogStopped));
+    Log::Shutdown();
+}
+
 void App::Shutdown() {
     if (m_shuttingDown) {
         return;
@@ -1556,21 +1582,7 @@ void App::Shutdown() {
 
     m_shuttingDown = true;
 
-    if (m_updateThread.joinable()) {
-        m_updateThread.join();
-    }
-
-    if (m_window != nullptr) {
-        ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::Validate));
-        ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent));
-        ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::AudioRetry));
-        ::WTSUnRegisterSessionNotification(m_window->GetHWindow());
-    }
-
-    m_audio.Shutdown();
-
-    Log::Info(Lang::Utf8(Str::LogStopped));
-    Log::Shutdown();
+    StopWork();
 
     m_window.reset();
 
@@ -1579,9 +1591,6 @@ void App::Shutdown() {
         m_comInitialized = false;
     }
 
-    if (m_instanceMutex != nullptr) {
-        ::ReleaseMutex(m_instanceMutex);
-        ::CloseHandle(m_instanceMutex);
-        m_instanceMutex = nullptr;
-    }
+    // The next start may become the running copy from now on.
+    m_singleInstance.Release();
 }

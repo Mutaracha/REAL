@@ -1,6 +1,8 @@
 #include "SettingsWindow.h"
 
+#include "BalloonTip.h"
 #include "Dpi.h"
+#include "SettingsChecks.h"
 
 #include "../../res/resource.h"
 #include "../Lang.h"
@@ -14,12 +16,14 @@
 #include <spdlog/fmt/fmt.h>
 
 #include <algorithm>
+#include <cwchar>
 #include <string>
 #include <utility>
 #include <vector>
 
 using namespace miniant;
 using namespace miniant::Windows;
+using namespace miniant::Windows::SettingsChecks;
 
 namespace {
 
@@ -39,9 +43,15 @@ const int GROUP_GAP = 12;
 // The space between the longest label and the fields next to it.
 const int LABEL_GAP = 16;
 const int FIELD_WIDTH = 220;
-// A check box that depends on the one above it (an item of the tray menu
-// under "Show the tray icon") starts under the caption of that one.
-const int CHECK_INDENT = 20;
+// A list is as wide as its longest item in either language plus what the list
+// draws around it: the borders, the margins of the text and the arrow button.
+const int COMBO_CHROME = 30;
+// A row of choices ("Language:" and its buttons): the space after the caption
+// and between two buttons.
+const int CHOICE_CAPTION_GAP = 10;
+const int CHOICE_GAP = 16;
+// The longest path the field of the log file takes.
+const int MAX_PATH_LENGTH = 1024;
 const int PAGE_TOP = 62;
 // The buttons have the size of every push button of the program (see
 // StandardButtonWidth): the width is known once the font is.
@@ -66,17 +76,29 @@ const int PAGE_AIR = 2;
 // of reserve keep its last letter from being cut off.
 const int HEADER_SLACK = 4;
 
+// A value that the window does not take is put back, and a balloon at its
+// field says why: it disappears by itself after a while, or when the user
+// types, switches the page or leaves the window. The check of a field runs
+// after the keyboard has really moved on (see WM_APP_CHECK_FIELD).
+const UINT_PTR TIP_TIMER_ID = 1;
+const UINT TIP_DURATION_MS = 6000;
+const int TIP_MAX_WIDTH = 320;
+const UINT WM_APP_CHECK_FIELD = WM_APP + 1;
+
 // Every control of the window has a number: the values are read back by it, so
 // a control that is not on screen at the moment (another page is open) keeps
 // its state.
 enum class Id : int {
-    Language = 1000,
+    LanguageAuto = 1000,
+    LanguageEnglish,
+    LanguageRussian,
     StartWithWindows,
     StartMinimizedToTray,
     MinimizeToTray,
     CloseButtonAction,
 
     TrayEnabled,
+    TrayMenuCaption,
     TrayMenuToggle,
     TrayMenuReinit,
     TrayMenuLog,
@@ -133,7 +155,7 @@ struct Context {
     std::wstring settingsPath;
 
     // The buffer range of the device: the hint under the fixed buffer and the
-    // check of its value (see CheckFixedBuffer).
+    // check of its value (see FixedBufferProblem).
     BufferRange bufferRange;
 
     // The dots per inch of the monitor the window is on: every coordinate below
@@ -184,6 +206,14 @@ struct Context {
 
     HFONT font = nullptr;
     HFONT headerFont = nullptr;
+    HFONT captionFont = nullptr;
+
+    // The last value of every checked field that the window took: a value it
+    // does not take is replaced with it. At first it is the value in use.
+    std::vector<std::pair<Id, std::wstring>> lastValid;
+
+    // The balloon of a field whose value was put back (see ShowFieldTip).
+    BalloonTip tip{ TIP_TIMER_ID };
 };
 
 int ControlId(Id id) {
@@ -236,13 +266,15 @@ const Choice<Config::ProcessPriority> PRIORITIES[] = {
     { Config::ProcessPriority::Idle, Lang::Str::SettingsPriorityIdle },
 };
 
+// The texts of a list, as identifiers: the list shows them in the current
+// language and is as wide as the longest of them in either language.
 template <typename Enum, size_t N>
-std::vector<std::wstring> Texts(const Choice<Enum> (&choices)[N]) {
-    std::vector<std::wstring> items;
+std::vector<Lang::Str> Texts(const Choice<Enum> (&choices)[N]) {
+    std::vector<Lang::Str> items;
     items.reserve(N);
 
     for (size_t i = 0; i < N; ++i) {
-        items.push_back(Lang::Wide(choices[i].text));
+        items.push_back(choices[i].text);
     }
 
     return items;
@@ -315,32 +347,38 @@ bool IsLogLevelOff(int index) {
         std::string(LOG_LEVELS[static_cast<size_t>(index)].value) == "off";
 }
 
-int LanguageIndex(const std::string& code) {
-    if (code == "en" || code == "english") {
-        return 1;
-    }
+// The buttons of the language, in the order of their identifiers
+// (LanguageAuto, LanguageEnglish, LanguageRussian).
+const Choice<const char*> LANGUAGES[] = {
+    { "auto", Lang::Str::SettingsLanguageAuto },
+    { "en", Lang::Str::SettingsLanguageEnglish },
+    { "ru", Lang::Str::SettingsLanguageRussian },
+};
 
-    if (code == "ru" || code == "russian") {
-        return 2;
+const size_t LANGUAGE_COUNT = sizeof(LANGUAGES) / sizeof(LANGUAGES[0]);
+
+// The reader of the file keeps the language in its main form ("auto", "en",
+// "ru"); anything else is "auto", as for the program itself.
+int LanguageIndex(const std::string& code) {
+    const std::string value = Text::ToLowerAscii(Text::Trim(code));
+
+    for (size_t i = 0; i < LANGUAGE_COUNT; ++i) {
+        if (value == LANGUAGES[i].value) {
+            return static_cast<int>(i);
+        }
     }
 
     return 0;
 }
 
 const char* LanguageCode(int index) {
-    switch (index) {
-        case 1: return "en";
-        case 2: return "ru";
-        default: return "auto";
-    }
+    return index >= 0 && index < static_cast<int>(LANGUAGE_COUNT)
+        ? LANGUAGES[static_cast<size_t>(index)].value
+        : LANGUAGES[0].value;
 }
 
-std::vector<std::wstring> LanguageTexts() {
-    return {
-        Lang::Wide(Lang::Str::SettingsLanguageAuto),
-        Lang::Wide(Lang::Str::SettingsLanguageEnglish),
-        Lang::Wide(Lang::Str::SettingsLanguageRussian),
-    };
+Id LanguageId(int index) {
+    return static_cast<Id>(static_cast<int>(Id::LanguageAuto) + index);
 }
 
 // Every control of the page that is being built is remembered: switching a page
@@ -373,7 +411,6 @@ void ExtendContent(Context& context, int right) {
 // the longest of them in the language of the window, plus a gap: a label
 // added to a page has to be added here as well.
 const Lang::Str FIELD_LABELS[] = {
-    Lang::Str::SettingsLanguage,
     Lang::Str::SettingsCloseAction,
     Lang::Str::SettingsDataFlow,
     Lang::Str::SettingsBuffer,
@@ -465,15 +502,15 @@ int AddHeader(Context& context, Lang::Str text, int y) {
     return y + HEADER_STEP;
 }
 
-// The indent moves a check box that depends on the one above it under the
-// caption of that one.
-int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y, int indent = 0) {
+// A check box at the left edge of the page. WS_GROUP in extraStyle starts a
+// new group of controls (see AddChoiceRow).
+int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y, DWORD extraStyle = 0) {
     const std::wstring caption = Lang::Wide(text);
-    const int x = MARGIN + indent;
+    const int x = MARGIN;
     const int width = CheckWidth(context, caption, x);
 
     const HWND check = CreateControl(
-        context, L"BUTTON", caption, BS_AUTOCHECKBOX | WS_TABSTOP, id,
+        context, L"BUTTON", caption, BS_AUTOCHECKBOX | WS_TABSTOP | extraStyle, id,
         x, y, width, ROW_HEIGHT);
 
     if (check != nullptr) {
@@ -485,30 +522,128 @@ int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y, int ind
     return y + ROW_STEP;
 }
 
-int AddCombo(Context& context, Id id, Lang::Str label, const std::vector<std::wstring>& items, int selected, int y) {
+// The caption of a group of controls inside a section ("Icon menu items:"):
+// as bold as a header, but of the size of the rows and with their step.
+int AddCaption(Context& context, Id id, Lang::Str text, int y) {
+    const std::wstring caption = Lang::Wide(text);
+    const HFONT font = context.captionFont != nullptr ? context.captionFont : context.font;
+    const int available = context.pageRight - MARGIN;
+    const int textWidth = DesignTextWidth(context, font, caption);
+    const int width = textWidth > 0 ? (std::min)(textWidth + HEADER_SLACK, available) : available;
+
+    const HWND label = CreateControl(
+        context, L"STATIC", caption, SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX, id,
+        MARGIN, y, width, ROW_HEIGHT);
+
+    if (label != nullptr && context.captionFont != nullptr) {
+        ::SendMessageW(label, WM_SETFONT, reinterpret_cast<WPARAM>(context.captionFont), TRUE);
+    }
+
+    BindToPage(context, label);
+    ExtendContent(context, MARGIN + width);
+    return y + ROW_STEP;
+}
+
+HWND Get(Context& context, Id id);
+
+// Tab enters a group of choices at its selected button, as in every dialog
+// box of the system: only that button is a tab stop.
+void UpdateChoiceTabStop(Context& context, Id firstId, size_t count) {
+    bool anyChecked = false;
+
+    for (size_t i = 0; i < count; ++i) {
+        const HWND button = Get(context, static_cast<Id>(static_cast<int>(firstId) + static_cast<int>(i)));
+        anyChecked = anyChecked || (button != nullptr && ::SendMessageW(button, BM_GETCHECK, 0, 0) == BST_CHECKED);
+    }
+
+    for (size_t i = 0; i < count; ++i) {
+        const HWND button = Get(context, static_cast<Id>(static_cast<int>(firstId) + static_cast<int>(i)));
+        if (button == nullptr) {
+            continue;
+        }
+
+        const bool stop = anyChecked ? ::SendMessageW(button, BM_GETCHECK, 0, 0) == BST_CHECKED : i == 0;
+        const LONG_PTR style = ::GetWindowLongPtrW(button, GWL_STYLE);
+        ::SetWindowLongPtrW(
+            button, GWL_STYLE, stop ? (style | WS_TABSTOP) : (style & ~static_cast<LONG_PTR>(WS_TABSTOP)));
+    }
+}
+
+// A row of choices right after its caption, outside the column of the labels:
+// "Language:  (o) As in Windows  ( ) English  ( ) Russian". The buttons have
+// consecutive identifiers from firstId and are one group: the arrows move
+// between them, and the control after the row starts the next group.
+int AddChoiceRow(
+    Context& context, Id firstId, Lang::Str label, const std::vector<Lang::Str>& texts, int selected, int y) {
+    const std::wstring caption = Lang::Wide(label);
+    const int captionWidth = DesignTextWidth(context, context.font, caption) + HEADER_SLACK;
+
+    BindToPage(context, CreateControl(
+        context, L"STATIC", caption, SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
+        MARGIN, y, captionWidth, ROW_HEIGHT));
+
+    int x = MARGIN + captionWidth + CHOICE_CAPTION_GAP;
+
+    for (size_t i = 0; i < texts.size(); ++i) {
+        const std::wstring text = Lang::Wide(texts[i]);
+        const int width = CheckWidth(context, text, x);
+        const Id id = static_cast<Id>(static_cast<int>(firstId) + static_cast<int>(i));
+
+        const HWND button = CreateControl(
+            context, L"BUTTON", text, BS_AUTORADIOBUTTON | (i == 0 ? WS_GROUP : 0), id,
+            x, y, width, ROW_HEIGHT);
+
+        if (button != nullptr && static_cast<int>(i) == selected) {
+            ::SendMessageW(button, BM_SETCHECK, BST_CHECKED, 0);
+        }
+
+        BindToPage(context, button);
+        ExtendContent(context, x + width);
+        x += width + CHOICE_GAP;
+    }
+
+    UpdateChoiceTabStop(context, firstId, texts.size());
+    return y + ROW_STEP;
+}
+
+// A list is as wide as its longest item in either language: a change of the
+// language moves nothing, and no list is wider than what it shows.
+int ComboWidth(Context& context, const std::vector<Lang::Str>& texts) {
+    int widest = 0;
+
+    for (const Lang::Str text : texts) {
+        for (const Lang::Language language : { Lang::Language::English, Lang::Language::Russian }) {
+            widest = (std::max)(widest, DesignTextWidth(context, context.font, Lang::Wide(text, language)));
+        }
+    }
+
+    return widest > 0 ? widest + COMBO_CHROME : FIELD_WIDTH;
+}
+
+int AddCombo(Context& context, Id id, Lang::Str label, const std::vector<Lang::Str>& texts, int selected, int y) {
     BindToPage(context, CreateControl(
         context, L"STATIC", Lang::Wide(label), SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
         MARGIN, y, context.labelWidth, ROW_HEIGHT));
 
-    // The same width as the fields: a list does not need the whole window, and
-    // a row of controls of different lengths looks ragged.
+    const int width = ComboWidth(context, texts);
+
     const HWND combo = CreateControl(
         context, L"COMBOBOX", L"",
         WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, id,
-        MARGIN + context.labelWidth, y, FIELD_WIDTH, ROW_HEIGHT * 8);
+        MARGIN + context.labelWidth, y, width, ROW_HEIGHT * 8);
 
-    ExtendContent(context, MARGIN + context.labelWidth + FIELD_WIDTH);
+    ExtendContent(context, MARGIN + context.labelWidth + width);
 
     // A list belongs to its page like every other control: without this the
     // lists of all three pages would be drawn in the same place at once.
     BindToPage(context, combo);
 
     if (combo != nullptr) {
-        for (const std::wstring& item : items) {
-            ::SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item.c_str()));
+        for (const Lang::Str text : texts) {
+            ::SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(Lang::Wide(text).c_str()));
         }
 
-        if (selected >= 0 && selected < static_cast<int>(items.size())) {
+        if (selected >= 0 && selected < static_cast<int>(texts.size())) {
             ::SendMessageW(combo, CB_SETCURSEL, static_cast<WPARAM>(selected), 0);
         }
     }
@@ -516,17 +651,67 @@ int AddCombo(Context& context, Id id, Lang::Str label, const std::vector<std::ws
     return y + ROW_STEP;
 }
 
-int AddEdit(Context& context, Id id, Lang::Str label, const std::wstring& value, int width, int y) {
+// The value a checked field had when the window took it last: a value it does
+// not take is replaced with this one.
+void RememberValid(Context& context, Id id, const std::wstring& text) {
+    for (auto& entry : context.lastValid) {
+        if (entry.first == id) {
+            entry.second = text;
+            return;
+        }
+    }
+
+    context.lastValid.emplace_back(id, text);
+}
+
+std::wstring LastValid(const Context& context, Id id) {
+    for (const auto& entry : context.lastValid) {
+        if (entry.first == id) {
+            return entry.second;
+        }
+    }
+
+    return {};
+}
+
+// A text field. A field of a number takes digits only and no more of them than
+// its largest value has.
+int AddEdit(
+    Context& context, Id id, Lang::Str label, const std::wstring& value, int width, int y,
+    int maxLength, bool digitsOnly = false) {
     BindToPage(context, CreateControl(
         context, L"STATIC", Lang::Wide(label), SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
         MARGIN, y, context.labelWidth, ROW_HEIGHT));
 
-    BindToPage(context, CreateControl(
-        context, L"EDIT", value, WS_TABSTOP | ES_AUTOHSCROLL, id,
-        MARGIN + context.labelWidth, y, width, ROW_HEIGHT, WS_EX_CLIENTEDGE));
+    const HWND edit = CreateControl(
+        context, L"EDIT", value, WS_TABSTOP | ES_AUTOHSCROLL | (digitsOnly ? ES_NUMBER : 0), id,
+        MARGIN + context.labelWidth, y, width, ROW_HEIGHT, WS_EX_CLIENTEDGE);
+
+    if (edit != nullptr && maxLength > 0) {
+        ::SendMessageW(edit, EM_LIMITTEXT, static_cast<WPARAM>(maxLength), 0);
+    }
+
+    BindToPage(context, edit);
+    RememberValid(context, id, value);
 
     ExtendContent(context, MARGIN + context.labelWidth + width);
     return y + ROW_STEP;
+}
+
+int DigitCount(int value) {
+    int digits = 1;
+
+    while (value >= 10) {
+        value /= 10;
+        ++digits;
+    }
+
+    return digits;
+}
+
+int AddNumber(
+    Context& context, Id id, Lang::Str label, const std::wstring& value, const Config::NumberLimits& limits, int y) {
+    return AddEdit(context, id, label, value, FIELD_WIDTH, y, DigitCount(limits.maximum), true);
 }
 
 HWND Get(Context& context, Id id) {
@@ -594,43 +779,13 @@ void SetSelected(Context& context, Id id, int index) {
     }
 }
 
-// A number from an edit control. A value outside the allowed range, or a text
-// that is not a number at all, keeps the field as it was and is reported to the
-// user instead of being written to the file.
-int ReadInt(Context& context, Id id, int minimum, int maximum, int fallback, bool& valid) {
-    const std::wstring text = ReadText(context, id, L"");
-    if (text.empty()) {
-        valid = true;
-        return fallback;
-    }
+// The number of a field within its limits, or the fallback.
+int ReadNumber(Context& context, Id id, const Config::NumberLimits& limits, int fallback) {
+    long value = 0;
 
-    wchar_t* end = nullptr;
-    const long value = std::wcstol(text.c_str(), &end, 10);
-    if (end == text.c_str() || *end != L'\0' || value < minimum || value > maximum) {
-        valid = false;
-        return fallback;
-    }
-
-    valid = true;
-    return static_cast<int>(value);
-}
-
-void ReportInvalid(std::wstring& fields, const std::wstring& text) {
-    if (!fields.empty()) {
-        fields += L", ";
-    }
-
-    fields += text;
-}
-
-void ReportInvalid(std::wstring& fields, Lang::Str label) {
-    ReportInvalid(fields, Lang::Wide(label));
-}
-
-// The step of the grid of the device; a driver that reports none accepts every
-// value of its range.
-uint32_t BufferStep(const BufferRange& range) {
-    return range.step > 0 ? range.step : 1;
+    return ParseNumber(ReadText(context, id, L""), value) && value >= limits.minimum && value <= limits.maximum
+        ? static_cast<int>(value)
+        : fallback;
 }
 
 // The hint under the field of the fixed buffer: the range of the device in
@@ -656,39 +811,89 @@ std::wstring BufferHintText(const Context& context) {
         Lang::Decimal(milliseconds(range.maximum))));
 }
 
-// A fixed buffer has to be a value the device accepts: inside its range and on
-// its grid (a multiple of the step). Returns an empty text when the value fits
-// or the range is not known yet, otherwise the text of the message with the
-// range and the nearest values that fit.
-std::wstring CheckFixedBuffer(const Context& context, uint32_t frames) {
-    const BufferRange& range = context.bufferRange;
-    if (range.minimum == 0) {
-        return {};
+// ------------------------------------------------------------ checks ------
+
+// The fields whose values are checked, in the order of the pages, with the
+// labels their balloons are titled with.
+struct CheckedField {
+    Id id;
+    Lang::Str label;
+};
+
+const CheckedField CHECKED_FIELDS[] = {
+    { Id::AudioFixedBufferFrames, Lang::Str::SettingsFixedBufferFrames },
+    { Id::ReinitFailureTimeout, Lang::Str::SettingsReinitFailureTimeout },
+    { Id::ReinitDebounce, Lang::Str::SettingsReinitDebounce },
+    { Id::LogFilePath, Lang::Str::SettingsLogFilePath },
+    { Id::LogMaxFileSize, Lang::Str::SettingsLogMaxFileSize },
+    { Id::LogMaxFiles, Lang::Str::SettingsLogMaxFiles },
+};
+
+// The numbers among them take the limits of the settings file.
+struct NumberField {
+    Id id;
+    Config::NumberLimits limits;
+};
+
+const NumberField NUMBER_FIELDS[] = {
+    { Id::ReinitFailureTimeout, Config::FAILURE_TIMEOUT_MS_LIMITS },
+    { Id::ReinitDebounce, Config::DEBOUNCE_MS_LIMITS },
+    { Id::LogMaxFileSize, Config::LOG_FILE_SIZE_MB_LIMITS },
+    { Id::LogMaxFiles, Config::LOG_FILES_LIMITS },
+};
+
+const CheckedField* FindCheckedField(UINT controlId) {
+    for (const CheckedField& field : CHECKED_FIELDS) {
+        if (static_cast<UINT>(ControlId(field.id)) == controlId) {
+            return &field;
+        }
     }
 
-    const uint32_t step = BufferStep(range);
-    const std::string label = Lang::Utf8(Lang::Str::SettingsFixedBufferFrames);
-    const std::string device = Text::ToUtf8(
-        range.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : range.deviceName);
+    return nullptr;
+}
 
-    if (frames < range.minimum || frames > range.maximum) {
-        const uint32_t nearest = frames < range.minimum ? range.minimum : range.maximum;
-
-        return Text::ToWide(fmt::format(
-            Lang::Utf8(Lang::Str::SettingsBufferOutOfRange),
-            label, device, range.minimum, range.maximum, step, nearest));
+// What is wrong with a value of a checked field: the text of its balloon.
+// Empty when the window takes the value.
+std::wstring FieldProblem(const Context& context, Id id, const std::wstring& text) {
+    if (id == Id::AudioFixedBufferFrames) {
+        return FixedBufferProblem(context.bufferRange, text);
     }
 
-    if (frames % step != 0) {
-        const uint32_t lower = (std::max)(range.minimum, frames - frames % step);
-        const uint32_t upper = (std::min)(range.maximum, lower + step);
+    if (id == Id::LogFilePath) {
+        return PathProblem(text);
+    }
 
-        return Text::ToWide(fmt::format(
-            Lang::Utf8(Lang::Str::SettingsBufferNotOnStep),
-            label, device, range.minimum, range.maximum, step, lower, upper));
+    for (const NumberField& field : NUMBER_FIELDS) {
+        if (field.id == id) {
+            return NumberProblem(text, field.limits);
+        }
     }
 
     return {};
+}
+
+// The value a rejected field gets back: the last one the window took. When
+// even that one does not fit (a size of the fixed buffer from the file that
+// the device does not take), the buffer the device runs with, or the default
+// path of the log.
+std::wstring RestoreText(const Context& context, Id id) {
+    const std::wstring last = LastValid(context, id);
+    if (FieldProblem(context, id, last).empty()) {
+        return last;
+    }
+
+    if (id == Id::AudioFixedBufferFrames) {
+        const BufferRange& range = context.bufferRange;
+        const uint32_t frames = range.current > 0 ? range.current : range.minimum;
+
+        return frames > 0 ? std::to_wstring(frames) : std::wstring();
+    }
+
+    if (id == Id::LogFilePath) {
+        return Text::ToWide(Config::LoggingSettings().filePath);
+    }
+
+    return last;
 }
 
 // The field of the fixed buffer is empty while no size is set (0 in the file).
@@ -706,10 +911,15 @@ int BuildWindowPage(Context& context) {
     int y = PAGE_TOP;
 
     y = AddHeader(context, Lang::Str::SettingsHeaderApplication, y);
-    y = AddCombo(context, Id::Language, Lang::Str::SettingsLanguage, LanguageTexts(),
+
+    // The language as a row of buttons right after its caption: in the column
+    // of the labels a list stood far away from the word "Language".
+    y = AddChoiceRow(context, Id::LanguageAuto, Lang::Str::SettingsLanguage, Texts(LANGUAGES),
         LanguageIndex(settings.application.language), y);
+
+    // WS_GROUP: the buttons of the language end here, the arrows stay in them.
     y = AddCheck(context, Id::StartWithWindows, Lang::Str::SettingsStartWithWindows,
-        settings.application.startWithWindows, y);
+        settings.application.startWithWindows, y, WS_GROUP);
     y = AddCheck(context, Id::StartMinimizedToTray, Lang::Str::SettingsStartMinimized,
         settings.application.startMinimizedToTray, y);
     y = AddCheck(context, Id::MinimizeToTray, Lang::Str::SettingsMinimizeToTray,
@@ -717,21 +927,18 @@ int BuildWindowPage(Context& context) {
     y = AddCombo(context, Id::CloseButtonAction, Lang::Str::SettingsCloseAction, Texts(CLOSE_ACTIONS),
         IndexOf(CLOSE_ACTIONS, settings.application.closeButtonAction), y);
 
-    // The icon and the items of its menu that can be hidden. The items depend
-    // on the icon: they stand under its caption and are greyed out while it is
-    // off. The status line, "Settings" and "Exit" are always in the menu, so
-    // they have no switch here.
+    // The icon and the items of its menu that can be hidden. The items have a
+    // caption of their own and are greyed out with it while the icon is off.
+    // The status line, "Settings" and "Exit" are always in the menu, so they
+    // have no switch here.
     y += GROUP_GAP;
     y = AddHeader(context, Lang::Str::SettingsHeaderTray, y);
     y = AddCheck(context, Id::TrayEnabled, Lang::Str::SettingsTrayEnabled, settings.tray.enabled, y);
-    y = AddCheck(context, Id::TrayMenuToggle, Lang::Str::TrayToggleEnabled,
-        settings.tray.menu.toggleEnabled, y, CHECK_INDENT);
-    y = AddCheck(context, Id::TrayMenuReinit, Lang::Str::TrayReinitialize,
-        settings.tray.menu.reinitialize, y, CHECK_INDENT);
-    y = AddCheck(context, Id::TrayMenuLog, Lang::Str::TrayLog,
-        settings.tray.menu.openLog, y, CHECK_INDENT);
-    y = AddCheck(context, Id::TrayMenuDiagnostics, Lang::Str::TrayDiagnostics,
-        settings.tray.menu.diagnostics, y, CHECK_INDENT);
+    y = AddCaption(context, Id::TrayMenuCaption, Lang::Str::SettingsTrayMenuCaption, y);
+    y = AddCheck(context, Id::TrayMenuToggle, Lang::Str::TrayToggleEnabled, settings.tray.menu.toggleEnabled, y);
+    y = AddCheck(context, Id::TrayMenuReinit, Lang::Str::TrayReinitialize, settings.tray.menu.reinitialize, y);
+    y = AddCheck(context, Id::TrayMenuLog, Lang::Str::TrayLog, settings.tray.menu.openLog, y);
+    y = AddCheck(context, Id::TrayMenuDiagnostics, Lang::Str::TrayDiagnostics, settings.tray.menu.diagnostics, y);
 
     // The balloons are shown by the tray icon: without it they are greyed out
     // as well.
@@ -759,22 +966,26 @@ int BuildAudioPage(Context& context) {
         IndexOf(DATA_FLOWS, settings.audio.dataFlow), y);
     y = AddCombo(context, Id::AudioBufferMode, Lang::Str::SettingsBuffer, Texts(BUFFER_MODES),
         IndexOf(BUFFER_MODES, settings.audio.buffer), y);
-    y = AddEdit(context, Id::AudioFixedBufferFrames, Lang::Str::SettingsFixedBufferFrames,
-        FixedBufferText(settings.audio.fixedBufferFrames), FIELD_WIDTH, y);
+    y = AddNumber(context, Id::AudioFixedBufferFrames, Lang::Str::SettingsFixedBufferFrames,
+        FixedBufferText(settings.audio.fixedBufferFrames), Config::FIXED_BUFFER_FRAMES_LIMITS, y);
 
-    // The range of the device under the field: the values the fixed buffer
-    // accepts, so that nobody has to look them up in the diagnostics report.
-    const std::wstring hint = BufferHintText(context);
-    if (!hint.empty()) {
-        const int x = MARGIN + context.labelWidth;
-        const int textWidth = DesignTextWidth(context, context.font, hint);
-        const int width = textWidth > 0 ? textWidth + HEADER_SLACK : FIELD_WIDTH;
+    // The range of the device under the name of the field: the values the
+    // fixed buffer takes, so that nobody has to look them up in the report of
+    // the diagnostics. It is shown for the fixed buffer only, and its row
+    // stays when it is hidden: nothing below moves with the choice of the
+    // buffer (see UpdateHintVisibility).
+    {
+        const std::wstring hint = BufferHintText(context);
+        const int textWidth = hint.empty() ? 0 : DesignTextWidth(context, context.font, hint);
+        const int width = textWidth > 0
+            ? (std::min)(textWidth + HEADER_SLACK, context.pageRight - MARGIN)
+            : context.labelWidth;
 
         BindToPage(context, CreateControl(
-            context, L"STATIC", hint, SS_LEFT | SS_CENTERIMAGE, Id::AudioBufferHint,
-            x, y, width, ROW_HEIGHT));
+            context, L"STATIC", hint, SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX, Id::AudioBufferHint,
+            MARGIN, y, width, ROW_HEIGHT));
 
-        ExtendContent(context, x + width);
+        ExtendContent(context, MARGIN + width);
         y += ROW_STEP;
     }
 
@@ -794,10 +1005,10 @@ int BuildAudioPage(Context& context) {
         settings.audio.reinit.sessionUnlock, y);
     y = AddCheck(context, Id::ReinitEnableWhenDisabled, Lang::Str::SettingsReinitEnableWhenDisabled,
         settings.audio.reinit.enableWhenDisabled, y);
-    y = AddEdit(context, Id::ReinitFailureTimeout, Lang::Str::SettingsReinitFailureTimeout,
-        std::to_wstring(settings.audio.reinit.failureTimeoutMs), FIELD_WIDTH, y);
-    y = AddEdit(context, Id::ReinitDebounce, Lang::Str::SettingsReinitDebounce,
-        std::to_wstring(settings.audio.reinit.debounceMs), FIELD_WIDTH, y);
+    y = AddNumber(context, Id::ReinitFailureTimeout, Lang::Str::SettingsReinitFailureTimeout,
+        std::to_wstring(settings.audio.reinit.failureTimeoutMs), Config::FAILURE_TIMEOUT_MS_LIMITS, y);
+    y = AddNumber(context, Id::ReinitDebounce, Lang::Str::SettingsReinitDebounce,
+        std::to_wstring(settings.audio.reinit.debounceMs), Config::DEBOUNCE_MS_LIMITS, y);
 
     return y;
 }
@@ -823,11 +1034,11 @@ int BuildOtherPage(Context& context) {
     y = AddCombo(context, Id::LogLevel, Lang::Str::SettingsLogLevel, Texts(LOG_LEVELS),
         LogLevelIndex(settings.logging.level), y);
     y = AddEdit(context, Id::LogFilePath, Lang::Str::SettingsLogFilePath,
-        Text::ToWide(settings.logging.filePath), FIELD_WIDTH, y);
-    y = AddEdit(context, Id::LogMaxFileSize, Lang::Str::SettingsLogMaxFileSize,
-        std::to_wstring(settings.logging.maxFileSizeMb), FIELD_WIDTH, y);
-    y = AddEdit(context, Id::LogMaxFiles, Lang::Str::SettingsLogMaxFiles,
-        std::to_wstring(settings.logging.maxFiles), FIELD_WIDTH, y);
+        Text::ToWide(settings.logging.filePath), FIELD_WIDTH, y, MAX_PATH_LENGTH);
+    y = AddNumber(context, Id::LogMaxFileSize, Lang::Str::SettingsLogMaxFileSize,
+        std::to_wstring(settings.logging.maxFileSizeMb), Config::LOG_FILE_SIZE_MB_LIMITS, y);
+    y = AddNumber(context, Id::LogMaxFiles, Lang::Str::SettingsLogMaxFiles,
+        std::to_wstring(settings.logging.maxFiles), Config::LOG_FILES_LIMITS, y);
 
     return y;
 }
@@ -889,9 +1100,37 @@ void CreateTabs(Context& context) {
         display.right - display.left - 2 * PAGE_AIR, 96, static_cast<int>(context.dpi));
 }
 
+// ------------------------------------------------------------ balloon -----
+
+void HideFieldTip(Context& context) {
+    context.tip.Hide();
+}
+
+// Shows the balloon under a field, with the sound of a warning: the title is
+// the label of the field, the text says what it takes and what it got back.
+void ShowFieldTip(Context& context, HWND field, Lang::Str title, const std::wstring& text) {
+    ::MessageBeep(MB_ICONWARNING);
+    context.tip.Show(context.window, field, Lang::Wide(title), text, context.Scale(TIP_MAX_WIDTH), TIP_DURATION_MS);
+}
+
+// The range of the device is a note for the fixed buffer only: with the
+// minimum buffer it is hidden, and its row stays empty.
+void UpdateHintVisibility(Context& context) {
+    const HWND hint = Get(context, Id::AudioBufferHint);
+    if (hint == nullptr) {
+        return;
+    }
+
+    const bool fixedBuffer =
+        ValueAt(BUFFER_MODES, SelectedIndex(context, Id::AudioBufferMode)) == Config::BufferMode::Fixed;
+    const bool visible = context.page == Page::Audio && fixedBuffer && ::GetWindowTextLengthW(hint) > 0;
+
+    ::ShowWindow(hint, visible ? SW_SHOW : SW_HIDE);
+}
+
 // The parts of the window live further down the file; the rebuild uses them.
 void ShowPage(Context& context, Page page);
-bool ReadControls(Context& context, Config::Settings& updated, std::wstring& invalidFields);
+void ReadControls(Context& context, Config::Settings& updated);
 void UpdateEnabledStates(Context& context);
 
 void ResetPageOffset(Context& context) {
@@ -1034,9 +1273,11 @@ void Rebuild(Context& context, UINT dpi) {
     // window was moved to another monitor. A value that cannot be used stays as
     // it is in the settings; the window shows it again.
     Config::Settings edited = *context.settings;
-    std::wstring invalidFields;
-    ReadControls(context, edited, invalidFields);
+    ReadControls(context, edited);
     *context.settings = edited;
+
+    // The balloon points at a field that is about to be destroyed.
+    HideFieldTip(context);
 
     // The pages are built one after another and the last one would stay open:
     // the page the user was on is remembered.
@@ -1060,9 +1301,14 @@ void Rebuild(Context& context, UINT dpi) {
         ::DeleteObject(context.headerFont);
     }
 
+    if (context.captionFont != nullptr) {
+        ::DeleteObject(context.captionFont);
+    }
+
     context.dpi = dpi != 0 ? dpi : Dpi::ForSystem();
     context.font = Dpi::CreateUiFont(context.dpi);
     context.headerFont = Dpi::CreateHeaderFont(context.dpi);
+    context.captionFont = Dpi::CreateCaptionFont(context.dpi);
 
     BuildContent(context);
 
@@ -1102,6 +1348,11 @@ void ShowPage(Context& context, Page page) {
             ::SendMessageW(context.tabs, TCM_SETCURSEL, static_cast<WPARAM>(index), 0);
         }
     }
+
+    // A hidden field keeps no balloon, and the range of the device is shown
+    // only when it means something.
+    HideFieldTip(context);
+    UpdateHintVisibility(context);
 }
 
 // A list whose drop-down part is open keeps its keys: Ctrl+PgDn there is
@@ -1163,12 +1414,40 @@ bool HandlePageKeys(Context& context, const MSG& message) {
     return true;
 }
 
-// Reads every control back into a copy of the settings. Returns false when a
-// value cannot be used: the window then stays open and points at the field.
-bool ReadControls(Context& context, Config::Settings& updated, std::wstring& invalidFields) {
+// The button of the language that is on.
+int SelectedLanguage(Context& context) {
+    for (size_t i = 0; i < LANGUAGE_COUNT; ++i) {
+        if (IsChecked(context, LanguageId(static_cast<int>(i)))) {
+            return static_cast<int>(i);
+        }
+    }
+
+    return 0;
+}
+
+void SetLanguage(Context& context, int index) {
+    for (size_t i = 0; i < LANGUAGE_COUNT; ++i) {
+        SetChecked(context, LanguageId(static_cast<int>(i)), static_cast<int>(i) == index);
+    }
+
+    UpdateChoiceTabStop(context, Id::LanguageAuto, LANGUAGE_COUNT);
+}
+
+// A checked field gets a value that the window takes from now on (the page
+// builder, Reload).
+void SetFieldText(Context& context, Id id, const std::wstring& text) {
+    SetText(context, id, text);
+    RememberValid(context, id, text);
+}
+
+// Reads every control back into a copy of the settings. The checked fields
+// hold values the window has taken (see CheckAllFields); a value that still
+// cannot be read (the window is being built again for another monitor) keeps
+// the one of the settings.
+void ReadControls(Context& context, Config::Settings& updated) {
     const Config::Settings& current = *context.settings;
 
-    updated.application.language = LanguageCode(SelectedIndex(context, Id::Language));
+    updated.application.language = LanguageCode(SelectedLanguage(context));
     updated.application.startWithWindows = IsChecked(context, Id::StartWithWindows);
     updated.application.startMinimizedToTray = IsChecked(context, Id::StartMinimizedToTray);
     updated.application.minimizeToTray = IsChecked(context, Id::MinimizeToTray);
@@ -1187,36 +1466,18 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     updated.audio.dataFlow = ValueAt(DATA_FLOWS, SelectedIndex(context, Id::AudioDataFlow));
     updated.audio.buffer = ValueAt(BUFFER_MODES, SelectedIndex(context, Id::AudioBufferMode));
 
-    bool valid = true;
+    // The size matters only for a fixed buffer. With the minimum buffer the
+    // field is greyed out and keeps what it had; an empty one means "not set".
+    const std::wstring framesText = ReadText(context, Id::AudioFixedBufferFrames, L"");
+    long frames = 0;
 
-    // The size matters only for a fixed buffer: then it has to be a number the
-    // device accepts. With the minimum buffer the field is greyed out and keeps
-    // what it had.
-    const bool framesEmpty = ReadText(context, Id::AudioFixedBufferFrames, L"").empty();
-    const int maximumFrames = static_cast<int>(Config::FIXED_BUFFER_FRAMES_MAX);
-
-    if (updated.audio.buffer == Config::BufferMode::Fixed) {
-        const int frames = ReadInt(context, Id::AudioFixedBufferFrames, 1, maximumFrames, 0, valid);
-
-        if (!valid || framesEmpty) {
-            ReportInvalid(invalidFields, Lang::Str::SettingsFixedBufferFrames);
-        } else {
-            const std::wstring problem = CheckFixedBuffer(context, static_cast<uint32_t>(frames));
-
-            if (problem.empty()) {
-                updated.audio.fixedBufferFrames = static_cast<unsigned int>(frames);
-            } else {
-                ReportInvalid(invalidFields, problem);
-            }
-        }
+    if (framesText.empty()) {
+        updated.audio.fixedBufferFrames =
+            updated.audio.buffer == Config::BufferMode::Fixed ? current.audio.fixedBufferFrames : 0u;
+    } else if (ParseNumber(framesText, frames) && frames <= Config::FIXED_BUFFER_FRAMES_LIMITS.maximum) {
+        updated.audio.fixedBufferFrames = static_cast<unsigned int>(frames);
     } else {
-        const int frames = ReadInt(
-            context, Id::AudioFixedBufferFrames, 0, maximumFrames,
-            static_cast<int>(current.audio.fixedBufferFrames), valid);
-
-        if (valid) {
-            updated.audio.fixedBufferFrames = framesEmpty ? 0u : static_cast<unsigned int>(frames);
-        }
+        updated.audio.fixedBufferFrames = current.audio.fixedBufferFrames;
     }
 
     updated.audio.reinit.defaultDeviceChanged = IsChecked(context, Id::ReinitDefaultDevice);
@@ -1226,20 +1487,10 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     updated.audio.reinit.resumeFromSleep = IsChecked(context, Id::ReinitResumeFromSleep);
     updated.audio.reinit.sessionUnlock = IsChecked(context, Id::ReinitSessionUnlock);
     updated.audio.reinit.enableWhenDisabled = IsChecked(context, Id::ReinitEnableWhenDisabled);
-
-    updated.audio.reinit.failureTimeoutMs = ReadInt(
-        context, Id::ReinitFailureTimeout, Config::FAILURE_TIMEOUT_MS_MIN, Config::FAILURE_TIMEOUT_MS_MAX,
-        current.audio.reinit.failureTimeoutMs, valid);
-    if (!valid) {
-        ReportInvalid(invalidFields, Lang::Str::SettingsReinitFailureTimeout);
-    }
-
-    updated.audio.reinit.debounceMs = ReadInt(
-        context, Id::ReinitDebounce, Config::DEBOUNCE_MS_MIN, Config::DEBOUNCE_MS_MAX,
-        current.audio.reinit.debounceMs, valid);
-    if (!valid) {
-        ReportInvalid(invalidFields, Lang::Str::SettingsReinitDebounce);
-    }
+    updated.audio.reinit.failureTimeoutMs = ReadNumber(
+        context, Id::ReinitFailureTimeout, Config::FAILURE_TIMEOUT_MS_LIMITS, current.audio.reinit.failureTimeoutMs);
+    updated.audio.reinit.debounceMs = ReadNumber(
+        context, Id::ReinitDebounce, Config::DEBOUNCE_MS_LIMITS, current.audio.reinit.debounceMs);
 
     updated.performance.processPriority = ValueAt(PRIORITIES, SelectedIndex(context, Id::ProcessPriority));
 
@@ -1250,30 +1501,20 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
         updated.logging.level = LOG_LEVELS[static_cast<size_t>(levelIndex)].value;
     }
 
-    updated.logging.filePath = Text::ToUtf8(
-        ReadText(context, Id::LogFilePath, Text::ToWide(current.logging.filePath)));
+    const std::wstring path = ReadText(context, Id::LogFilePath, L"");
+    updated.logging.filePath = PathProblem(path).empty() ? Text::ToUtf8(path) : current.logging.filePath;
 
-    updated.logging.maxFileSizeMb = ReadInt(
-        context, Id::LogMaxFileSize, Config::LOG_FILE_SIZE_MB_MIN, Config::LOG_FILE_SIZE_MB_MAX,
-        current.logging.maxFileSizeMb, valid);
-    if (!valid) {
-        ReportInvalid(invalidFields, Lang::Str::SettingsLogMaxFileSize);
-    }
-
-    updated.logging.maxFiles = ReadInt(
-        context, Id::LogMaxFiles, Config::LOG_FILES_MIN, Config::LOG_FILES_MAX, current.logging.maxFiles, valid);
-    if (!valid) {
-        ReportInvalid(invalidFields, Lang::Str::SettingsLogMaxFiles);
-    }
-
-    return invalidFields.empty();
+    updated.logging.maxFileSizeMb = ReadNumber(
+        context, Id::LogMaxFileSize, Config::LOG_FILE_SIZE_MB_LIMITS, current.logging.maxFileSizeMb);
+    updated.logging.maxFiles = ReadNumber(
+        context, Id::LogMaxFiles, Config::LOG_FILES_LIMITS, current.logging.maxFiles);
 }
 
 // Writes a settings object into the controls. The file is the source of truth,
 // so "Reload" brings its values into the window exactly like the page builder
 // does when the window opens.
 void ApplyToControls(Context& context, const Config::Settings& settings) {
-    SetSelected(context, Id::Language, LanguageIndex(settings.application.language));
+    SetLanguage(context, LanguageIndex(settings.application.language));
     SetChecked(context, Id::StartWithWindows, settings.application.startWithWindows);
     SetChecked(context, Id::StartMinimizedToTray, settings.application.startMinimizedToTray);
     SetChecked(context, Id::MinimizeToTray, settings.application.minimizeToTray);
@@ -1291,7 +1532,7 @@ void ApplyToControls(Context& context, const Config::Settings& settings) {
 
     SetSelected(context, Id::AudioDataFlow, IndexOf(DATA_FLOWS, settings.audio.dataFlow));
     SetSelected(context, Id::AudioBufferMode, IndexOf(BUFFER_MODES, settings.audio.buffer));
-    SetText(context, Id::AudioFixedBufferFrames, FixedBufferText(settings.audio.fixedBufferFrames));
+    SetFieldText(context, Id::AudioFixedBufferFrames, FixedBufferText(settings.audio.fixedBufferFrames));
 
     SetChecked(context, Id::ReinitDefaultDevice, settings.audio.reinit.defaultDeviceChanged);
     SetChecked(context, Id::ReinitDeviceState, settings.audio.reinit.deviceStateChanged);
@@ -1300,17 +1541,17 @@ void ApplyToControls(Context& context, const Config::Settings& settings) {
     SetChecked(context, Id::ReinitResumeFromSleep, settings.audio.reinit.resumeFromSleep);
     SetChecked(context, Id::ReinitSessionUnlock, settings.audio.reinit.sessionUnlock);
     SetChecked(context, Id::ReinitEnableWhenDisabled, settings.audio.reinit.enableWhenDisabled);
-    SetText(context, Id::ReinitFailureTimeout, std::to_wstring(settings.audio.reinit.failureTimeoutMs));
-    SetText(context, Id::ReinitDebounce, std::to_wstring(settings.audio.reinit.debounceMs));
+    SetFieldText(context, Id::ReinitFailureTimeout, std::to_wstring(settings.audio.reinit.failureTimeoutMs));
+    SetFieldText(context, Id::ReinitDebounce, std::to_wstring(settings.audio.reinit.debounceMs));
 
     SetSelected(context, Id::ProcessPriority, IndexOf(PRIORITIES, settings.performance.processPriority));
 
     SetChecked(context, Id::UpdateCheckOnStartup, settings.updates.checkOnStartup);
 
     SetSelected(context, Id::LogLevel, LogLevelIndex(settings.logging.level));
-    SetText(context, Id::LogFilePath, Text::ToWide(settings.logging.filePath));
-    SetText(context, Id::LogMaxFileSize, std::to_wstring(settings.logging.maxFileSizeMb));
-    SetText(context, Id::LogMaxFiles, std::to_wstring(settings.logging.maxFiles));
+    SetFieldText(context, Id::LogFilePath, Text::ToWide(settings.logging.filePath));
+    SetFieldText(context, Id::LogMaxFileSize, std::to_wstring(settings.logging.maxFileSizeMb));
+    SetFieldText(context, Id::LogMaxFiles, std::to_wstring(settings.logging.maxFiles));
 }
 
 // A control whose value means nothing while its master switch is off is greyed
@@ -1323,7 +1564,7 @@ void UpdateEnabledStates(Context& context) {
     // back from: without it the buttons of the window do what they always do.
     const Id trayDependent[] = {
         Id::StartMinimizedToTray, Id::MinimizeToTray, Id::CloseButtonAction,
-        Id::TrayMenuToggle, Id::TrayMenuReinit, Id::TrayMenuLog, Id::TrayMenuDiagnostics,
+        Id::TrayMenuCaption, Id::TrayMenuToggle, Id::TrayMenuReinit, Id::TrayMenuLog, Id::TrayMenuDiagnostics,
         Id::NotificationError, Id::NotificationDeviceChange, Id::NotificationStateChange,
     };
 
@@ -1344,7 +1585,6 @@ void UpdateEnabledStates(Context& context) {
         bool enabled;
     } STATES[] = {
         { Id::AudioFixedBufferFrames, fixedBuffer },
-        { Id::AudioBufferHint, fixedBuffer },
         { Id::LogFilePath, fileLog },
         { Id::LogMaxFileSize, fileLog },
         { Id::LogMaxFiles, fileLog },
@@ -1356,6 +1596,10 @@ void UpdateEnabledStates(Context& context) {
             ::EnableWindow(control, state.enabled ? TRUE : FALSE);
         }
     }
+
+    // The range of the device is not greyed out but hidden with the minimum
+    // buffer.
+    UpdateHintVisibility(context);
 }
 
 // A fixed buffer starts from the buffer the device runs with: an empty field
@@ -1374,14 +1618,18 @@ void PrefillFixedBuffer(Context& context) {
     const uint32_t frames = range.current > 0 ? range.current : range.minimum;
 
     if (frames > 0) {
-        SetText(context, Id::AudioFixedBufferFrames, std::to_wstring(frames));
+        SetFieldText(context, Id::AudioFixedBufferFrames, std::to_wstring(frames));
     }
 }
 
 // Re-reads the settings file into the window. Nothing is applied here: "Save"
 // is still the only button that writes the file and applies the settings.
 void OnReload(Context& context) {
-    const Config::LoadResult result = Config::Load(context.settingsPath);
+    HideFieldTip(context);
+
+    // A value of the file that cannot be used does not replace the one of the
+    // window: the reader keeps the value in use and says so.
+    const Config::LoadResult result = Config::Load(context.settingsPath, *context.settings);
 
     if (!result.fileExists || result.parseFailed) {
         std::wstring text = Lang::Wide(Lang::Str::SettingsReloadFailed);
@@ -1414,32 +1662,117 @@ void OnReload(Context& context) {
 
     ApplyToControls(context, loaded);
     UpdateEnabledStates(context);
+
+    if (!result.warnings.empty()) {
+        std::wstring text = Lang::Wide(Lang::Str::SettingsReloadWarnings);
+        text += L"\n";
+
+        for (const std::string& warning : result.warnings) {
+            text += L"\n" + Text::ToWide(warning);
+        }
+
+        ::MessageBoxW(
+            context.window, text.c_str(), Lang::Wide(Lang::Str::SettingsWindowTitle).c_str(),
+            MB_OK | MB_ICONWARNING);
+    }
 }
 
-// "Check these values: {0}" without a formatting library: the text of the
-// message is the only place where a placeholder is filled by hand.
-std::wstring InvalidValuesText(const std::wstring& fields) {
-    std::wstring text = Lang::Wide(Lang::Str::SettingsInvalidValues);
-
-    const std::wstring placeholder = L"{0}";
-    const size_t position = text.find(placeholder);
-    if (position != std::wstring::npos) {
-        text.replace(position, placeholder.size(), fields);
+// The page a control belongs to.
+Page PageOf(const Context& context, HWND control) {
+    for (const auto& entry : context.pageControls) {
+        if (entry.first == control) {
+            return entry.second;
+        }
     }
 
-    return text;
+    return context.page;
+}
+
+// Puts the last value the window took back into a field whose value it does
+// not take, and shows why (the balloon is left out for the second and further
+// fields of one check). A field that has no such value keeps its text and
+// stays wrong: the balloon tells what it takes.
+void RejectField(Context& context, const CheckedField& field, const std::wstring& problem, bool showTip) {
+    const HWND control = Get(context, field.id);
+    if (control == nullptr) {
+        return;
+    }
+
+    std::wstring text = problem;
+    const std::wstring restored = RestoreText(context, field.id);
+
+    if (FieldProblem(context, field.id, restored).empty()) {
+        // Before the balloon: a change of the text hides it.
+        ::SetWindowTextW(control, restored.c_str());
+        RememberValid(context, field.id, restored);
+
+        text += L" " + Text::ToWide(fmt::format(Lang::Utf8(Lang::Str::SettingsValueRestored), Text::ToUtf8(restored)));
+    }
+
+    if (showTip) {
+        ShowFieldTip(context, control, field.label, text);
+    }
+}
+
+// A field the keyboard has left (see WM_APP_CHECK_FIELD): a value the window
+// does not take is put back at once, a value it takes is remembered.
+void CheckField(Context& context, const CheckedField& field) {
+    const HWND control = Get(context, field.id);
+    if (control == nullptr || ::IsWindowEnabled(control) == FALSE || ::IsWindowVisible(control) == FALSE) {
+        return;
+    }
+
+    const std::wstring text = ReadText(context, field.id, L"");
+    const std::wstring problem = FieldProblem(context, field.id, text);
+
+    if (problem.empty()) {
+        RememberValid(context, field.id, text);
+        return;
+    }
+
+    RejectField(context, field, problem, true);
+}
+
+// Before the settings are saved: every value the window does not take is put
+// back. The first such field is brought to the front with its balloon, and
+// the window stays open so that the user sees what has changed. A greyed out
+// field does not count (its value is not used).
+bool CheckAllFields(Context& context) {
+    bool rejected = false;
+
+    for (const CheckedField& field : CHECKED_FIELDS) {
+        const HWND control = Get(context, field.id);
+        if (control == nullptr || ::IsWindowEnabled(control) == FALSE) {
+            continue;
+        }
+
+        const std::wstring problem = FieldProblem(context, field.id, ReadText(context, field.id, L""));
+        if (problem.empty()) {
+            continue;
+        }
+
+        if (!rejected) {
+            ShowPage(context, PageOf(context, control));
+            ::SetFocus(control);
+            ::SendMessageW(control, EM_SETSEL, 0, -1);
+        }
+
+        RejectField(context, field, problem, !rejected);
+        rejected = true;
+    }
+
+    return !rejected;
 }
 
 void OnSave(Context& context) {
-    Config::Settings updated = *context.settings;
-    std::wstring invalidFields;
+    HideFieldTip(context);
 
-    if (!ReadControls(context, updated, invalidFields)) {
-        ::MessageBoxW(
-            context.window, InvalidValuesText(invalidFields).c_str(),
-            Lang::Wide(Lang::Str::SettingsWindowTitle).c_str(), MB_OK | MB_ICONWARNING);
+    if (!CheckAllFields(context)) {
         return;
     }
+
+    Config::Settings updated = *context.settings;
+    ReadControls(context, updated);
 
     // The service field travels with the settings: the comments are written in
     // the language they were written in before.
@@ -1515,6 +1848,27 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
                 break;
             }
 
+            // A checked field: its value is checked once the keyboard has
+            // really moved on (the new focus is known only then), and typing
+            // in it hides the balloon.
+            if (FindCheckedField(id) != nullptr) {
+                if (notification == EN_KILLFOCUS) {
+                    ::PostMessageW(window, WM_APP_CHECK_FIELD, static_cast<WPARAM>(id), 0);
+                } else if (notification == EN_CHANGE) {
+                    HideFieldTip(*context);
+                }
+
+                break;
+            }
+
+            // Tab enters the buttons of the language at the selected one.
+            if (notification == BN_CLICKED &&
+                id >= static_cast<UINT>(ControlId(Id::LanguageAuto)) &&
+                id < static_cast<UINT>(ControlId(Id::LanguageAuto)) + LANGUAGE_COUNT) {
+                UpdateChoiceTabStop(*context, Id::LanguageAuto, LANGUAGE_COUNT);
+                return 0;
+            }
+
             // The value of some controls decides whether the rest of their
             // section can be used at all: the fields are greyed out accordingly.
             if (notification == BN_CLICKED || notification == CBN_SELCHANGE) {
@@ -1565,6 +1919,44 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
             break;
         }
 
+        case WM_APP_CHECK_FIELD: {
+            const CheckedField* field = FindCheckedField(static_cast<UINT>(wParam));
+            const HWND focus = ::GetFocus();
+
+            // Nothing is checked when the keyboard went to another program, came
+            // back to the field, or went to Save (it checks every field itself)
+            // or Cancel (the values are dropped).
+            const bool inWindow = focus != nullptr && (focus == window || ::IsChild(window, focus) != FALSE);
+
+            if (field != nullptr && inWindow &&
+                focus != Get(*context, field->id) &&
+                focus != Get(*context, Id::Save) &&
+                focus != Get(*context, Id::Cancel)) {
+                CheckField(*context, *field);
+            }
+
+            return 0;
+        }
+
+        case WM_TIMER:
+            if (context->tip.OnTimer(static_cast<UINT_PTR>(wParam))) {
+                return 0;
+            }
+
+            break;
+
+        case WM_ACTIVATE:
+            // The balloon belongs to the window that has the keyboard.
+            if (LOWORD(wParam) == WA_INACTIVE) {
+                HideFieldTip(*context);
+            }
+
+            break;
+
+        case WM_MOVE:
+            HideFieldTip(*context);
+            break;
+
         case WM_DPICHANGED: {
             // The window is on another monitor: the system suggests the position
             // and the size for the new scale, and the content is built again.
@@ -1588,6 +1980,8 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
             return 0;
 
         case WM_DESTROY:
+            // The balloon is owned by the window and goes with it.
+            context->tip.Forget();
             context->window = nullptr;
             context->done = true;
             return 0;
@@ -1690,6 +2084,7 @@ bool miniant::Windows::ShowSettingsWindow(
 
     context.font = Dpi::CreateUiFont(context.dpi);
     context.headerFont = Dpi::CreateHeaderFont(context.dpi);
+    context.captionFont = Dpi::CreateCaptionFont(context.dpi);
 
     InitCommonControlsOnce();
 
@@ -1779,6 +2174,10 @@ bool miniant::Windows::ShowSettingsWindow(
 
     if (context.headerFont != nullptr) {
         ::DeleteObject(context.headerFont);
+    }
+
+    if (context.captionFont != nullptr) {
+        ::DeleteObject(context.captionFont);
     }
 
     ::UnregisterClassW(SETTINGS_CLASS_NAME, instance);

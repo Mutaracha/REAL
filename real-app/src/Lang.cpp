@@ -7,6 +7,7 @@
 #include <spdlog/fmt/fmt.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstddef>
 #include <iterator>
@@ -160,9 +161,9 @@ const Entry TABLE[] = {
     { Str::LogReinitInvalid,
       "The audio streams are no longer valid, restarting: {0}",
       "Аудиопотоки недействительны, перезапускаю: {0}" },
-    { Str::LogAutostartOpenFailed,
-      "Could not open the registry key for the autostart entry: {0}",
-      "Не удалось открыть раздел реестра для автозапуска: {0}" },
+    { Str::LogAutostartRemoveFailed,
+      "Could not remove the autostart entry: {0}",
+      "Не удалось удалить запись автозапуска: {0}" },
     { Str::LogAutostartWriteFailed,
       "Could not write the autostart entry: {0}",
       "Не удалось записать запись автозапуска: {0}" },
@@ -272,6 +273,9 @@ const Entry TABLE[] = {
     { Str::ErrResponseTooLarge,
       "The response is too large.",
       "Ответ слишком большой." },
+    { Str::ErrRequestCancelled,
+      "the request was cancelled",
+      "запрос прерван" },
 
     { Str::ReasonResume,
       "Resume from sleep",
@@ -288,6 +292,9 @@ const Entry TABLE[] = {
     { Str::ArgLogLevelNeedsValue,
       "--log-level requires a value",
       "Для --log-level нужно значение" },
+    { Str::ArgLogLevelUnknown,
+      "--log-level: unknown level \"{0}\" (allowed: {1}); ignored",
+      "--log-level: неизвестный уровень «{0}» (допустимо: {1}); не применяется" },
     { Str::ErrEmptyUrl,
       "Empty URL.",
       "Пустой адрес." },
@@ -449,27 +456,33 @@ const Entry TABLE[] = {
     { Str::CfgErrRead,
       "the file exists but could not be read (it may be locked by another program)",
       "файл есть, но прочитать его не удалось (возможно, он занят другой программой)" },
+    { Str::CfgErrTooLarge,
+      "the file is larger than 1 MB, it is not a settings file",
+      "файл больше 1 МБ — это не файл настроек" },
+    // A value of the file that cannot be used: {0} is the key, the last
+    // placeholder the value used instead (the one in use when the file is
+    // read again, the default at startup).
     { Str::CfgWarnString,
-      "{0}: expected a string, the default value is used",
-      "{0}: ожидалась строка, взято значение по умолчанию" },
+      "{0}: expected a string; using {1}",
+      "{0}: ожидалась строка; используется {1}" },
     { Str::CfgWarnBool,
-      "{0}: expected true or false, the default value is used",
-      "{0}: ожидалось true или false, взято значение по умолчанию" },
+      "{0}: expected true or false; using {1}",
+      "{0}: ожидалось true или false; используется {1}" },
     { Str::CfgWarnInteger,
-      "{0}: expected an integer, the default value is used",
-      "{0}: ожидалось целое число, взято значение по умолчанию" },
+      "{0}: expected a whole number; using {1}",
+      "{0}: ожидалось целое число; используется {1}" },
     { Str::CfgWarnRange,
-      "{0}: the value is out of the allowed range, the default value is used",
-      "{0}: значение вне допустимого диапазона, взято значение по умолчанию" },
+      "{0}: {1} is out of the range {2}–{3}; using {4}",
+      "{0}: значение {1} вне диапазона {2}–{3}; используется {4}" },
     { Str::CfgWarnUnknownKey,
       "{0}: unknown option, ignored",
       "{0}: неизвестный параметр, игнорируется" },
     { Str::CfgWarnUnknownValue,
-      "{0}: unknown value \"{1}\" (allowed: {2}), the default value is used",
-      "{0}: неизвестное значение «{1}» (допустимо: {2}), взято значение по умолчанию" },
+      "{0}: unknown value \"{1}\" (allowed: {2}); using {3}",
+      "{0}: неизвестное значение «{1}» (допустимо: {2}); используется {3}" },
     { Str::CfgWarnFixedBufferZero,
-      "{0}: \"fixed\" needs a size above 0, the minimum buffer is used",
-      "{0}: для «fixed» нужен размер больше 0, взят минимальный буфер" },
+      "{0}: \"fixed\" needs a size above 0; using the {1}",
+      "{0}: для «fixed» нужен размер больше 0; используется {1}" },
 
     // Command line help
     { Str::HelpText,
@@ -583,23 +596,26 @@ const Entry TABLE[] = {
     { Str::SettingsCancel, "Cancel", "Отмена" },
     { Str::SettingsOpenFile, "Open the file", "Открыть файл" },
     { Str::SettingsReload, "Reload", "Перечитать" },
-    { Str::SettingsInvalidValues, "Check these values: {0}", "Проверьте значения: {0}" },
     { Str::SettingsOpenFileFailed, "Could not open the settings file.", "Не удалось открыть файл настроек." },
     { Str::SettingsReloadFailed,
       "Could not read the settings file; the values in the window are left as they are.\n{0}",
       "Не удалось прочитать файл настроек; значения в окне оставлены как есть.\n{0}" },
+    // Followed by one line per value that could not be used.
+    { Str::SettingsReloadWarnings,
+      "The file has been read again, but some values could not be used:",
+      "Файл перечитан, но некоторые значения не подошли:" },
     { Str::SettingsTabWindow, "Window", "Окно" },
     { Str::SettingsTabAudio, "Audio", "Звук" },
     { Str::SettingsTabOther, "Other", "Прочее" },
     { Str::SettingsHeaderApplication, "Application", "Приложение" },
-    { Str::SettingsHeaderTray, "Tray icon and its menu", "Значок в трее и его меню" },
+    { Str::SettingsHeaderTray, "Tray icon", "Значок в трее" },
     { Str::SettingsHeaderNotifications, "Notifications", "Уведомления" },
     { Str::SettingsHeaderAudio, "Audio streams", "Аудиопотоки" },
     { Str::SettingsHeaderReinit, "Automatic restart", "Автоматический перезапуск" },
     { Str::SettingsHeaderPerformance, "REAL process", "Процесс REAL" },
     { Str::SettingsHeaderUpdates, "Updates", "Обновления" },
     { Str::SettingsHeaderLog, "Log", "Журнал" },
-    { Str::SettingsLanguage, "Language", "Язык" },
+    { Str::SettingsLanguage, "Language:", "Язык:" },
     { Str::SettingsLanguageAuto, "As in Windows", "Как в Windows" },
     { Str::SettingsLanguageEnglish, "English", "Английский" },
     { Str::SettingsLanguageRussian, "Russian", "Русский" },
@@ -610,6 +626,7 @@ const Entry TABLE[] = {
     { Str::SettingsCloseMinimize, "Minimize to tray", "Свернуть в трей" },
     { Str::SettingsCloseExit, "Exit", "Завершить программу" },
     { Str::SettingsTrayEnabled, "Show the tray icon", "Показывать значок в трее" },
+    { Str::SettingsTrayMenuCaption, "Icon menu items:", "Пункты меню значка:" },
     { Str::SettingsNotifyError, "Notify about errors", "Уведомлять об ошибках" },
     { Str::SettingsNotifyDeviceChange, "Notify about a device change", "Уведомлять о смене устройства" },
     { Str::SettingsNotifyStateChange, "Notify when switched on or off", "Уведомлять о включении и выключении" },
@@ -624,15 +641,24 @@ const Entry TABLE[] = {
     // The range of the buffer of the device under the field: {0}-{1} frames,
     // {2} the step, {3}-{4} the same range in milliseconds.
     { Str::SettingsBufferHint, "Allowed: {0}–{1}, step {2} ({3}–{4} ms)", "Допустимо: {0}–{1}, шаг {2} ({3}–{4} мс)" },
-    // A value of the fixed buffer that the device does not accept: {0} is the
-    // label of the field, {1} the device, {2}-{3} the range, {4} the step,
-    // {5} and {6} the nearest values it accepts.
+    // The balloon of a field whose value was not accepted. The fixed buffer:
+    // {0} is the device, {1}-{2} its range, {3} the step, then the nearest
+    // values it accepts.
+    { Str::SettingsBufferAccepted,
+      "The device \"{0}\" accepts {1} to {2} in steps of {3}.",
+      "Устройство «{0}» принимает от {1} до {2} с шагом {3}." },
     { Str::SettingsBufferOutOfRange,
-      "{0} (the device \"{1}\" accepts {2} to {3} in steps of {4}; the nearest value: {5})",
-      "{0} (устройство «{1}» принимает от {2} до {3} с шагом {4}; ближайшее подходящее значение: {5})" },
+      "The device \"{0}\" accepts {1} to {2} in steps of {3}; the nearest value: {4}.",
+      "Устройство «{0}» принимает от {1} до {2} с шагом {3}; ближайшее подходящее значение: {4}." },
     { Str::SettingsBufferNotOnStep,
-      "{0} (the device \"{1}\" accepts {2} to {3} in steps of {4}; the nearest values: {5} and {6})",
-      "{0} (устройство «{1}» принимает от {2} до {3} с шагом {4}; ближайшие подходящие значения: {5} и {6})" },
+      "The device \"{0}\" accepts {1} to {2} in steps of {3}; the nearest values: {4} and {5}.",
+      "Устройство «{0}» принимает от {1} до {2} с шагом {3}; ближайшие подходящие значения: {4} и {5}." },
+    // The other numbers, the path of the log, and the value put back.
+    { Str::SettingsAllowedRange, "Allowed: {0}–{1}.", "Допустимо: {0}–{1}." },
+    { Str::SettingsAllowedPath,
+      "The path cannot be empty, and the characters < > \" | ? * are not allowed in it.",
+      "Путь не может быть пустым, а символы < > \" | ? * в нём недопустимы." },
+    { Str::SettingsValueRestored, "Restored: {0}.", "Возвращено: {0}." },
     { Str::SettingsReinitDeviceChanged, "Default device change", "Смена устройства по умолчанию" },
     { Str::SettingsReinitDeviceState, "Device connected or disconnected", "Подключение и отключение устройства" },
     { Str::SettingsReinitDeviceAdded, "New device", "Появление нового устройства" },
@@ -715,10 +741,11 @@ const Entry TABLE[] = {
     { Str::CfgReinitUnlock, "Session unlock (Win+L).", "Разблокировка сеанса (Win+L)." },
     { Str::CfgReinitEnableWhenDisabled, "true - a device change switches the latency reduction back on if it was off.",
                                         "true - при смене устройства включать снижение задержки, если оно было выключено." },
-    { Str::CfgReinitFailureTimeout, "How long to keep retrying before the latency reduction is switched off and polling stops (ms, 5000–3600000).",
-                                    "Сколько миллисекунд повторять попытки, прежде чем выключить снижение задержки и прекратить опрос (5000–3600000)." },
-    { Str::CfgReinitDebounce, "Pause before restarting: Windows sends a burst of events (ms, 0–60000).",
-                              "Пауза перед перезапуском: Windows присылает пачку событий подряд (мс, 0–60000)." },
+    // The ranges of the numbers ({0}-{1}) come from Settings.h.
+    { Str::CfgReinitFailureTimeout, "How long to keep retrying before the latency reduction is switched off and polling stops (ms, {0}–{1}).",
+                                    "Сколько миллисекунд повторять попытки, прежде чем выключить снижение задержки и прекратить опрос ({0}–{1})." },
+    { Str::CfgReinitDebounce, "Pause before restarting: Windows sends a burst of events (ms, {0}–{1}).",
+                              "Пауза перед перезапуском: Windows присылает пачку событий подряд (мс, {0}–{1})." },
     { Str::CfgPerformanceSection, "The REAL process itself. It does not affect the sound: the sound is processed by the Windows Audio service.",
                                   "Сам процесс REAL. На звук не влияет: звук обрабатывает служба Windows Audio." },
     { Str::CfgProcessPriority, "Process priority as in the Task Manager: \"normal\", \"belowNormal\" (below normal) or \"idle\" (low).",
@@ -733,9 +760,9 @@ const Entry TABLE[] = {
                             "\"off\" - файл не ведётся совсем; \"error\", \"warn\", \"info\", \"debug\", \"trace\" - от самого краткого файла к самому подробному." },
     { Str::CfgLoggingFilePath, "Path of the log file: relative to the REAL.exe directory or absolute.",
                                "Путь к файлу журнала: относительно каталога REAL.exe или абсолютный." },
-    { Str::CfgLoggingMaxFileSize, "Size of one log file before the next one is started (MB, 1–1024).",
-                                  "Размер одного файла журнала, после которого начинается следующий (МБ, 1–1024)." },
-    { Str::CfgLoggingMaxFiles, "How many log files to keep (1–100).", "Сколько файлов журнала хранить (1–100)." },
+    { Str::CfgLoggingMaxFileSize, "Size of one log file before the next one is started (MB, {0}–{1}).",
+                                  "Размер одного файла журнала, после которого начинается следующий (МБ, {0}–{1})." },
+    { Str::CfgLoggingMaxFiles, "How many log files to keep ({0}–{1}).", "Сколько файлов журнала хранить ({0}–{1})." },
 };
 
 constexpr size_t TABLE_SIZE = sizeof(TABLE) / sizeof(TABLE[0]);
@@ -746,10 +773,16 @@ static_assert(
     TABLE_SIZE == static_cast<size_t>(Str::Count),
     "Every Str identifier needs a row in TABLE and the other way round (see Lang.h).");
 
-// Indexed by Str, built once in Initialize().
-const char* g_text[static_cast<size_t>(Str::Count)] = {};
-Language g_language = Language::English;
+// Both texts of every identifier, indexed by Str and built once in
+// Initialize() (the first call comes from the main thread, before any other
+// thread is started).
+const char* g_english[static_cast<size_t>(Str::Count)] = {};
+const char* g_russian[static_cast<size_t>(Str::Count)] = {};
 bool g_initialized = false;
+
+// The thread of the update check reads the language too, while the settings
+// window may change it.
+std::atomic<Language> g_language{ Language::English };
 
 void Initialize() {
     if (g_initialized) {
@@ -759,30 +792,23 @@ void Initialize() {
     for (size_t i = 0; i < TABLE_SIZE; ++i) {
         const size_t index = static_cast<size_t>(TABLE[i].id);
         if (index < static_cast<size_t>(Str::Count)) {
-            g_text[index] = TABLE[i].english;
+            g_english[index] = TABLE[i].english;
+            g_russian[index] = TABLE[i].russian;
         }
     }
 
     g_initialized = true;
 }
 
-const char* Pick(Str id) {
+const char* Pick(Str id, Language language) {
     Initialize();
 
     const size_t index = static_cast<size_t>(id);
-    if (index >= static_cast<size_t>(Str::Count) || g_text[index] == nullptr) {
+    if (index >= static_cast<size_t>(Str::Count) || g_english[index] == nullptr) {
         return "?";
     }
 
-    if (g_language == Language::Russian) {
-        for (size_t i = 0; i < TABLE_SIZE; ++i) {
-            if (TABLE[i].id == id) {
-                return TABLE[i].russian;
-            }
-        }
-    }
-
-    return g_text[index];
+    return language == Language::Russian ? g_russian[index] : g_english[index];
 }
 
 }
@@ -799,7 +825,9 @@ Language miniant::Lang::Detect() {
 }
 
 Language miniant::Lang::FromCode(const std::string& code) {
-    // Accept "auto", "en", "english", "ru", "russian" in any case.
+    // Accept "auto", "en", "english", "ru", "russian" in any case. Anything
+    // else is "auto", as in the settings window (the reader of the settings
+    // file warns about such a value).
     std::string value;
     value.reserve(code.size());
     for (char c : code) {
@@ -814,7 +842,11 @@ Language miniant::Lang::FromCode(const std::string& code) {
         return Language::Russian;
     }
 
-    return Language::English;
+    if (value == "en" || value == "english") {
+        return Language::English;
+    }
+
+    return Detect();
 }
 
 const char* miniant::Lang::Code(Language language) {
@@ -832,11 +864,19 @@ Language miniant::Lang::Current() {
 }
 
 const char* miniant::Lang::Utf8(Str id) {
-    return Pick(id);
+    return Pick(id, g_language.load());
 }
 
 std::wstring miniant::Lang::Wide(Str id) {
-    return miniant::Text::ToWide(Pick(id));
+    return miniant::Text::ToWide(Pick(id, g_language.load()));
+}
+
+const char* miniant::Lang::Utf8(Str id, Language language) {
+    return Pick(id, language);
+}
+
+std::wstring miniant::Lang::Wide(Str id, Language language) {
+    return miniant::Text::ToWide(Pick(id, language));
 }
 
 namespace {

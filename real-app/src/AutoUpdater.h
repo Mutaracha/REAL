@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Http/HttpClient.h"
 #include "Version.h"
 
 #include <tl/expected.hpp>
@@ -25,7 +26,9 @@ class AutoUpdater {
 public:
     explicit AutoUpdater(std::string repository);
 
-    tl::expected<UpdateInfo, std::string> GetLatestRelease() const;
+    // The request stops at once when the cancellation is triggered (the
+    // program is closing).
+    tl::expected<UpdateInfo, std::string> GetLatestRelease(Http::Cancellation* cancellation = nullptr) const;
 
     // Removes the "<exe>~DELETE" file left behind by the self-updater of v0.2.0.
     static bool CleanupPreviousInstall(std::string* message);

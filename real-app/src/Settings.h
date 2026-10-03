@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -10,18 +11,27 @@ namespace miniant::Config {
 // every value the program knows kept.
 inline constexpr int CONFIG_VERSION = 1;
 
-// The limits of the numbers of the file. The settings window checks a value
-// against the same limits, so a value it accepts is never rejected by the
-// reader of the file on the next start.
-inline constexpr unsigned int FIXED_BUFFER_FRAMES_MAX = 100000;
-inline constexpr int FAILURE_TIMEOUT_MS_MIN = 5000;
-inline constexpr int FAILURE_TIMEOUT_MS_MAX = 3600000;
-inline constexpr int DEBOUNCE_MS_MIN = 0;
-inline constexpr int DEBOUNCE_MS_MAX = 60000;
-inline constexpr int LOG_FILE_SIZE_MB_MIN = 1;
-inline constexpr int LOG_FILE_SIZE_MB_MAX = 1024;
-inline constexpr int LOG_FILES_MIN = 1;
-inline constexpr int LOG_FILES_MAX = 100;
+// A number of the settings file: its key in its section and the range it has
+// to be in. The reader of the file, the comments of the file and the fields of
+// the settings window all take the range from here, so a value the window
+// accepts is never rejected by the reader on the next start.
+struct NumberLimits {
+    const char* key;
+    int minimum;
+    int maximum;
+};
+
+// 0 - no size is set (see AudioSettings::fixedBufferFrames).
+inline constexpr NumberLimits FIXED_BUFFER_FRAMES_LIMITS = { "fixedBufferFrames", 0, 100000 };
+inline constexpr NumberLimits FAILURE_TIMEOUT_MS_LIMITS = { "failureTimeoutMs", 5000, 3600000 };
+// With a shorter pause a faulty device that connects and disconnects several
+// times a second would restart the streams on every event.
+inline constexpr NumberLimits DEBOUNCE_MS_LIMITS = { "debounceMs", 500, 60000 };
+inline constexpr NumberLimits LOG_FILE_SIZE_MB_LIMITS = { "maxFileSizeMb", 1, 1024 };
+inline constexpr NumberLimits LOG_FILES_LIMITS = { "maxFiles", 1, 100 };
+
+// A settings file is a few kilobytes: anything larger is not read at all.
+inline constexpr size_t MAX_FILE_BYTES = 1024 * 1024;
 
 enum class CloseAction {
     Minimize,
@@ -63,7 +73,7 @@ struct ReinitSettings {
     // polling) when the device does not answer at all.
     int failureTimeoutMs = 60000;
     // The pause between a device event and the restart: Windows sends a burst
-    // of events, and the restart waits for the last one (0 - no pause).
+    // of events, and the restart waits for the last one.
     int debounceMs = 1000;
 };
 
@@ -152,6 +162,15 @@ struct LoadResult {
     std::string error;
 };
 
+// The levels of the log file, as the comments of the file and the warnings
+// name them.
+inline constexpr char LOG_LEVELS_ALLOWED[] = "off, error, warn, info, debug, trace";
+
+// A level of the log file in its main form ("Warning" becomes "warn", "none"
+// becomes "off"); false for a word that is not a level. The settings file and
+// --log-level are read with it.
+bool NormalizeLogLevel(const std::string& value, std::string& level);
+
 // "off" in logging.level means "no log file at all"; any other value writes
 // the file and tells how detailed it is. The window of the program never
 // depends on it (see Log::Initialize).
@@ -160,7 +179,11 @@ bool IsLogFileOff(const LoggingSettings& logging);
 // Path of "real.settings.json" next to the executable.
 std::wstring GetDefaultPath();
 
-LoadResult Load(const std::wstring& path);
+// Reads the file. A key that is missing gets its default value; a value that
+// cannot be used (a wrong type, a number out of its range, an unknown word)
+// is replaced with the one of "previous" - the settings in use when the file
+// is read again, the defaults at startup - and a warning names both.
+LoadResult Load(const std::wstring& path, const Settings& previous = Settings());
 bool Write(const Settings& settings, const std::wstring& path);
 // Plain JSON without comments (used as a fallback).
 std::string ToJsonString(const Settings& settings);

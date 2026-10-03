@@ -3,10 +3,12 @@
 #include "AudioSession.h"
 #include "CommandLine.h"
 #include "Commands.h"
+#include "Http/HttpClient.h"
 #include "Lang.h"
 #include "Settings.h"
 #include "Windows/MainWindow.h"
 #include "Windows/SettingsWindow.h"
+#include "Windows/SingleInstance.h"
 
 #include <Windows.h>
 
@@ -60,7 +62,8 @@ private:
     void RegisterSignalMessages();
     // One copy of the program runs at a time: a second start passes its
     // command to the running copy and ends. True when this process has to end
-    // (the exit code is in exitCode).
+    // (the exit code is in exitCode). A copy that is just ending is waited
+    // for, and this start becomes the running copy then.
     bool HandOverToRunningInstance(int& exitCode);
     void ReportInstanceNotResponding() const;
     void ApplyPerformanceSettings();
@@ -84,11 +87,15 @@ private:
     void ShowAboutDialog();
     void StartUpdateCheck();
     void FinishUpdateCheck();
+    // Interrupts a check that is waiting for the network and waits for its
+    // thread, which then ends at once.
+    void CancelUpdateCheck();
     void OnCommand(Command command);
     void OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam);
     void OnTimer(UINT_PTR timerId);
     void OnDeviceEvent(WPARAM wParam, LPARAM lParam);
     void OnSystemResume(bool sessionUnlock, const std::wstring& reason);
+    void ScheduleDeviceRestart();
     void ScheduleAudioRetry();
     void CancelAudioRetry();
     void GiveUpOnDevice();
@@ -111,8 +118,7 @@ private:
     int RunDiagnostics();
     void ShowDiagnostics();
     std::wstring WriteDiagnosticsReport(const std::string& report);
-    // The command line of the autostart entry, empty when there is none.
-    std::wstring ReadAutostartCommand() const;
+    // The command line the autostart entry has to contain.
     std::wstring AutostartCommand() const;
     // Writes the entry (creating the key when needed) and reports a failure.
     bool WriteAutostartCommand();
@@ -120,10 +126,15 @@ private:
     // The registry entry follows application.startWithWindows: the value is
     // authoritative, the menu item and the autostart are only its reflection.
     void ApplyStartWithWindows();
-    bool NotifyRunningInstance(UINT message) const;
     void PrintStartupText(const std::wstring& text) const;
     void CleanupPreviousInstall();
     void LogBanner();
+    // The part of the shutdown that has to be done while the window exists:
+    // the update check, the timers, the streams and the last line of the
+    // journal. The Exit command runs it before the window is destroyed, so it
+    // is done even when Windows ends the process right after the end of the
+    // session (WM_ENDSESSION).
+    void StopWork();
     void Shutdown();
 
     HINSTANCE m_instance = nullptr;
@@ -142,10 +153,11 @@ private:
 
     bool m_audioEnabled = true;
     bool m_comInitialized = false;
+    bool m_workStopped = false;
     bool m_shuttingDown = false;
     int m_exitCode = 0;
 
-    HANDLE m_instanceMutex = nullptr;
+    Windows::SingleInstance m_singleInstance;
     // The settings window is modal: a second one is never opened.
     bool m_settingsWindowOpen = false;
 
@@ -156,6 +168,9 @@ private:
     UINT m_signalExit = 0;
 
     std::thread m_updateThread;
+    // Stops the request of the check when the program is closing; the thread
+    // of the check holds it while the request runs.
+    std::shared_ptr<Http::Cancellation> m_updateCancellation;
     std::mutex m_updateMutex;
     std::string m_updateMessage;
     std::string m_updateDetails;

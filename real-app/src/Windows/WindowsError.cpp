@@ -112,5 +112,9 @@ std::string miniant::Windows::DescribeLastError() {
     return Describe(static_cast<long>(::GetLastError()), nullptr);
 }
 
+std::string miniant::Windows::DescribeError(unsigned long code) {
+    return Describe(static_cast<long>(code), nullptr);
+}
+
 WindowsError::WindowsError():
     ExpectedError(DescribeLastError()) {}

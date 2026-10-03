@@ -25,7 +25,8 @@ struct Options {
     bool ignoreConfig = false;
     // Arguments the program does not know, as they were typed.
     std::vector<std::string> unknown;
-    // Known options that came without their value ("--config" without a path).
+    // Known options that came without their value ("--config" without a path)
+    // or with a value that is not allowed (an unknown --log-level).
     std::vector<std::string> errors;
 };
 

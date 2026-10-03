@@ -33,7 +33,7 @@ AutoUpdater::AutoUpdater(std::string repository):
 // redirects to the list of releases instead. The web site has no limit of
 // requests per hour the way the API has (60 for a request without an account,
 // counted per address, so users behind one address share them).
-tl::expected<UpdateInfo, std::string> AutoUpdater::GetLatestRelease() const {
+tl::expected<UpdateInfo, std::string> AutoUpdater::GetLatestRelease(Http::Cancellation* cancellation) const {
     if (m_repository.empty()) {
         return tl::make_unexpected(std::string(Lang::Utf8(Lang::Str::ErrNoUpdateRepository)));
     }
@@ -44,7 +44,7 @@ tl::expected<UpdateInfo, std::string> AutoUpdater::GetLatestRelease() const {
     headers.emplace_back(L"User-Agent", L"REAL-updater/" + Text::ToWide(AppInfo::VERSION.ToString()));
     headers.emplace_back(L"Cache-Control", L"no-cache");
 
-    const Http::Response response = Http::Get(url, headers, REQUEST_TIMEOUT_SECONDS, false);
+    const Http::Response response = Http::Get(url, headers, REQUEST_TIMEOUT_SECONDS, false, cancellation);
     if (!response.networkOk) {
         return tl::make_unexpected(fmt::format(Lang::Utf8(Lang::Str::ErrGithubUnreachable), response.error));
     }

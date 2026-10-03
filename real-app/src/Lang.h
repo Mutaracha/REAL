@@ -87,7 +87,7 @@ enum class Str {
     LogUpdateRunning,
     LogNoReleases,
     LogReinitInvalid,
-    LogAutostartOpenFailed,
+    LogAutostartRemoveFailed,
     LogAutostartWriteFailed,
     LogUpdateLeftover,
     LogStopped,
@@ -124,12 +124,14 @@ enum class Str {
     ErrStartStream,
     ErrUrlParse,
     ErrResponseTooLarge,
+    ErrRequestCancelled,
 
     ReasonResume,
     ReasonUnlock,
     CliReportWritten,
     ArgConfigNeedsPath,
     ArgLogLevelNeedsValue,
+    ArgLogLevelUnknown,
     ErrEmptyUrl,
     ErrNoUpdateRepository,
     ErrGithubUnreachable,
@@ -182,6 +184,7 @@ enum class Str {
     CfgErrNotObject,
     CfgErrParse,
     CfgErrRead,
+    CfgErrTooLarge,
     CfgWarnString,
     CfgWarnBool,
     CfgWarnInteger,
@@ -234,9 +237,9 @@ enum class Str {
     SettingsCancel,
     SettingsOpenFile,
     SettingsReload,
-    SettingsInvalidValues,
     SettingsOpenFileFailed,
     SettingsReloadFailed,
+    SettingsReloadWarnings,
     SettingsTabWindow,
     SettingsTabAudio,
     SettingsTabOther,
@@ -259,6 +262,7 @@ enum class Str {
     SettingsCloseMinimize,
     SettingsCloseExit,
     SettingsTrayEnabled,
+    SettingsTrayMenuCaption,
     SettingsNotifyError,
     SettingsNotifyDeviceChange,
     SettingsNotifyStateChange,
@@ -271,8 +275,12 @@ enum class Str {
     SettingsBufferFixed,
     SettingsFixedBufferFrames,
     SettingsBufferHint,
+    SettingsBufferAccepted,
     SettingsBufferOutOfRange,
     SettingsBufferNotOnStep,
+    SettingsAllowedRange,
+    SettingsAllowedPath,
+    SettingsValueRestored,
     SettingsReinitDeviceChanged,
     SettingsReinitDeviceState,
     SettingsReinitDeviceAdded,
@@ -355,6 +363,11 @@ Language Current();
 // Text in the current language.
 const char* Utf8(Str id);
 std::wstring Wide(Str id);
+
+// Text in the given language: the settings window sizes its lists for the
+// longer of the two texts, so a change of the language moves nothing.
+const char* Utf8(Str id, Language language);
+std::wstring Wide(Str id, Language language);
 
 // A number with its noun in the current language: "1344 frames", and in
 // Russian the noun agrees with the numeral ("1 фрейм", "2 фрейма", "5 фреймов").

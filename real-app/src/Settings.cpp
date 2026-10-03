@@ -48,12 +48,64 @@ std::string KeyName(const std::string& sectionName, const std::string& key) {
     return sectionName.empty() ? key : sectionName + "." + key;
 }
 
+// A value as it is written in the file: the comments of the file and the
+// warnings of the reader show values this way.
+std::string JsonValue(bool value) {
+    return value ? "true" : "false";
+}
+
+std::string JsonValue(int value) {
+    return std::to_string(value);
+}
+
+std::string JsonValue(unsigned int value) {
+    return std::to_string(value);
+}
+
+std::string JsonValue(const std::string& value) {
+    return json(value).dump();
+}
+
+std::string JsonValue(const char* value) {
+    return json(value).dump();
+}
+
+const char* ToString(CloseAction value) {
+    return value == CloseAction::Exit ? "exit" : "minimize";
+}
+
+const char* ToString(DataFlow value) {
+    switch (value) {
+        case DataFlow::Capture: return "capture";
+        case DataFlow::Both: return "both";
+        default: return "render";
+    }
+}
+
+const char* ToString(BufferMode value) {
+    return value == BufferMode::Fixed ? "fixed" : "min";
+}
+
+const char* ToString(ProcessPriority value) {
+    switch (value) {
+        case ProcessPriority::BelowNormal: return "belowNormal";
+        case ProcessPriority::Idle: return "idle";
+        default: return "normal";
+    }
+}
+
+// The readers below leave a missing key with its default value. A value that
+// is there but cannot be used gets the fallback - the value in use when the
+// file is read again, the default at startup - and a warning that names the
+// key, what is wrong with it and the value that is used instead.
+
 template <typename T, size_t N>
 void ReadEnum(
     const json& section,
     const char* key,
     const std::pair<const char*, T> (&table)[N],
     T& target,
+    T fallback,
     std::vector<std::string>& warnings,
     const std::string& sectionName) {
     const auto it = section.find(key);
@@ -62,7 +114,9 @@ void ReadEnum(
     }
 
     if (!it->is_string()) {
-        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnString), KeyName(sectionName, key)));
+        target = fallback;
+        warnings.push_back(fmt::format(
+            Lang::Utf8(Str::CfgWarnString), KeyName(sectionName, key), JsonValue(ToString(fallback))));
         return;
     }
 
@@ -74,81 +128,204 @@ void ReadEnum(
         }
     }
 
+    // The allowed values are named the way the file writes them.
     std::string allowed;
     for (size_t i = 0; i < N; ++i) {
         if (!allowed.empty()) {
             allowed += ", ";
         }
 
-        allowed += table[i].first;
+        allowed += ToString(table[i].second);
     }
 
-    warnings.push_back(
-        fmt::format(Lang::Utf8(Str::CfgWarnUnknownValue), KeyName(sectionName, key), value, allowed));
+    target = fallback;
+    warnings.push_back(fmt::format(
+        Lang::Utf8(Str::CfgWarnUnknownValue), KeyName(sectionName, key), it->get<std::string>(), allowed,
+        JsonValue(ToString(fallback))));
 }
 
-void ReadBool(const json& section, const char* key, bool& target, std::vector<std::string>& warnings, const std::string& sectionName) {
-    const auto it = section.find(key);
-    if (it == section.end()) {
-        return;
-    }
+// A word of the file with its synonyms: the value is kept in its main form
+// ("russian" becomes "ru"), so the window and the program read it alike.
+struct Word {
+    const char* text;
+    const char* value;
+};
 
-    if (!it->is_boolean()) {
-        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnBool), KeyName(sectionName, key)));
-        return;
-    }
+const Word LANGUAGE_WORDS[] = {
+    { "auto", "auto" },
+    { "", "auto" },
+    { "system", "auto" },
+    { "default", "auto" },
+    { "en", "en" },
+    { "english", "en" },
+    { "ru", "ru" },
+    { "rus", "ru" },
+    { "russian", "ru" },
+};
 
-    target = it->get<bool>();
-}
+const char LANGUAGE_ALLOWED[] = "auto, en, ru";
 
-void ReadInt(const json& section, const char* key, int& target, int minValue, int maxValue, std::vector<std::string>& warnings, const std::string& sectionName) {
-    const auto it = section.find(key);
-    if (it == section.end()) {
-        return;
-    }
+const Word LOG_LEVEL_WORDS[] = {
+    { "off", "off" },
+    { "none", "off" },
+    { "error", "error" },
+    { "err", "error" },
+    { "warn", "warn" },
+    { "warning", "warn" },
+    { "info", "info" },
+    { "debug", "debug" },
+    { "trace", "trace" },
+};
 
-    if (!it->is_number_integer()) {
-        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnInteger), KeyName(sectionName, key)));
-        return;
-    }
-
-    const int value = it->get<int>();
-    if (value < minValue || value > maxValue) {
-        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnRange), KeyName(sectionName, key)));
-        return;
-    }
-
-    target = value;
-}
-
-void ReadUnsigned(const json& section, const char* key, unsigned int& target, unsigned int maxValue, std::vector<std::string>& warnings, const std::string& sectionName) {
-    const auto it = section.find(key);
-    if (it == section.end()) {
-        return;
-    }
-
-    if (!it->is_number_integer()) {
-        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnInteger), KeyName(sectionName, key)));
-        return;
-    }
-
-    const int value = it->get<int>();
-    if (value < 0 || static_cast<unsigned int>(value) > maxValue) {
-        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnRange), KeyName(sectionName, key)));
-        return;
-    }
-
-    target = static_cast<unsigned int>(value);
-}
-
-void ReadString(const json& section, const char* key, std::string& target, std::vector<std::string>& warnings, const std::string& sectionName) {
+template <size_t N>
+void ReadWord(
+    const json& section,
+    const char* key,
+    const Word (&words)[N],
+    const char* allowed,
+    std::string& target,
+    const std::string& fallback,
+    std::vector<std::string>& warnings,
+    const std::string& sectionName) {
     const auto it = section.find(key);
     if (it == section.end()) {
         return;
     }
 
     if (!it->is_string()) {
-        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnString), KeyName(sectionName, key)));
+        target = fallback;
+        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnString), KeyName(sectionName, key), JsonValue(fallback)));
+        return;
+    }
+
+    const std::string value = Text::ToLowerAscii(Text::Trim(it->get<std::string>()));
+    for (size_t i = 0; i < N; ++i) {
+        if (value == words[i].text) {
+            target = words[i].value;
+            return;
+        }
+    }
+
+    target = fallback;
+    warnings.push_back(fmt::format(
+        Lang::Utf8(Str::CfgWarnUnknownValue), KeyName(sectionName, key), it->get<std::string>(), allowed,
+        JsonValue(fallback)));
+}
+
+void ReadBool(
+    const json& section,
+    const char* key,
+    bool& target,
+    bool fallback,
+    std::vector<std::string>& warnings,
+    const std::string& sectionName) {
+    const auto it = section.find(key);
+    if (it == section.end()) {
+        return;
+    }
+
+    if (!it->is_boolean()) {
+        target = fallback;
+        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnBool), KeyName(sectionName, key), JsonValue(fallback)));
+        return;
+    }
+
+    target = it->get<bool>();
+}
+
+// A whole number of the file within its limits. A number beyond the range of
+// int is out of the limits as well: it is never cut down to a value that
+// happens to fit (4294968296 is not 1000).
+bool WithinLimits(const json& value, const NumberLimits& limits, long long& result) {
+    if (value.is_number_unsigned()) {
+        const unsigned long long number = value.get<unsigned long long>();
+        if (number > static_cast<unsigned long long>(limits.maximum)) {
+            return false;
+        }
+
+        result = static_cast<long long>(number);
+    } else {
+        result = value.get<long long>();
+    }
+
+    return result >= limits.minimum && result <= limits.maximum;
+}
+
+// Checks the type and the limits; false (with a warning) when the fallback
+// has to be used.
+bool ReadNumber(
+    const json& section,
+    const NumberLimits& limits,
+    long long& value,
+    const std::string& fallbackText,
+    std::vector<std::string>& warnings,
+    const std::string& sectionName) {
+    const auto it = section.find(limits.key);
+
+    if (!it->is_number_integer()) {
+        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnInteger), KeyName(sectionName, limits.key), fallbackText));
+        return false;
+    }
+
+    if (!WithinLimits(*it, limits, value)) {
+        warnings.push_back(fmt::format(
+            Lang::Utf8(Str::CfgWarnRange), KeyName(sectionName, limits.key), it->dump(),
+            limits.minimum, limits.maximum, fallbackText));
+        return false;
+    }
+
+    return true;
+}
+
+void ReadInt(
+    const json& section,
+    const NumberLimits& limits,
+    int& target,
+    int fallback,
+    std::vector<std::string>& warnings,
+    const std::string& sectionName) {
+    if (section.find(limits.key) == section.end()) {
+        return;
+    }
+
+    long long value = 0;
+    target = ReadNumber(section, limits, value, JsonValue(fallback), warnings, sectionName)
+        ? static_cast<int>(value)
+        : fallback;
+}
+
+void ReadUnsigned(
+    const json& section,
+    const NumberLimits& limits,
+    unsigned int& target,
+    unsigned int fallback,
+    std::vector<std::string>& warnings,
+    const std::string& sectionName) {
+    if (section.find(limits.key) == section.end()) {
+        return;
+    }
+
+    long long value = 0;
+    target = ReadNumber(section, limits, value, JsonValue(fallback), warnings, sectionName)
+        ? static_cast<unsigned int>(value)
+        : fallback;
+}
+
+void ReadString(
+    const json& section,
+    const char* key,
+    std::string& target,
+    const std::string& fallback,
+    std::vector<std::string>& warnings,
+    const std::string& sectionName) {
+    const auto it = section.find(key);
+    if (it == section.end()) {
+        return;
+    }
+
+    if (!it->is_string()) {
+        target = fallback;
+        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnString), KeyName(sectionName, key), JsonValue(fallback)));
         return;
     }
 
@@ -185,30 +362,22 @@ const json* FindSection(const json& root, const char* key) {
     return &(*it);
 }
 
-const char* ToString(CloseAction value) {
-    return value == CloseAction::Exit ? "exit" : "minimize";
+// The service field of the root object.
+constexpr NumberLimits CONFIG_VERSION_LIMITS = { "configVersion", 1, 1000 };
+
 }
 
-const char* ToString(DataFlow value) {
-    switch (value) {
-        case DataFlow::Capture: return "capture";
-        case DataFlow::Both: return "both";
-        default: return "render";
+bool miniant::Config::NormalizeLogLevel(const std::string& value, std::string& level) {
+    const std::string word = Text::ToLowerAscii(Text::Trim(value));
+
+    for (const Word& candidate : LOG_LEVEL_WORDS) {
+        if (word == candidate.text) {
+            level = candidate.value;
+            return true;
+        }
     }
-}
 
-const char* ToString(BufferMode value) {
-    return value == BufferMode::Fixed ? "fixed" : "min";
-}
-
-const char* ToString(ProcessPriority value) {
-    switch (value) {
-        case ProcessPriority::BelowNormal: return "belowNormal";
-        case ProcessPriority::Idle: return "idle";
-        default: return "normal";
-    }
-}
-
+    return false;
 }
 
 bool miniant::Config::IsLogFileOff(const LoggingSettings& logging) {
@@ -220,11 +389,12 @@ std::wstring miniant::Config::GetDefaultPath() {
     return Windows::Filesystem::JoinPath(Windows::Filesystem::GetExecutableDirectory(), L"real.settings.json");
 }
 
-LoadResult miniant::Config::Load(const std::wstring& path) {
+LoadResult miniant::Config::Load(const std::wstring& path, const Settings& previous) {
     LoadResult result;
 
     bool readSucceeded = false;
-    std::string content = Windows::Filesystem::ReadTextFileUtf8(path, &readSucceeded);
+    bool tooLarge = false;
+    std::string content = Windows::Filesystem::ReadTextFileUtf8(path, &readSucceeded, MAX_FILE_BYTES, &tooLarge);
     if (!readSucceeded) {
         // A file that exists but cannot be read is not the same as no file at
         // all: the program says so and starts on the defaults without touching
@@ -232,7 +402,7 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
         result.fileExists = Windows::Filesystem::IsFile(path);
         if (result.fileExists) {
             result.parseFailed = true;
-            result.error = Lang::Utf8(Str::CfgErrRead);
+            result.error = Lang::Utf8(tooLarge ? Str::CfgErrTooLarge : Str::CfgErrRead);
         }
 
         return result;
@@ -258,129 +428,134 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
     }
 
     Settings& settings = result.settings;
+    std::vector<std::string>& warnings = result.warnings;
 
-    ReadInt(root, "configVersion", settings.configVersion, 1, 1000, result.warnings, "");
-    ReadString(root, "commentLanguage", settings.commentLanguage, result.warnings, "");
+    ReadInt(root, CONFIG_VERSION_LIMITS, settings.configVersion, previous.configVersion, warnings, "");
+    ReadString(root, "commentLanguage", settings.commentLanguage, previous.commentLanguage, warnings, "");
     WarnUnknownKeys(root, "",
         { "configVersion", "commentLanguage", "application", "tray", "audio", "performance", "updates", "logging" },
-        result.warnings);
+        warnings);
 
     if (const json* section = FindSection(root, "application")) {
-        ReadString(*section, "language", settings.application.language, result.warnings, "application");
-        ReadBool(*section, "startMinimizedToTray", settings.application.startMinimizedToTray, result.warnings, "application");
-        ReadBool(*section, "minimizeToTray", settings.application.minimizeToTray, result.warnings, "application");
-        ReadEnum(*section, "closeButtonAction", CLOSE_ACTION_MAP, settings.application.closeButtonAction, result.warnings, "application");
-        ReadBool(*section, "startWithWindows", settings.application.startWithWindows, result.warnings, "application");
+        const ApplicationSettings& before = previous.application;
+        ApplicationSettings& application = settings.application;
+
+        ReadWord(*section, "language", LANGUAGE_WORDS, LANGUAGE_ALLOWED,
+            application.language, before.language, warnings, "application");
+        ReadBool(*section, "startMinimizedToTray", application.startMinimizedToTray,
+            before.startMinimizedToTray, warnings, "application");
+        ReadBool(*section, "minimizeToTray", application.minimizeToTray, before.minimizeToTray, warnings, "application");
+        ReadEnum(*section, "closeButtonAction", CLOSE_ACTION_MAP, application.closeButtonAction,
+            before.closeButtonAction, warnings, "application");
+        ReadBool(*section, "startWithWindows", application.startWithWindows, before.startWithWindows, warnings, "application");
         WarnUnknownKeys(*section, "application",
             { "language", "startMinimizedToTray", "minimizeToTray", "closeButtonAction", "startWithWindows" },
-            result.warnings);
+            warnings);
     }
 
     if (const json* section = FindSection(root, "tray")) {
-        ReadBool(*section, "enabled", settings.tray.enabled, result.warnings, "tray");
+        const TraySettings& before = previous.tray;
+        TraySettings& tray = settings.tray;
+
+        ReadBool(*section, "enabled", tray.enabled, before.enabled, warnings, "tray");
 
         if (const json* notifications = FindSection(*section, "notifications")) {
-            ReadBool(*notifications, "onError", settings.tray.notifications.onError, result.warnings, "tray.notifications");
-            ReadBool(*notifications, "onDeviceChange", settings.tray.notifications.onDeviceChange, result.warnings, "tray.notifications");
-            ReadBool(*notifications, "onStateChange", settings.tray.notifications.onStateChange, result.warnings, "tray.notifications");
-            WarnUnknownKeys(*notifications, "tray.notifications", { "onError", "onDeviceChange", "onStateChange" }, result.warnings);
+            const char* name = "tray.notifications";
+            ReadBool(*notifications, "onError", tray.notifications.onError, before.notifications.onError, warnings, name);
+            ReadBool(*notifications, "onDeviceChange", tray.notifications.onDeviceChange,
+                before.notifications.onDeviceChange, warnings, name);
+            ReadBool(*notifications, "onStateChange", tray.notifications.onStateChange,
+                before.notifications.onStateChange, warnings, name);
+            WarnUnknownKeys(*notifications, name, { "onError", "onDeviceChange", "onStateChange" }, warnings);
         }
 
         if (const json* menu = FindSection(*section, "menu")) {
-            ReadBool(*menu, "toggleEnabled", settings.tray.menu.toggleEnabled, result.warnings, "tray.menu");
-            ReadBool(*menu, "reinitialize", settings.tray.menu.reinitialize, result.warnings, "tray.menu");
-            ReadBool(*menu, "openLog", settings.tray.menu.openLog, result.warnings, "tray.menu");
-            ReadBool(*menu, "diagnostics", settings.tray.menu.diagnostics, result.warnings, "tray.menu");
-            WarnUnknownKeys(*menu, "tray.menu",
-                { "toggleEnabled", "reinitialize", "openLog", "diagnostics" },
-                result.warnings);
+            const char* name = "tray.menu";
+            ReadBool(*menu, "toggleEnabled", tray.menu.toggleEnabled, before.menu.toggleEnabled, warnings, name);
+            ReadBool(*menu, "reinitialize", tray.menu.reinitialize, before.menu.reinitialize, warnings, name);
+            ReadBool(*menu, "openLog", tray.menu.openLog, before.menu.openLog, warnings, name);
+            ReadBool(*menu, "diagnostics", tray.menu.diagnostics, before.menu.diagnostics, warnings, name);
+            WarnUnknownKeys(*menu, name, { "toggleEnabled", "reinitialize", "openLog", "diagnostics" }, warnings);
         }
 
-        WarnUnknownKeys(*section, "tray", { "enabled", "notifications", "menu" }, result.warnings);
+        WarnUnknownKeys(*section, "tray", { "enabled", "notifications", "menu" }, warnings);
     }
 
     if (const json* section = FindSection(root, "audio")) {
-        ReadEnum(*section, "dataFlow", DATA_FLOW_MAP, settings.audio.dataFlow, result.warnings, "audio");
-        ReadEnum(*section, "buffer", BUFFER_MODE_MAP, settings.audio.buffer, result.warnings, "audio");
-        ReadUnsigned(*section, "fixedBufferFrames", settings.audio.fixedBufferFrames,
-            FIXED_BUFFER_FRAMES_MAX, result.warnings, "audio");
+        const AudioSettings& before = previous.audio;
+        AudioSettings& audio = settings.audio;
 
-        // A fixed buffer without a size means nothing: the smallest buffer is
-        // taken instead, and the window shows that choice.
-        if (settings.audio.buffer == BufferMode::Fixed && settings.audio.fixedBufferFrames == 0) {
-            result.warnings.push_back(
-                fmt::format(Lang::Utf8(Str::CfgWarnFixedBufferZero), KeyName("audio", "fixedBufferFrames")));
-            settings.audio.buffer = BufferMode::Minimum;
+        ReadEnum(*section, "dataFlow", DATA_FLOW_MAP, audio.dataFlow, before.dataFlow, warnings, "audio");
+        ReadEnum(*section, "buffer", BUFFER_MODE_MAP, audio.buffer, before.buffer, warnings, "audio");
+        ReadUnsigned(*section, FIXED_BUFFER_FRAMES_LIMITS, audio.fixedBufferFrames, before.fixedBufferFrames,
+            warnings, "audio");
+
+        // A fixed buffer without a size means nothing: the buffer in use is
+        // kept (the minimum one at startup), and the window shows that choice.
+        if (audio.buffer == BufferMode::Fixed && audio.fixedBufferFrames == 0) {
+            const bool fixedBefore = before.buffer == BufferMode::Fixed && before.fixedBufferFrames > 0;
+            audio.buffer = fixedBefore ? BufferMode::Fixed : BufferMode::Minimum;
+            audio.fixedBufferFrames = fixedBefore ? before.fixedBufferFrames : 0;
+
+            warnings.push_back(fmt::format(
+                Lang::Utf8(Str::CfgWarnFixedBufferZero), KeyName("audio", FIXED_BUFFER_FRAMES_LIMITS.key),
+                DescribeBuffer(settings)));
         }
 
         if (const json* reinit = FindSection(*section, "reinit")) {
-            ReadBool(*reinit, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged, result.warnings, "audio.reinit");
-            ReadBool(*reinit, "deviceStateChanged", settings.audio.reinit.deviceStateChanged, result.warnings, "audio.reinit");
-            ReadBool(*reinit, "deviceAdded", settings.audio.reinit.deviceAdded, result.warnings, "audio.reinit");
-            ReadBool(*reinit, "deviceRemoved", settings.audio.reinit.deviceRemoved, result.warnings, "audio.reinit");
-            ReadBool(*reinit, "resumeFromSleep", settings.audio.reinit.resumeFromSleep, result.warnings, "audio.reinit");
-            ReadBool(*reinit, "sessionUnlock", settings.audio.reinit.sessionUnlock, result.warnings, "audio.reinit");
-            ReadBool(*reinit, "enableWhenDisabled", settings.audio.reinit.enableWhenDisabled, result.warnings, "audio.reinit");
-            ReadInt(*reinit, "failureTimeoutMs", settings.audio.reinit.failureTimeoutMs,
-                FAILURE_TIMEOUT_MS_MIN, FAILURE_TIMEOUT_MS_MAX, result.warnings, "audio.reinit");
-            ReadInt(*reinit, "debounceMs", settings.audio.reinit.debounceMs,
-                DEBOUNCE_MS_MIN, DEBOUNCE_MS_MAX, result.warnings, "audio.reinit");
-            WarnUnknownKeys(*reinit, "audio.reinit",
-                { "defaultDeviceChanged", "deviceStateChanged", "deviceAdded", "deviceRemoved", "resumeFromSleep", "sessionUnlock", "enableWhenDisabled", "failureTimeoutMs", "debounceMs" },
-                result.warnings);
+            const ReinitSettings& was = before.reinit;
+            ReinitSettings& now = audio.reinit;
+            const char* name = "audio.reinit";
+
+            ReadBool(*reinit, "defaultDeviceChanged", now.defaultDeviceChanged, was.defaultDeviceChanged, warnings, name);
+            ReadBool(*reinit, "deviceStateChanged", now.deviceStateChanged, was.deviceStateChanged, warnings, name);
+            ReadBool(*reinit, "deviceAdded", now.deviceAdded, was.deviceAdded, warnings, name);
+            ReadBool(*reinit, "deviceRemoved", now.deviceRemoved, was.deviceRemoved, warnings, name);
+            ReadBool(*reinit, "resumeFromSleep", now.resumeFromSleep, was.resumeFromSleep, warnings, name);
+            ReadBool(*reinit, "sessionUnlock", now.sessionUnlock, was.sessionUnlock, warnings, name);
+            ReadBool(*reinit, "enableWhenDisabled", now.enableWhenDisabled, was.enableWhenDisabled, warnings, name);
+            ReadInt(*reinit, FAILURE_TIMEOUT_MS_LIMITS, now.failureTimeoutMs, was.failureTimeoutMs, warnings, name);
+            ReadInt(*reinit, DEBOUNCE_MS_LIMITS, now.debounceMs, was.debounceMs, warnings, name);
+            WarnUnknownKeys(*reinit, name,
+                { "defaultDeviceChanged", "deviceStateChanged", "deviceAdded", "deviceRemoved", "resumeFromSleep",
+                  "sessionUnlock", "enableWhenDisabled", FAILURE_TIMEOUT_MS_LIMITS.key, DEBOUNCE_MS_LIMITS.key },
+                warnings);
         }
 
         WarnUnknownKeys(*section, "audio",
-            { "dataFlow", "buffer", "fixedBufferFrames", "reinit" },
-            result.warnings);
+            { "dataFlow", "buffer", FIXED_BUFFER_FRAMES_LIMITS.key, "reinit" },
+            warnings);
     }
 
     if (const json* section = FindSection(root, "performance")) {
-        ReadEnum(*section, "processPriority", PROCESS_PRIORITY_MAP, settings.performance.processPriority, result.warnings, "performance");
-        WarnUnknownKeys(*section, "performance", { "processPriority" }, result.warnings);
+        ReadEnum(*section, "processPriority", PROCESS_PRIORITY_MAP, settings.performance.processPriority,
+            previous.performance.processPriority, warnings, "performance");
+        WarnUnknownKeys(*section, "performance", { "processPriority" }, warnings);
     }
 
     if (const json* section = FindSection(root, "updates")) {
-        ReadBool(*section, "checkOnStartup", settings.updates.checkOnStartup, result.warnings, "updates");
-        WarnUnknownKeys(*section, "updates", { "checkOnStartup" }, result.warnings);
+        ReadBool(*section, "checkOnStartup", settings.updates.checkOnStartup, previous.updates.checkOnStartup,
+            warnings, "updates");
+        WarnUnknownKeys(*section, "updates", { "checkOnStartup" }, warnings);
     }
 
     if (const json* section = FindSection(root, "logging")) {
-        ReadString(*section, "level", settings.logging.level, result.warnings, "logging");
-        ReadString(*section, "filePath", settings.logging.filePath, result.warnings, "logging");
-        ReadInt(*section, "maxFileSizeMb", settings.logging.maxFileSizeMb,
-            LOG_FILE_SIZE_MB_MIN, LOG_FILE_SIZE_MB_MAX, result.warnings, "logging");
-        ReadInt(*section, "maxFiles", settings.logging.maxFiles,
-            LOG_FILES_MIN, LOG_FILES_MAX, result.warnings, "logging");
+        const LoggingSettings& before = previous.logging;
+        LoggingSettings& logging = settings.logging;
+
+        ReadWord(*section, "level", LOG_LEVEL_WORDS, LOG_LEVELS_ALLOWED, logging.level, before.level, warnings, "logging");
+        ReadString(*section, "filePath", logging.filePath, before.filePath, warnings, "logging");
+        ReadInt(*section, LOG_FILE_SIZE_MB_LIMITS, logging.maxFileSizeMb, before.maxFileSizeMb, warnings, "logging");
+        ReadInt(*section, LOG_FILES_LIMITS, logging.maxFiles, before.maxFiles, warnings, "logging");
         WarnUnknownKeys(*section, "logging",
-            { "level", "filePath", "maxFileSizeMb", "maxFiles" },
-            result.warnings);
+            { "level", "filePath", LOG_FILE_SIZE_MB_LIMITS.key, LOG_FILES_LIMITS.key },
+            warnings);
     }
 
     return result;
 }
 
 namespace {
-
-std::string JsonValue(bool value) {
-    return value ? "true" : "false";
-}
-
-std::string JsonValue(int value) {
-    return std::to_string(value);
-}
-
-std::string JsonValue(unsigned int value) {
-    return std::to_string(value);
-}
-
-std::string JsonValue(const std::string& value) {
-    return json(value).dump();
-}
-
-std::string JsonValue(const char* value) {
-    return json(value).dump();
-}
 
 // The settings file that the application writes is filled with comments, so it
 // doubles as the reference: every parameter is explained next to its value.
@@ -471,7 +646,7 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     json& audio = root["audio"];
     audio["dataFlow"] = ToString(settings.audio.dataFlow);
     audio["buffer"] = ToString(settings.audio.buffer);
-    audio["fixedBufferFrames"] = settings.audio.fixedBufferFrames;
+    audio[FIXED_BUFFER_FRAMES_LIMITS.key] = settings.audio.fixedBufferFrames;
 
     json& reinit = root["audio"]["reinit"];
     reinit["defaultDeviceChanged"] = settings.audio.reinit.defaultDeviceChanged;
@@ -481,8 +656,8 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     reinit["resumeFromSleep"] = settings.audio.reinit.resumeFromSleep;
     reinit["sessionUnlock"] = settings.audio.reinit.sessionUnlock;
     reinit["enableWhenDisabled"] = settings.audio.reinit.enableWhenDisabled;
-    reinit["failureTimeoutMs"] = settings.audio.reinit.failureTimeoutMs;
-    reinit["debounceMs"] = settings.audio.reinit.debounceMs;
+    reinit[FAILURE_TIMEOUT_MS_LIMITS.key] = settings.audio.reinit.failureTimeoutMs;
+    reinit[DEBOUNCE_MS_LIMITS.key] = settings.audio.reinit.debounceMs;
 
     json& performance = root["performance"];
     performance["processPriority"] = ToString(settings.performance.processPriority);
@@ -493,8 +668,8 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     json& logging = root["logging"];
     logging["level"] = settings.logging.level;
     logging["filePath"] = settings.logging.filePath;
-    logging["maxFileSizeMb"] = settings.logging.maxFileSizeMb;
-    logging["maxFiles"] = settings.logging.maxFiles;
+    logging[LOG_FILE_SIZE_MB_LIMITS.key] = settings.logging.maxFileSizeMb;
+    logging[LOG_FILES_LIMITS.key] = settings.logging.maxFiles;
 
     return root.dump(2);
 }
@@ -539,7 +714,7 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.SectionOpen(2, "audio", text(Str::CfgAudioSection));
     document.Key(4, "dataFlow", ToString(settings.audio.dataFlow), text(Str::CfgDataFlow), true);
     document.Key(4, "buffer", ToString(settings.audio.buffer), text(Str::CfgBuffer), true);
-    document.Key(4, "fixedBufferFrames", settings.audio.fixedBufferFrames, text(Str::CfgFixedBufferFrames), true);
+    document.Key(4, FIXED_BUFFER_FRAMES_LIMITS.key, settings.audio.fixedBufferFrames, text(Str::CfgFixedBufferFrames), true);
     document.SectionOpen(4, "reinit", text(Str::CfgReinitSection));
     document.Key(6, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged, text(Str::CfgReinitDeviceChanged), true);
     document.Key(6, "deviceStateChanged", settings.audio.reinit.deviceStateChanged, text(Str::CfgReinitDeviceState), true);
@@ -548,8 +723,12 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.Key(6, "resumeFromSleep", settings.audio.reinit.resumeFromSleep, text(Str::CfgReinitResume), true);
     document.Key(6, "sessionUnlock", settings.audio.reinit.sessionUnlock, text(Str::CfgReinitUnlock), true);
     document.Key(6, "enableWhenDisabled", settings.audio.reinit.enableWhenDisabled, text(Str::CfgReinitEnableWhenDisabled), true);
-    document.Key(6, "failureTimeoutMs", settings.audio.reinit.failureTimeoutMs, text(Str::CfgReinitFailureTimeout), true);
-    document.Key(6, "debounceMs", settings.audio.reinit.debounceMs, text(Str::CfgReinitDebounce), false);
+    document.Key(6, FAILURE_TIMEOUT_MS_LIMITS.key, settings.audio.reinit.failureTimeoutMs,
+        fmt::format(Lang::Utf8(Str::CfgReinitFailureTimeout), FAILURE_TIMEOUT_MS_LIMITS.minimum, FAILURE_TIMEOUT_MS_LIMITS.maximum),
+        true);
+    document.Key(6, DEBOUNCE_MS_LIMITS.key, settings.audio.reinit.debounceMs,
+        fmt::format(Lang::Utf8(Str::CfgReinitDebounce), DEBOUNCE_MS_LIMITS.minimum, DEBOUNCE_MS_LIMITS.maximum),
+        false);
     document.SectionClose(4, false);
     document.SectionClose(2, true);
     document.Blank();
@@ -567,8 +746,12 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.SectionOpen(2, "logging", text(Str::CfgLoggingSection));
     document.Key(4, "level", settings.logging.level, text(Str::CfgLoggingLevel), true);
     document.Key(4, "filePath", settings.logging.filePath, text(Str::CfgLoggingFilePath), true);
-    document.Key(4, "maxFileSizeMb", settings.logging.maxFileSizeMb, text(Str::CfgLoggingMaxFileSize), true);
-    document.Key(4, "maxFiles", settings.logging.maxFiles, text(Str::CfgLoggingMaxFiles), false);
+    document.Key(4, LOG_FILE_SIZE_MB_LIMITS.key, settings.logging.maxFileSizeMb,
+        fmt::format(Lang::Utf8(Str::CfgLoggingMaxFileSize), LOG_FILE_SIZE_MB_LIMITS.minimum, LOG_FILE_SIZE_MB_LIMITS.maximum),
+        true);
+    document.Key(4, LOG_FILES_LIMITS.key, settings.logging.maxFiles,
+        fmt::format(Lang::Utf8(Str::CfgLoggingMaxFiles), LOG_FILES_LIMITS.minimum, LOG_FILES_LIMITS.maximum),
+        false);
     document.SectionClose(2, false);
     document.Line(0, "}");
 
@@ -623,7 +806,7 @@ namespace {
 // section is empty for a field of the root object.
 std::string PeekString(const std::wstring& path, const char* section, const char* key) {
     bool readSucceeded = false;
-    const std::string content = Windows::Filesystem::ReadTextFileUtf8(path, &readSucceeded);
+    const std::string content = Windows::Filesystem::ReadTextFileUtf8(path, &readSucceeded, MAX_FILE_BYTES);
     if (!readSucceeded) {
         return {};
     }

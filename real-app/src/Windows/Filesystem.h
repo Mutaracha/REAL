@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 
 namespace miniant::Windows::Filesystem {
@@ -15,7 +16,10 @@ std::wstring GetFileExtension(const std::wstring& path);
 bool IsFile(const std::wstring& path);
 bool IsDirectory(const std::wstring& path);
 
-std::string ReadTextFileUtf8(const std::wstring& path, bool* success = nullptr);
+// The whole file. With a limit, a larger file is not read at all: the result
+// is empty, success is false and tooLarge says why.
+std::string ReadTextFileUtf8(
+    const std::wstring& path, bool* success = nullptr, size_t maxBytes = 0, bool* tooLarge = nullptr);
 bool WriteTextFileUtf8(const std::wstring& path, const std::string& content);
 
 // The same write, but through a temporary file next to the target: the file

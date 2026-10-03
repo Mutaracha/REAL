@@ -31,7 +31,7 @@ that is still maintained and adds quality-of-life features:
   holding a stream that changes nothing
 * The buffer is the smallest one the driver supports, or a fixed size
   (`audio.buffer`, `audio.fixedBufferFrames`); the settings window shows the range
-  of the device under the field and accepts only a value from it
+  of the device under the name of the field and accepts only a value from it
 * Automatic re-application when the default device changes, when a device is
   switched on or off (plugged in or out), after resume from sleep or after the
   audio service restarts; the latency reduction is switched back on when it was
@@ -54,7 +54,12 @@ that is still maintained and adds quality-of-life features:
   `audio.reinit.failureTimeoutMs` (60 s), the latency reduction is switched off
   and the device is not polled anymore
 * Always a single instance: a second start (`REAL.exe --reinit` and the like)
-  passes its command to the running one and exits
+  passes its command straight to the window of the running one and exits; a start
+  that meets an instance which is just closing waits for it and starts normally
+* Every value is checked: the settings window puts a value it does not take back
+  to the last accepted one and shows a balloon with the allowed range, and the
+  reader of the file keeps the value in use for anything it cannot use (a wrong
+  type, a number out of its range, an unknown word) and names it in the log
 
 ## Requirements
 
@@ -93,7 +98,7 @@ used by the audio engine, for example `2.67 ms - Speakers (Realtek Audio)`.
 | `--no-tray` | Start with the main window visible |
 | `--config <path>` | Use another settings file |
 | `--no-config` | Ignore the settings file, use built-in defaults |
-| `--log-level <level>` | `off`, `error`, `warn`, `info`, `debug`, `trace` |
+| `--log-level <level>` | `off`, `error`, `warn`, `info`, `debug`, `trace` (another word is reported and ignored) |
 
 Commands for a running instance (the command is passed to it and this process exits):
 

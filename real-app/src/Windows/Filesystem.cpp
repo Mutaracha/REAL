@@ -93,14 +93,39 @@ bool miniant::Windows::Filesystem::IsDirectory(const std::wstring& path) {
     return std::filesystem::is_directory(std::filesystem::path(path), error);
 }
 
-std::string miniant::Windows::Filesystem::ReadTextFileUtf8(const std::wstring& path, bool* success) {
+std::string miniant::Windows::Filesystem::ReadTextFileUtf8(
+    const std::wstring& path, bool* success, size_t maxBytes, bool* tooLarge) {
     if (success != nullptr) {
         *success = false;
+    }
+
+    if (tooLarge != nullptr) {
+        *tooLarge = false;
     }
 
     std::ifstream stream(std::filesystem::path(path), std::ios::binary);
     if (!stream) {
         return {};
+    }
+
+    // The size is known before anything is read: a file far beyond the limit
+    // never gets into the memory.
+    if (maxBytes > 0) {
+        stream.seekg(0, std::ios::end);
+        const std::streamoff size = stream.tellg();
+        stream.seekg(0, std::ios::beg);
+
+        if (size < 0 || !stream) {
+            return {};
+        }
+
+        if (static_cast<unsigned long long>(size) > maxBytes) {
+            if (tooLarge != nullptr) {
+                *tooLarge = true;
+            }
+
+            return {};
+        }
     }
 
     std::ostringstream content;

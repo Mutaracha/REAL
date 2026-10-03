@@ -29,7 +29,9 @@ class LogBuffer {
 public:
     explicit LogBuffer(size_t limit = 4000);
 
-    void SetNotifyHandler(std::function<void()> handler);
+    // The handler tells the window that lines are waiting (it posts a
+    // message) and returns false when that failed.
+    void SetNotifyHandler(std::function<bool()> handler);
     void Append(const std::string& text);
     std::vector<std::string> TakePending();
 
@@ -38,7 +40,10 @@ private:
     std::deque<std::string> m_lines;
     size_t m_limit;
     size_t m_pending = 0;
-    std::function<void()> m_notify;
+    // The window has been told and has not taken the lines yet: one message
+    // per batch is enough, a burst of lines does not flood its queue.
+    bool m_notified = false;
+    std::function<bool()> m_notify;
 };
 
 LogBuffer& Buffer();

@@ -12,6 +12,10 @@ std::string DescribeHResult(long hr);
 // Formats the last Win32 error the same way.
 std::string DescribeLastError();
 
+// Formats a Win32 error code that a function returned instead of setting the
+// last error (the registry functions do so).
+std::string DescribeError(unsigned long code);
+
 class WindowsError : public ExpectedError {
 public:
     WindowsError();

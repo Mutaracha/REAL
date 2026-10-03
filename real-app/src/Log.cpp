@@ -165,13 +165,14 @@ std::wstring ResolveLogPath(const std::string& configuredPath) {
 LogBuffer::LogBuffer(size_t limit):
     m_limit(limit == 0 ? 1 : limit) {}
 
-void LogBuffer::SetNotifyHandler(std::function<void()> handler) {
+void LogBuffer::SetNotifyHandler(std::function<bool()> handler) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_notify = std::move(handler);
+    m_notified = false;
 }
 
 void LogBuffer::Append(const std::string& text) {
-    std::function<void()> notify;
+    std::function<bool()> notify;
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -195,16 +196,23 @@ void LogBuffer::Append(const std::string& text) {
             }
         }
 
-        notify = m_notify;
+        if (m_pending > 0 && !m_notified && m_notify) {
+            m_notified = true;
+            notify = m_notify;
+        }
     }
 
-    if (notify) {
-        notify();
+    // A message that could not be posted (the window is gone, its queue is
+    // full) is tried again with the next line.
+    if (notify && !notify()) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_notified = false;
     }
 }
 
 std::vector<std::string> LogBuffer::TakePending() {
     std::lock_guard<std::mutex> lock(m_mutex);
+    m_notified = false;
 
     std::vector<std::string> result;
     if (m_pending == 0) {

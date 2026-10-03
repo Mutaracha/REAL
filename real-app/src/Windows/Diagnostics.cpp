@@ -178,7 +178,6 @@ std::string Milliseconds(uint32_t frames, uint32_t sampleRate) {
     return miniant::Lang::Milliseconds(1000.0 * static_cast<double>(frames) / static_cast<double>(sampleRate));
 }
 
-
 // One period: the label of the language, the number of frames with the right
 // plural form and the same number in milliseconds.
 std::string PeriodLine(miniant::Lang::Str label, uint32_t frames, uint32_t sampleRate) {

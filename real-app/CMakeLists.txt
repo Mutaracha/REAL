@@ -79,7 +79,6 @@ target_link_libraries(real-app PRIVATE
     comctl32
     winhttp
     ole32
-    oleaut32
     uuid
     shell32
     wtsapi32
