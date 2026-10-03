@@ -9,6 +9,7 @@
 #include <tl/expected.hpp>
 
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -44,11 +45,12 @@ public:
 
     const std::vector<Windows::WasapiLatency::AudioStreamInfo>& GetStreams() const;
 
-    // Short status line, e.g. "2.67 ms - Speakers (Realtek Audio)".
+    // Short status line, e.g. "2.67 ms - Speakers (Realtek Audio)" ("2,67 мс" in
+    // Russian).
     std::wstring GetStatusText() const;
 
     // Technical description of the running stream for the log:
-    // "Speakers (Realtek Audio), 48000 Hz, 2 ch, 32 bit, period 336 frames (7.00 ms)".
+    // "Speakers (Realtek Audio), 48000 Hz, 2 channels, 32 bit, buffer 336 frames (7.00 ms)".
     std::string GetDetailsText() const;
 
     // Detects a stream that has been invalidated (device removed, audio service
@@ -64,6 +66,9 @@ private:
     std::vector<Windows::WasapiLatency::AudioStreamInfo> m_streamsInfo;
     bool m_notificationsRegistered = false;
     bool m_noDefaultDevice = false;
+    // The adjustments of a fixed buffer that are already in the journal: a
+    // restart with the same device and the same value says nothing new.
+    std::set<std::string> m_reportedAdjustments;
 };
 
 }

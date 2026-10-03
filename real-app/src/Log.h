@@ -56,9 +56,9 @@ void Write(Level level, const std::string& message);
 // the file and shown in the window.
 void WriteOperation(const std::string& message);
 
-// A hint for the user (hotkeys and other reminders): it is shown in the window,
-// but never written to the log file, which stays a record of what the program
-// did.
+// A hint for the user (why the log cannot be opened and the like): it is shown
+// in the window, but never written to the log file, which stays a record of
+// what the program did.
 void WriteHint(const std::string& message);
 
 // Writes everything that is still buffered to the sinks. A log line that is

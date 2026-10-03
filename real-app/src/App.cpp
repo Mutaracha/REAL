@@ -70,83 +70,6 @@ bool WriteToParentConsole(const std::string& text) {
     return redirected;
 }
 
-struct HotkeyDefinition {
-    UINT modifiers = 0;
-    UINT virtualKey = 0;
-    bool valid = false;
-};
-
-UINT ModifierFromName(const std::string& name) {
-    if (name == "ctrl" || name == "control") {
-        return MOD_CONTROL;
-    }
-
-    if (name == "alt") {
-        return MOD_ALT;
-    }
-
-    if (name == "shift") {
-        return MOD_SHIFT;
-    }
-
-    if (name == "win" || name == "windows") {
-        return MOD_WIN;
-    }
-
-    return 0;
-}
-
-HotkeyDefinition ParseHotkey(const std::string& text) {
-    HotkeyDefinition result;
-
-    std::vector<std::string> parts;
-    std::string current;
-    for (const char c : text) {
-        if (c == '+') {
-            parts.push_back(Text::Trim(current));
-            current.clear();
-            continue;
-        }
-
-        current.push_back(c);
-    }
-
-    if (!current.empty()) {
-        parts.push_back(Text::Trim(current));
-    }
-
-    if (parts.empty()) {
-        return result;
-    }
-
-    for (size_t i = 0; i + 1 < parts.size(); ++i) {
-        const UINT modifier = ModifierFromName(Text::ToLowerAscii(parts[i]));
-        if (modifier == 0) {
-            return result;
-        }
-
-        result.modifiers |= modifier;
-    }
-
-    const std::string key = Text::ToLowerAscii(parts.back());
-    if (key.size() == 1) {
-        const char c = key[0];
-        if (c >= 'a' && c <= 'z') {
-            result.virtualKey = static_cast<UINT>('A' + (c - 'a'));
-        } else if (c >= '0' && c <= '9') {
-            result.virtualKey = static_cast<UINT>('0' + (c - '0'));
-        }
-    } else if (key.size() >= 2 && key[0] == 'f') {
-        const int number = std::atoi(key.c_str() + 1);
-        if (number >= 1 && number <= 24) {
-            result.virtualKey = static_cast<UINT>(VK_F1 + number - 1);
-        }
-    }
-
-    result.valid = result.virtualKey != 0 && result.modifiers != 0;
-    return result;
-}
-
 EDataFlow EffectiveRenderFlow(Config::DataFlow flow) {
     return flow == Config::DataFlow::Capture ? eCapture : eRender;
 }
@@ -236,10 +159,6 @@ int App::Run() {
         Shutdown();
         return 1;
     }
-
-    // The reminder about the hotkeys belongs to the beginning of the session,
-    // right after the startup lines.
-    RegisterHotkeys();
 
     ApplyStartWithWindows();
 
@@ -406,7 +325,7 @@ void App::LogBanner() {
     // The configuration that takes part in the latency reduction: this is what a
     // diagnostics report needs. The version is in the started line above, the
     // remaining settings are in the settings file.
-    Log::Info(Lang::Utf8(Str::LogAudioSettings), Config::Describe(m_settings));
+    Log::Info(Lang::Utf8(Str::LogAudioSettings), Config::DescribeFlow(m_settings), Config::DescribeBuffer(m_settings));
 }
 
 bool App::InitializeUi() {
@@ -418,8 +337,9 @@ bool App::InitializeUi() {
 
     m_window = std::move(*window);
 
-    m_window->SetMinimizeToTray(m_settings.application.minimizeToTray);
-    m_window->SetHideOnClose(m_settings.application.closeButtonAction == Config::CloseAction::Minimize);
+    // There is no tray icon yet: the buttons of the window behave as usual
+    // until InitializeTray() has shown it.
+    ApplyWindowBehaviour();
     m_window->ApplyLanguage();
 
     m_window->SetCommandHandler([this](Command command) {
@@ -444,8 +364,14 @@ bool App::InitializeUi() {
 
     m_window->AppendLogLines(Log::Buffer().TakePending());
 
+    // Without the tray icon the window always starts visible. The setting of
+    // the file is greyed out in the settings window then, so only an explicit
+    // --tray is worth a line.
     if (!m_settings.tray.enabled && m_settings.application.startMinimizedToTray) {
-        Log::Warn(Lang::Utf8(Str::LogTrayHidden));
+        if (m_options.startMinimizedToTray.value_or(false)) {
+            Log::Warn(Lang::Utf8(Str::LogTrayHidden));
+        }
+
         m_settings.application.startMinimizedToTray = false;
     }
 
@@ -482,29 +408,46 @@ void App::InitializeAudio() {
     }
 
     // The latency reduction is always on at the start: switching it off is a
-    // decision for the running session (the menu, the hotkey, --disable).
+    // decision for the running session (the menus, --disable).
     m_audioEnabled = true;
     ApplyAudio();
 }
 
 void App::InitializeTray() {
-    if (!m_settings.tray.enabled) {
+    if (m_settings.tray.enabled) {
+        m_window->EnableTray(true);
+
+        if (!m_window->IsTrayVisible()) {
+            // Without a tray icon a hidden window could not be brought back, so
+            // the window becomes the only way to control the application.
+            Log::Operation(Lang::Utf8(Str::OpTrayUnavailable));
+
+            if (!m_window->IsVisible()) {
+                m_window->Show();
+            }
+        }
+    }
+
+    ApplyWindowBehaviour();
+
+    if (m_window->IsTrayVisible()) {
+        UpdateTrayMenuState();
+        UpdateStatus();
+    }
+}
+
+// The buttons of the window hide it in the tray only when there is a tray icon
+// to bring it back from; without the icon "Minimize" and the close button do
+// what they always do (the settings of the file are greyed out in the window).
+void App::ApplyWindowBehaviour() {
+    if (!m_window) {
         return;
     }
 
-    m_window->EnableTray(true);
+    const bool tray = m_window->IsTrayVisible();
 
-    if (!m_window->IsTrayVisible()) {
-        // Without a tray icon a hidden window could not be brought back, so the
-        // window becomes the only way to control the application.
-        Log::Operation(Lang::Utf8(Str::OpTrayUnavailable));
-        m_window->SetMinimizeToTray(false);
-        m_window->SetHideOnClose(false);
-        return;
-    }
-
-    UpdateTrayMenuState();
-    UpdateStatus();
+    m_window->SetMinimizeToTray(tray && m_settings.application.minimizeToTray);
+    m_window->SetHideOnClose(tray && m_settings.application.closeButtonAction == Config::CloseAction::Minimize);
 }
 
 void App::RegisterSignalMessages() {
@@ -637,9 +580,12 @@ void App::SetAudioEnabled(bool enabled) {
     m_audioSuspended = false;
     m_failureSince = 0;
 
+    // A switch the user asked for (a menu, a command, a restart): ApplyAudio()
+    // shows the balloon about it, so there is one balloon per action.
+    m_stateChangePending = true;
+
     // Switching the mode on is reported here and its result by ApplyAudio(),
-    // switching it off by ApplyAudio() alone; ApplyAudio() also shows the
-    // notification, so there is one balloon per action.
+    // switching it off by ApplyAudio() alone.
     if (m_audioEnabled) {
         Log::Operation(Lang::Utf8(Str::OpEnabled));
     }
@@ -653,9 +599,20 @@ void App::ApplyAudio() {
         return;
     }
 
+    // A switch on or off is reported by one balloon, and only about the action
+    // that asked for it: a restart of the program itself (the start, a device
+    // event, the end of a sleep) shows none.
+    const bool stateChange = m_stateChangePending && m_settings.tray.notifications.onStateChange;
+    m_stateChangePending = false;
+
     if (!m_audioEnabled) {
         m_audio.Stop();
         Log::Operation(Lang::Utf8(Str::OpDisabled));
+
+        if (stateChange) {
+            m_window->Notify(Lang::Wide(Str::NotifyTitle), Lang::Wide(Str::StatusDisabled), false);
+        }
+
         UpdateStatus();
         return;
     }
@@ -707,13 +664,27 @@ void App::ApplyAudio() {
         Log::Operation(Lang::Utf8(Str::OpDriverMinimum), m_audio.GetDetailsText());
     }
 
+    // The range of the buffer of the default device: the settings window shows
+    // it next to the fixed buffer and checks the value against it.
+    for (const auto& info : m_audio.GetStreams()) {
+        if (info.minPeriod > 0) {
+            m_bufferRange.deviceName = info.deviceName;
+            m_bufferRange.sampleRate = info.sampleRate;
+            m_bufferRange.minimum = info.minPeriod;
+            m_bufferRange.maximum = (std::max)(info.minPeriod, info.maxPeriod);
+            m_bufferRange.step = info.fundamentalPeriod;
+            m_bufferRange.current = info.currentPeriod;
+            break;
+        }
+    }
+
     // One balloon per action, and only about what the settings allow: a device
-    // change, a recovery from an outage, or a plain switch on/off.
+    // change, a recovery from an outage, or a switch on/off.
     const bool deviceChange = m_deviceChangePending && m_settings.tray.notifications.onDeviceChange;
     const bool recovery = recovered &&
         (m_settings.tray.notifications.onError || m_settings.tray.notifications.onDeviceChange);
 
-    if (deviceChange || recovery || m_settings.tray.notifications.onStateChange) {
+    if (deviceChange || recovery || stateChange) {
         const std::wstring title = Lang::Wide(deviceChange ? Str::NotifyDeviceTitle : Str::NotifyTitle);
         m_window->Notify(title, m_audio.GetStatusText(), false);
     }
@@ -809,12 +780,18 @@ void App::ApplySettings(const Config::Settings& previous) {
 
     if (m_window) {
         m_window->ApplyLanguage();
-        m_window->SetMinimizeToTray(m_settings.application.minimizeToTray);
-        m_window->SetHideOnClose(m_settings.application.closeButtonAction == Config::CloseAction::Minimize);
 
         if (m_settings.tray.enabled != previous.tray.enabled) {
             m_window->EnableTray(m_settings.tray.enabled);
         }
+
+        // The icon was switched off while the window was in the tray: the window
+        // comes back, nothing else could bring it back.
+        if (!m_window->IsTrayVisible() && !m_window->IsVisible()) {
+            m_window->Show();
+        }
+
+        ApplyWindowBehaviour();
     }
 
     // The autostart and the priority of the process are applied by the program
@@ -835,16 +812,6 @@ void App::ApplySettings(const Config::Settings& previous) {
     UpdateTrayMenuState();
 
     Log::SetFileSettings(m_settings.logging);
-
-    // The hotkeys are registered again only when they really changed: an
-    // unrelated setting must not touch them, and a failed registration must not
-    // be reported again on every save.
-    if (m_settings.hotkeys.enabled != previous.hotkeys.enabled ||
-        m_settings.hotkeys.toggleEnabled != previous.hotkeys.toggleEnabled ||
-        m_settings.hotkeys.reinitialize != previous.hotkeys.reinitialize) {
-        UnregisterHotkeys();
-        RegisterHotkeys();
-    }
 
     if (m_audioEnabled) {
         ApplyAudio();
@@ -867,7 +834,8 @@ void App::ShowSettingsDialog() {
         m_window != nullptr ? m_window->GetHWindow() : nullptr,
         m_instance,
         edited,
-        m_settingsPath);
+        m_settingsPath,
+        m_bufferRange);
 
     m_settingsWindowOpen = false;
 
@@ -1114,17 +1082,6 @@ void App::OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         return;
     }
 
-    if (message == WM_HOTKEY) {
-        const int id = static_cast<int>(wParam);
-        if (id == HOTKEY_ID_TOGGLE) {
-            OnCommand(Command::ToggleEnabled);
-        } else if (id == HOTKEY_ID_REINITIALIZE) {
-            OnCommand(Command::Reinitialize);
-        }
-
-        return;
-    }
-
     if (message == WM_APP_DEVICE_EVENT) {
         OnDeviceEvent(wParam, lParam);
         return;
@@ -1213,6 +1170,27 @@ void App::OnTimer(UINT_PTR timerId) {
     if (timerId == static_cast<UINT_PTR>(TimerId::DeviceEvent)) {
         ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent));
 
+        // The timer is shared by the device events and the end of a sleep or a
+        // lock (see OnSystemResume): a burst of both ends in one restart, and a
+        // device event among them makes it a device change.
+        const bool deviceEvent = m_deviceEventPending;
+        m_deviceEventPending = false;
+
+        if (!deviceEvent) {
+            // Only the system woke up or the session was unlocked: the streams
+            // are created again, and this is no device change to notify about.
+            if (!m_audioEnabled) {
+                return;
+            }
+
+            CancelAudioRetry();
+            m_failureSince = 0;
+
+            Log::Operation(Lang::Utf8(Str::OpResumeApply), Text::ToUtf8(m_resumeReason));
+            ApplyAudio();
+            return;
+        }
+
         CancelAudioRetry();
 
         // A device appeared or became the default one: this is the moment to
@@ -1223,6 +1201,7 @@ void App::OnTimer(UINT_PTR timerId) {
 
         if (!m_audioEnabled && m_settings.audio.reinit.enableWhenDisabled) {
             m_audioEnabled = true;
+            m_stateChangePending = true;
             Log::Operation(Lang::Utf8(Str::OpEnabled));
         }
 
@@ -1266,9 +1245,13 @@ void App::OnDeviceEvent(WPARAM wParam, LPARAM lParam) {
         return;
     }
 
-    const int debounce = m_settings.audio.reinit.debounceMs > 0 ? m_settings.audio.reinit.debounceMs : 500;
+    // Windows sends a burst of events for one change: the restart waits for the
+    // last of them (0 - the smallest pause of a timer).
+    m_deviceEventPending = true;
     ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent));
-    ::SetTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent), static_cast<UINT>(debounce), nullptr);
+    ::SetTimer(
+        m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent),
+        static_cast<UINT>(m_settings.audio.reinit.debounceMs), nullptr);
 }
 
 void App::ScheduleAudioRetry() {
@@ -1432,63 +1415,14 @@ void App::OnSystemResume(bool sessionUnlock, const std::wstring& reason) {
         return;
     }
 
-    Log::Debug(Lang::Utf8(Str::LogResumeApply), Text::ToUtf8(reason));
-
-    // The device list is not ready immediately after a resume; reuse the same
-    // debounce timer as for device notifications.
-    const int debounce = m_settings.audio.reinit.debounceMs > 0 ? m_settings.audio.reinit.debounceMs : 500;
+    // The device list is not ready immediately after a resume; the same pause
+    // as for the device notifications is used, with the same timer (the line
+    // about the restart is written when it fires).
+    m_resumeReason = reason;
     ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent));
-    ::SetTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent), static_cast<UINT>(debounce), nullptr);
-}
-
-void App::RegisterHotkeys() {
-    if (!m_settings.hotkeys.enabled || m_window == nullptr) {
-        return;
-    }
-
-    bool toggleRegistered = false;
-    bool reinitializeRegistered = false;
-
-    const HWND windowHandle = m_window->GetHWindow();
-
-    const HotkeyDefinition toggle = ParseHotkey(m_settings.hotkeys.toggleEnabled);
-    if (toggle.valid) {
-        if (::RegisterHotKey(windowHandle, HOTKEY_ID_TOGGLE, toggle.modifiers | MOD_NOREPEAT, toggle.virtualKey) == FALSE) {
-            Log::Warn(Lang::Utf8(Str::LogHotkeyRegisterFailed), m_settings.hotkeys.toggleEnabled);
-        } else {
-            toggleRegistered = true;
-        }
-    } else if (!m_settings.hotkeys.toggleEnabled.empty()) {
-        Log::Warn(Lang::Utf8(Str::LogHotkeyParseFailed), m_settings.hotkeys.toggleEnabled);
-    }
-
-    const HotkeyDefinition reinitialize = ParseHotkey(m_settings.hotkeys.reinitialize);
-    if (reinitialize.valid) {
-        if (::RegisterHotKey(windowHandle, HOTKEY_ID_REINITIALIZE, reinitialize.modifiers | MOD_NOREPEAT, reinitialize.virtualKey) == FALSE) {
-            Log::Warn(Lang::Utf8(Str::LogHotkeyRegisterFailed), m_settings.hotkeys.reinitialize);
-        } else {
-            reinitializeRegistered = true;
-        }
-    } else if (!m_settings.hotkeys.reinitialize.empty()) {
-        Log::Warn(Lang::Utf8(Str::LogHotkeyParseFailed), m_settings.hotkeys.reinitialize);
-    }
-
-    if (toggleRegistered || reinitializeRegistered) {
-        // A reminder for the user, not a record for the log file.
-        Log::Hint(
-            Lang::Utf8(Str::OpHotkeys),
-            toggleRegistered ? m_settings.hotkeys.toggleEnabled : std::string("-"),
-            reinitializeRegistered ? m_settings.hotkeys.reinitialize : std::string("-"));
-    }
-}
-
-void App::UnregisterHotkeys() {
-    if (m_window == nullptr) {
-        return;
-    }
-
-    ::UnregisterHotKey(m_window->GetHWindow(), HOTKEY_ID_TOGGLE);
-    ::UnregisterHotKey(m_window->GetHWindow(), HOTKEY_ID_REINITIALIZE);
+    ::SetTimer(
+        m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent),
+        static_cast<UINT>(m_settings.audio.reinit.debounceMs), nullptr);
 }
 
 std::wstring App::ReadAutostartCommand() const {
@@ -1625,8 +1559,6 @@ void App::Shutdown() {
     if (m_updateThread.joinable()) {
         m_updateThread.join();
     }
-
-    UnregisterHotkeys();
 
     if (m_window != nullptr) {
         ::KillTimer(m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::Validate));

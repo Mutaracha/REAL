@@ -31,10 +31,9 @@ const std::pair<const char*, DataFlow> DATA_FLOW_MAP[] = {
     { "both", DataFlow::Both },
 };
 
-const std::pair<const char*, PeriodSelection> PERIOD_SELECTION_MAP[] = {
-    { "min", PeriodSelection::Minimum },
-    { "fundamental", PeriodSelection::Fundamental },
-    { "fixed", PeriodSelection::Fixed },
+const std::pair<const char*, BufferMode> BUFFER_MODE_MAP[] = {
+    { "min", BufferMode::Minimum },
+    { "fixed", BufferMode::Fixed },
 };
 
 const std::pair<const char*, ProcessPriority> PROCESS_PRIORITY_MAP[] = {
@@ -198,12 +197,8 @@ const char* ToString(DataFlow value) {
     }
 }
 
-const char* ToString(PeriodSelection value) {
-    switch (value) {
-        case PeriodSelection::Fundamental: return "fundamental";
-        case PeriodSelection::Fixed: return "fixed";
-        default: return "min";
-    }
+const char* ToString(BufferMode value) {
+    return value == BufferMode::Fixed ? "fixed" : "min";
 }
 
 const char* ToString(ProcessPriority value) {
@@ -267,7 +262,7 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
     ReadInt(root, "configVersion", settings.configVersion, 1, 1000, result.warnings, "");
     ReadString(root, "commentLanguage", settings.commentLanguage, result.warnings, "");
     WarnUnknownKeys(root, "",
-        { "configVersion", "commentLanguage", "application", "tray", "audio", "performance", "updates", "hotkeys", "logging" },
+        { "configVersion", "commentLanguage", "application", "tray", "audio", "performance", "updates", "logging" },
         result.warnings);
 
     if (const json* section = FindSection(root, "application")) {
@@ -306,8 +301,17 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
 
     if (const json* section = FindSection(root, "audio")) {
         ReadEnum(*section, "dataFlow", DATA_FLOW_MAP, settings.audio.dataFlow, result.warnings, "audio");
-        ReadEnum(*section, "periodSelection", PERIOD_SELECTION_MAP, settings.audio.periodSelection, result.warnings, "audio");
-        ReadUnsigned(*section, "requestedPeriodFrames", settings.audio.requestedPeriodFrames, 0xFFFFFFFFu, result.warnings, "audio");
+        ReadEnum(*section, "buffer", BUFFER_MODE_MAP, settings.audio.buffer, result.warnings, "audio");
+        ReadUnsigned(*section, "fixedBufferFrames", settings.audio.fixedBufferFrames,
+            FIXED_BUFFER_FRAMES_MAX, result.warnings, "audio");
+
+        // A fixed buffer without a size means nothing: the smallest buffer is
+        // taken instead, and the window shows that choice.
+        if (settings.audio.buffer == BufferMode::Fixed && settings.audio.fixedBufferFrames == 0) {
+            result.warnings.push_back(
+                fmt::format(Lang::Utf8(Str::CfgWarnFixedBufferZero), KeyName("audio", "fixedBufferFrames")));
+            settings.audio.buffer = BufferMode::Minimum;
+        }
 
         if (const json* reinit = FindSection(*section, "reinit")) {
             ReadBool(*reinit, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged, result.warnings, "audio.reinit");
@@ -317,15 +321,17 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
             ReadBool(*reinit, "resumeFromSleep", settings.audio.reinit.resumeFromSleep, result.warnings, "audio.reinit");
             ReadBool(*reinit, "sessionUnlock", settings.audio.reinit.sessionUnlock, result.warnings, "audio.reinit");
             ReadBool(*reinit, "enableWhenDisabled", settings.audio.reinit.enableWhenDisabled, result.warnings, "audio.reinit");
-            ReadInt(*reinit, "failureTimeoutMs", settings.audio.reinit.failureTimeoutMs, 5000, 3600000, result.warnings, "audio.reinit");
-            ReadInt(*reinit, "debounceMs", settings.audio.reinit.debounceMs, 0, 60000, result.warnings, "audio.reinit");
+            ReadInt(*reinit, "failureTimeoutMs", settings.audio.reinit.failureTimeoutMs,
+                FAILURE_TIMEOUT_MS_MIN, FAILURE_TIMEOUT_MS_MAX, result.warnings, "audio.reinit");
+            ReadInt(*reinit, "debounceMs", settings.audio.reinit.debounceMs,
+                DEBOUNCE_MS_MIN, DEBOUNCE_MS_MAX, result.warnings, "audio.reinit");
             WarnUnknownKeys(*reinit, "audio.reinit",
                 { "defaultDeviceChanged", "deviceStateChanged", "deviceAdded", "deviceRemoved", "resumeFromSleep", "sessionUnlock", "enableWhenDisabled", "failureTimeoutMs", "debounceMs" },
                 result.warnings);
         }
 
         WarnUnknownKeys(*section, "audio",
-            { "dataFlow", "periodSelection", "requestedPeriodFrames", "reinit" },
+            { "dataFlow", "buffer", "fixedBufferFrames", "reinit" },
             result.warnings);
     }
 
@@ -339,18 +345,13 @@ LoadResult miniant::Config::Load(const std::wstring& path) {
         WarnUnknownKeys(*section, "updates", { "checkOnStartup" }, result.warnings);
     }
 
-    if (const json* section = FindSection(root, "hotkeys")) {
-        ReadBool(*section, "enabled", settings.hotkeys.enabled, result.warnings, "hotkeys");
-        ReadString(*section, "toggleEnabled", settings.hotkeys.toggleEnabled, result.warnings, "hotkeys");
-        ReadString(*section, "reinitialize", settings.hotkeys.reinitialize, result.warnings, "hotkeys");
-        WarnUnknownKeys(*section, "hotkeys", { "enabled", "toggleEnabled", "reinitialize" }, result.warnings);
-    }
-
     if (const json* section = FindSection(root, "logging")) {
         ReadString(*section, "level", settings.logging.level, result.warnings, "logging");
         ReadString(*section, "filePath", settings.logging.filePath, result.warnings, "logging");
-        ReadInt(*section, "maxFileSizeMb", settings.logging.maxFileSizeMb, 1, 1024, result.warnings, "logging");
-        ReadInt(*section, "maxFiles", settings.logging.maxFiles, 1, 100, result.warnings, "logging");
+        ReadInt(*section, "maxFileSizeMb", settings.logging.maxFileSizeMb,
+            LOG_FILE_SIZE_MB_MIN, LOG_FILE_SIZE_MB_MAX, result.warnings, "logging");
+        ReadInt(*section, "maxFiles", settings.logging.maxFiles,
+            LOG_FILES_MIN, LOG_FILES_MAX, result.warnings, "logging");
         WarnUnknownKeys(*section, "logging",
             { "level", "filePath", "maxFileSizeMb", "maxFiles" },
             result.warnings);
@@ -469,8 +470,8 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
 
     json& audio = root["audio"];
     audio["dataFlow"] = ToString(settings.audio.dataFlow);
-    audio["periodSelection"] = ToString(settings.audio.periodSelection);
-    audio["requestedPeriodFrames"] = settings.audio.requestedPeriodFrames;
+    audio["buffer"] = ToString(settings.audio.buffer);
+    audio["fixedBufferFrames"] = settings.audio.fixedBufferFrames;
 
     json& reinit = root["audio"]["reinit"];
     reinit["defaultDeviceChanged"] = settings.audio.reinit.defaultDeviceChanged;
@@ -488,11 +489,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
 
     json& updates = root["updates"];
     updates["checkOnStartup"] = settings.updates.checkOnStartup;
-
-    json& hotkeys = root["hotkeys"];
-    hotkeys["enabled"] = settings.hotkeys.enabled;
-    hotkeys["toggleEnabled"] = settings.hotkeys.toggleEnabled;
-    hotkeys["reinitialize"] = settings.hotkeys.reinitialize;
 
     json& logging = root["logging"];
     logging["level"] = settings.logging.level;
@@ -542,8 +538,8 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
 
     document.SectionOpen(2, "audio", text(Str::CfgAudioSection));
     document.Key(4, "dataFlow", ToString(settings.audio.dataFlow), text(Str::CfgDataFlow), true);
-    document.Key(4, "periodSelection", ToString(settings.audio.periodSelection), text(Str::CfgPeriodSelection), true);
-    document.Key(4, "requestedPeriodFrames", settings.audio.requestedPeriodFrames, text(Str::CfgRequestedPeriodFrames), true);
+    document.Key(4, "buffer", ToString(settings.audio.buffer), text(Str::CfgBuffer), true);
+    document.Key(4, "fixedBufferFrames", settings.audio.fixedBufferFrames, text(Str::CfgFixedBufferFrames), true);
     document.SectionOpen(4, "reinit", text(Str::CfgReinitSection));
     document.Key(6, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged, text(Str::CfgReinitDeviceChanged), true);
     document.Key(6, "deviceStateChanged", settings.audio.reinit.deviceStateChanged, text(Str::CfgReinitDeviceState), true);
@@ -565,13 +561,6 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
 
     document.SectionOpen(2, "updates", text(Str::CfgUpdatesSection));
     document.Key(4, "checkOnStartup", settings.updates.checkOnStartup, text(Str::CfgUpdatesCheckOnStartup), false);
-    document.SectionClose(2, true);
-    document.Blank();
-
-    document.SectionOpen(2, "hotkeys", text(Str::CfgHotkeysSection));
-    document.Key(4, "enabled", settings.hotkeys.enabled, text(Str::CfgHotkeysEnabled), true);
-    document.Key(4, "toggleEnabled", settings.hotkeys.toggleEnabled, text(Str::CfgHotkeysToggle), true);
-    document.Key(4, "reinitialize", settings.hotkeys.reinitialize, text(Str::CfgHotkeysReinitialize), false);
     document.SectionClose(2, true);
     document.Blank();
 
@@ -610,23 +599,22 @@ bool miniant::Config::Write(const Settings& settings, const std::wstring& path) 
     return Windows::Filesystem::WriteTextFileUtf8Atomic(path, content + "\n");
 }
 
-std::string miniant::Config::Describe(const Settings& settings) {
+std::string miniant::Config::DescribeFlow(const Settings& settings) {
     // Only the values that take part in the latency reduction: window and tray
     // settings do not change what the application does with the audio.
-    std::string result;
-    result += "dataFlow=";
-    result += ToString(settings.audio.dataFlow);
-    result += ", periodSelection=";
-    result += ToString(settings.audio.periodSelection);
+    switch (settings.audio.dataFlow) {
+        case DataFlow::Capture: return Lang::Utf8(Str::DescribeFlowCapture);
+        case DataFlow::Both: return Lang::Utf8(Str::DescribeFlowBoth);
+        default: return Lang::Utf8(Str::DescribeFlowRender);
+    }
+}
 
-    if (settings.audio.periodSelection == PeriodSelection::Fixed) {
-        result += ", requestedPeriodFrames=";
-        result += std::to_string(settings.audio.requestedPeriodFrames);
+std::string miniant::Config::DescribeBuffer(const Settings& settings) {
+    if (settings.audio.buffer == BufferMode::Fixed && settings.audio.fixedBufferFrames > 0) {
+        return fmt::format(Lang::Utf8(Str::DescribeBufferFixed), Lang::Frames(settings.audio.fixedBufferFrames));
     }
 
-    result += ", processPriority=";
-    result += ToString(settings.performance.processPriority);
-    return result;
+    return Lang::Utf8(Str::DescribeBufferMinimum);
 }
 
 namespace {

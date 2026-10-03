@@ -9,14 +9,14 @@ application that uses that device.
 This is a fork of [miniant-git/REAL](https://github.com/miniant-git/REAL) (v0.2.0, 2019)
 that is still maintained and adds quality-of-life features:
 
-* proper window that can be closed/minimised to the system tray, with a menu bar
-  (**REAL**: the mode, restart, exit; **Options**: Settings, Start with Windows;
+* proper window that can be closed/minimized to the system tray, with a menu bar
+  (**REAL**: on/off, restart, exit; **Options**: Settings, Start with Windows;
   **Diagnostics**; **About**) and a small restart button at the end of the status line
-* tray menu: the status, **REAL is running** (on/off), **Restart now** — the log,
+* tray menu: the status, **REAL is running** (on/off), **Restart** — the log,
   diagnostics — **Settings** — **Exit**
 * restart of the audio streams without restarting the application — automatically
-  on device changes, sleep/resume and session unlock, manually via the menus, the
-  restart button of the window or a hotkey
+  on device changes, sleep/resume and session unlock, manually via the menus or the
+  restart button of the window
 * no forced updates: one check at startup (can be switched off), nothing is
   downloaded or installed, the application is never closed for it
 * external settings file next to the executable (`real.settings.json`), edited
@@ -29,13 +29,16 @@ that is still maintained and adds quality-of-life features:
   default capture device). Devices whose driver has nothing smaller than the
   default buffer (Bluetooth, HDMI, some vendor drivers) are reported instead of
   holding a stream that changes nothing
+* The buffer is the smallest one the driver supports, or a fixed size
+  (`audio.buffer`, `audio.fixedBufferFrames`); the settings window shows the range
+  of the device under the field and accepts only a value from it
 * Automatic re-application when the default device changes, when a device is
   switched on or off (plugged in or out), after resume from sleep or after the
-  audio service restarts; the mode is switched back on when it was off
-  (`reinit.enableWhenDisabled`)
-* Minimises to the system tray; the tray icon survives an `explorer.exe` restart
-* Global hotkeys, off by default (`Ctrl+Alt+L` — toggle, `Ctrl+Alt+R` — restart the
-  audio streams)
+  audio service restarts; the latency reduction is switched back on when it was
+  off (`reinit.enableWhenDisabled`)
+* Minimizes to the system tray; the tray icon survives an `explorer.exe` restart.
+  Without the tray icon the window behaves as usual: Minimize goes to the taskbar,
+  the close button exits
 * Optional autostart with Windows
 * Update check at startup only (on by default, `updates.checkOnStartup`): one
   request to the page of the latest release on github.com, nothing is installed
@@ -44,10 +47,12 @@ that is still maintained and adds quality-of-life features:
   on the first run (`application.language`: `auto`, `en`, `ru`)
 * Settings in a plain JSON file that documents every option with comments
   (in the same language as the interface: a change of `application.language`
-  rewrites the comments on the next start and keeps every value)
-* One notification per device outage instead of one per retry; if the device
-  stays silent for `audio.reinit.failureTimeoutMs` (60 s), the mode is switched
-  off and the device is not polled anymore
+  rewrites the comments — at once from the settings window, on the next start
+  after a manual edit — and keeps every value)
+* Notifications only while the window is hidden or minimized, one per device
+  outage instead of one per retry; if the device stays silent for
+  `audio.reinit.failureTimeoutMs` (60 s), the latency reduction is switched off
+  and the device is not polled anymore
 * Always a single instance: a second start (`REAL.exe --reinit` and the like)
   passes its command to the running one and exits
 
@@ -83,8 +88,8 @@ used by the audio engine, for example `2.67 ms - Speakers (Realtek Audio)`.
 
 | Option | Description |
 |---|---|
-| *none* | Start with the main window (tray icon is created as well) |
-| `--tray` | Start minimised to the system tray |
+| *none* | Start with the main window (and the tray icon when it is on) |
+| `--tray` | Start minimized to the system tray |
 | `--no-tray` | Start with the main window visible |
 | `--config <path>` | Use another settings file |
 | `--no-config` | Ignore the settings file, use built-in defaults |
@@ -132,7 +137,7 @@ The most important options:
 ```jsonc
 {
   "application": { "minimizeToTray": true, "closeButtonAction": "exit" },
-  "audio":       { "dataFlow": "render", "periodSelection": "min" },  // all default devices (default + communication)
+  "audio":       { "dataFlow": "render", "buffer": "min" },  // all default devices (default + communication)
   "updates":     { "checkOnStartup": true },  // one check at startup, false - no request at all
   "logging":     { "level": "off" }           // "info" (or another level) writes REAL.log
 }
@@ -192,8 +197,8 @@ As described in Microsoft's
 by default all applications in Windows 10/11 use 10 ms buffers to render audio.
 If one application requests smaller buffers, the audio engine switches to that
 buffer size for every client of the same endpoint and mode. REAL uses
-`IAudioClient3::InitializeSharedAudioStream` to request the smallest period the
-driver supports.
+`IAudioClient3::InitializeSharedAudioStream` to request the smallest buffer (the
+engine period) the driver supports.
 
 ### What are the downsides?
 
@@ -211,9 +216,9 @@ Choose **Diagnostics → Diagnostics** in the menu bar of the window (or run
 `REAL.exe --diagnose`). It writes
 `REAL-diagnostics.txt` next to the executable with your Windows version, the
 active audio endpoints of the direction selected by `audio.dataFlow`, their
-driver version and the periods they support, so the reason is visible without
+driver version and the buffer sizes they support, so the reason is visible without
 guesswork. The blocks of the report are separated with `--- ... ---` lines, and
-the periods of a device are listed one per line. The application log
+the buffer sizes of a device are listed one per line. The application log
 (`REAL.log`) is off by default: pick a level in **Settings → Other → Log** when a
 problem has to be traced.
 
@@ -223,7 +228,7 @@ report, the first line of the log) carries the build identification:
 run and the value in brackets is the commit the executable was built from. A build made from a
 checkout shows the commit only.
 
-### It says "the driver does not offer a period smaller than the default one"
+### It says "the driver offers nothing smaller than its default buffer"
 
 The endpoint driver does not support small buffers. Typical cases: Bluetooth
 audio (10 ms by design), HDMI/DisplayPort receivers, vendor drivers
@@ -232,15 +237,15 @@ audio (10 ms by design), HDMI/DisplayPort receivers, vendor drivers
 
 ### The device changed and the effect disappeared
 
-REAL re-applies the low latency mode automatically (default device changes, a
+REAL applies the latency reduction again automatically (default device changes, a
 device switched on or off, resume from sleep, session unlock, audio service
 restart, plus a check every 30 seconds). The limits are configurable in `audio.reinit`. If the
 device does not answer, the retries back off and a single balloon is shown; after
-`reinit.failureTimeoutMs` the mode is switched off and the device is not polled
-until it appears again. To force it manually: tray menu → **Restart now**,
-**REAL → Restart** in the menu bar, the round arrow at the end of the status line,
-`Ctrl+Alt+R` (when the hotkeys are on) or `REAL.exe --reinit` — this also
-switches the mode back on when it was off.
+`reinit.failureTimeoutMs` the latency reduction is switched off and the device is
+not polled until it appears again. To force it manually: tray menu → **Restart**,
+**REAL → Restart** in the menu bar, the round arrow at the end of the status line
+or `REAL.exe --reinit` — this also switches the latency reduction back on when it
+was off.
 
 ### Where are the logs?
 

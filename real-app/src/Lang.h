@@ -64,6 +64,12 @@ enum class Str {
     LogMutexFailed,
     LogTrayForeignEvent,
     LogAudioSettings,
+    DescribeFlowRender,
+    DescribeFlowCapture,
+    DescribeFlowBoth,
+    DescribeBufferMinimum,
+    DescribeBufferFixed,
+    LogFixedBufferAdjusted,
     LogUnknownArgument,
     LogSettingsUnreadable,
     LogSettingsBackup,
@@ -81,9 +87,6 @@ enum class Str {
     LogUpdateRunning,
     LogNoReleases,
     LogReinitInvalid,
-    LogResumeApply,
-    LogHotkeyRegisterFailed,
-    LogHotkeyParseFailed,
     LogAutostartOpenFailed,
     LogAutostartWriteFailed,
     LogUpdateLeftover,
@@ -185,6 +188,7 @@ enum class Str {
     CfgWarnRange,
     CfgWarnUnknownKey,
     CfgWarnUnknownValue,
+    CfgWarnFixedBufferZero,
 
     // Command line help (one block per language)
     HelpText,
@@ -216,11 +220,11 @@ enum class Str {
     OpGaveUp,
     OpDiagnostics,
     OpDiagnosticsFailed,
-    OpHotkeys,
     OpAutostart,
     OpUpdateChecking,
     OpExiting,
     OpTrayUnavailable,
+    OpResumeApply,
     OpDiagHint,
     ValueOn,
     ValueOff,
@@ -242,7 +246,6 @@ enum class Str {
     SettingsHeaderAudio,
     SettingsHeaderReinit,
     SettingsHeaderPerformance,
-    SettingsHeaderHotkeys,
     SettingsHeaderUpdates,
     SettingsHeaderLog,
     SettingsLanguage,
@@ -263,11 +266,13 @@ enum class Str {
     SettingsFlowRender,
     SettingsFlowCapture,
     SettingsFlowBoth,
-    SettingsPeriod,
-    SettingsPeriodMinimum,
-    SettingsPeriodFundamental,
-    SettingsPeriodFixed,
-    SettingsRequestedPeriod,
+    SettingsBuffer,
+    SettingsBufferMinimum,
+    SettingsBufferFixed,
+    SettingsFixedBufferFrames,
+    SettingsBufferHint,
+    SettingsBufferOutOfRange,
+    SettingsBufferNotOnStep,
     SettingsReinitDeviceChanged,
     SettingsReinitDeviceState,
     SettingsReinitDeviceAdded,
@@ -281,9 +286,6 @@ enum class Str {
     SettingsPriorityNormal,
     SettingsPriorityBelowNormal,
     SettingsPriorityIdle,
-    SettingsHotkeysEnabled,
-    SettingsHotkeyToggle,
-    SettingsHotkeyReinitialize,
     SettingsCheckOnStartup,
     SettingsLogLevel,
     SettingsLogLevelOff,
@@ -317,8 +319,8 @@ enum class Str {
     CfgMenuDiagnostics,
     CfgAudioSection,
     CfgDataFlow,
-    CfgPeriodSelection,
-    CfgRequestedPeriodFrames,
+    CfgBuffer,
+    CfgFixedBufferFrames,
     CfgReinitSection,
     CfgReinitDeviceChanged,
     CfgReinitDeviceState,
@@ -333,10 +335,6 @@ enum class Str {
     CfgProcessPriority,
     CfgUpdatesSection,
     CfgUpdatesCheckOnStartup,
-    CfgHotkeysSection,
-    CfgHotkeysEnabled,
-    CfgHotkeysToggle,
-    CfgHotkeysReinitialize,
     CfgLoggingSection,
     CfgLoggingLevel,
     CfgLoggingFilePath,
@@ -363,7 +361,11 @@ std::wstring Wide(Str id);
 std::string Frames(unsigned int count);
 std::string Channels(unsigned int count);
 
-// "7.00 ms" with the unit of the current language.
+// A number with two decimals in the notation of the current language: "7.00"
+// in English, "7,00" in Russian.
+std::string Decimal(double value);
+
+// "7.00 ms" with the unit of the current language ("7,00 мс" in Russian).
 std::string Milliseconds(double value);
 
 }

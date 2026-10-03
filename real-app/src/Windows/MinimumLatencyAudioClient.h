@@ -14,9 +14,10 @@
 
 namespace miniant::Windows::WasapiLatency {
 
+// The smallest period the driver supports, or the fixed number of frames of
+// the settings (audio.buffer and audio.fixedBufferFrames).
 enum class PeriodSelection {
     Minimum,
-    Fundamental,
     Fixed,
 };
 

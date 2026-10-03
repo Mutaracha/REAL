@@ -10,6 +10,19 @@ namespace miniant::Config {
 // every value the program knows kept.
 inline constexpr int CONFIG_VERSION = 1;
 
+// The limits of the numbers of the file. The settings window checks a value
+// against the same limits, so a value it accepts is never rejected by the
+// reader of the file on the next start.
+inline constexpr unsigned int FIXED_BUFFER_FRAMES_MAX = 100000;
+inline constexpr int FAILURE_TIMEOUT_MS_MIN = 5000;
+inline constexpr int FAILURE_TIMEOUT_MS_MAX = 3600000;
+inline constexpr int DEBOUNCE_MS_MIN = 0;
+inline constexpr int DEBOUNCE_MS_MAX = 60000;
+inline constexpr int LOG_FILE_SIZE_MB_MIN = 1;
+inline constexpr int LOG_FILE_SIZE_MB_MAX = 1024;
+inline constexpr int LOG_FILES_MIN = 1;
+inline constexpr int LOG_FILES_MAX = 100;
+
 enum class CloseAction {
     Minimize,
     Exit,
@@ -21,9 +34,10 @@ enum class DataFlow {
     Both,
 };
 
-enum class PeriodSelection {
+// The buffer REAL asks the audio engine for: the smallest one the driver of
+// the device supports, or a fixed number of frames (fixedBufferFrames).
+enum class BufferMode {
     Minimum,
-    Fundamental,
     Fixed,
 };
 
@@ -48,6 +62,8 @@ struct ReinitSettings {
     // How long the application keeps trying before it gives up (and stops
     // polling) when the device does not answer at all.
     int failureTimeoutMs = 60000;
+    // The pause between a device event and the restart: Windows sends a burst
+    // of events, and the restart waits for the last one (0 - no pause).
     int debounceMs = 1000;
 };
 
@@ -83,8 +99,10 @@ struct TraySettings {
 
 struct AudioSettings {
     DataFlow dataFlow = DataFlow::Render;
-    PeriodSelection periodSelection = PeriodSelection::Minimum;
-    unsigned int requestedPeriodFrames = 0;
+    BufferMode buffer = BufferMode::Minimum;
+    // The size of the fixed buffer in frames; 0 - not set. Only "fixed" uses
+    // it, a value the device does not accept is adjusted to the nearest one.
+    unsigned int fixedBufferFrames = 0;
     ReinitSettings reinit;
 };
 
@@ -98,12 +116,6 @@ struct UpdateSettings {
     // never installs anything by itself. The releases are read from the
     // project this build belongs to, so there is no repository setting either.
     bool checkOnStartup = true;
-};
-
-struct HotkeySettings {
-    bool enabled = false;
-    std::string toggleEnabled = "Ctrl+Alt+L";
-    std::string reinitialize = "Ctrl+Alt+R";
 };
 
 struct LoggingSettings {
@@ -129,7 +141,6 @@ struct Settings {
     AudioSettings audio;
     PerformanceSettings performance;
     UpdateSettings updates;
-    HotkeySettings hotkeys;
     LoggingSettings logging;
 };
 
@@ -156,10 +167,13 @@ std::string ToJsonString(const Settings& settings);
 // JSON with comments that explain every parameter: this is what is written to
 // the settings file, so that the file itself is the reference.
 std::string ToDocumentedJsonString(const Settings& settings);
-// The values that take part in the latency reduction, written with the keys of
-// the settings file ("dataFlow=render, periodSelection=min, ..."): the keys are
-// what the user finds in the file, so they are not translated.
-std::string Describe(const Settings& settings);
+// The values that take part in the latency reduction, in the words of the
+// settings window and in the language of the interface: the direction of the
+// devices ("playback", "воспроизведения") and the buffer ("minimum buffer",
+// "буфер фиксированный, 480 фреймов"). The journal and the diagnostics report
+// put them into sentences of their own (LogAudioSettings, DiagConfig).
+std::string DescribeFlow(const Settings& settings);
+std::string DescribeBuffer(const Settings& settings);
 
 // The "commentLanguage" field of a file on disk, read without touching the
 // rest: the application compares it with the current language and rewrites the

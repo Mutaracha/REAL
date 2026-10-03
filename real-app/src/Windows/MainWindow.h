@@ -55,6 +55,8 @@ public:
 
     void SetStatusText(const std::wstring& text);
     void AppendLogLines(const std::vector<std::string>& lines);
+    // A balloon of the tray icon; nothing is shown while the window is open
+    // (visible and not minimized), its journal already has the same line.
     void Notify(const std::wstring& title, const std::wstring& text, bool error);
     void SetTrayTooltip(const std::wstring& text);
     void SetTrayMenuState(const TrayMenuState& state);

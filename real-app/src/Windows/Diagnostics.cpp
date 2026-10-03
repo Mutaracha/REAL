@@ -197,7 +197,7 @@ std::string Periods(const EndpointInfo& info) {
 
     // One value per line: the four numbers are easy to compare this way, while
     // a single long line of eight numbers is not readable. The continuation
-    // lines are aligned under the first value of the "periods" line.
+    // lines are aligned under the first value of the "buffer" line.
     const std::string indent(14, ' ');
 
     std::string text = PeriodLine(miniant::Lang::Str::DiagPeriodDefault, info.defaultPeriod, info.sampleRate);
@@ -430,7 +430,10 @@ std::string miniant::Windows::Diagnostics::BuildReport(
     text += DescribeProcessors();
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagExecutable), Text::ToUtf8(Filesystem::GetExecutablePath()));
     text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagSettings), Text::ToUtf8(settingsPath));
-    text += fmt::format(miniant::Lang::Utf8(miniant::Lang::Str::DiagConfig), Config::Describe(settings));
+    text += fmt::format(
+        miniant::Lang::Utf8(miniant::Lang::Str::DiagConfig),
+        Config::DescribeFlow(settings),
+        Config::DescribeBuffer(settings));
     text += "\n";
 
     Log::Debug(miniant::Lang::Utf8(miniant::Lang::Str::LogDiagCollected));

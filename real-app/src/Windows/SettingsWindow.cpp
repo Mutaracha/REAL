@@ -11,6 +11,8 @@
 #include <commctrl.h>
 #include <shellapi.h>
 
+#include <spdlog/fmt/fmt.h>
+
 #include <algorithm>
 #include <string>
 #include <utility>
@@ -85,8 +87,9 @@ enum class Id : int {
     NotificationStateChange,
 
     AudioDataFlow,
-    AudioPeriodSelection,
-    AudioRequestedPeriodFrames,
+    AudioBufferMode,
+    AudioFixedBufferFrames,
+    AudioBufferHint,
 
     ReinitDefaultDevice,
     ReinitDeviceState,
@@ -99,10 +102,6 @@ enum class Id : int {
     ReinitDebounce,
 
     ProcessPriority,
-
-    HotkeysEnabled,
-    HotkeyToggle,
-    HotkeyReinitialize,
 
     UpdateCheckOnStartup,
 
@@ -132,6 +131,10 @@ struct Context {
     HINSTANCE instance = nullptr;
     Config::Settings* settings = nullptr;
     std::wstring settingsPath;
+
+    // The buffer range of the device: the hint under the fixed buffer and the
+    // check of its value (see CheckFixedBuffer).
+    BufferRange bufferRange;
 
     // The dots per inch of the monitor the window is on: every coordinate below
     // is a design pixel of a 96 DPI layout and is scaled by CreateControl.
@@ -222,10 +225,9 @@ const Choice<Config::DataFlow> DATA_FLOWS[] = {
     { Config::DataFlow::Both, Lang::Str::SettingsFlowBoth },
 };
 
-const Choice<Config::PeriodSelection> PERIODS[] = {
-    { Config::PeriodSelection::Minimum, Lang::Str::SettingsPeriodMinimum },
-    { Config::PeriodSelection::Fundamental, Lang::Str::SettingsPeriodFundamental },
-    { Config::PeriodSelection::Fixed, Lang::Str::SettingsPeriodFixed },
+const Choice<Config::BufferMode> BUFFER_MODES[] = {
+    { Config::BufferMode::Minimum, Lang::Str::SettingsBufferMinimum },
+    { Config::BufferMode::Fixed, Lang::Str::SettingsBufferFixed },
 };
 
 const Choice<Config::ProcessPriority> PRIORITIES[] = {
@@ -374,13 +376,11 @@ const Lang::Str FIELD_LABELS[] = {
     Lang::Str::SettingsLanguage,
     Lang::Str::SettingsCloseAction,
     Lang::Str::SettingsDataFlow,
-    Lang::Str::SettingsPeriod,
-    Lang::Str::SettingsRequestedPeriod,
+    Lang::Str::SettingsBuffer,
+    Lang::Str::SettingsFixedBufferFrames,
     Lang::Str::SettingsReinitFailureTimeout,
     Lang::Str::SettingsReinitDebounce,
     Lang::Str::SettingsProcessPriority,
-    Lang::Str::SettingsHotkeyToggle,
-    Lang::Str::SettingsHotkeyReinitialize,
     Lang::Str::SettingsLogLevel,
     Lang::Str::SettingsLogFilePath,
     Lang::Str::SettingsLogMaxFileSize,
@@ -490,8 +490,8 @@ int AddCombo(Context& context, Id id, Lang::Str label, const std::vector<std::ws
         context, L"STATIC", Lang::Wide(label), SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
         MARGIN, y, context.labelWidth, ROW_HEIGHT));
 
-    // The same width as the fields of the hotkeys: a list does not need the
-    // whole window, and a row of controls of different lengths looks ragged.
+    // The same width as the fields: a list does not need the whole window, and
+    // a row of controls of different lengths looks ragged.
     const HWND combo = CreateControl(
         context, L"COMBOBOX", L"",
         WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, id,
@@ -615,12 +615,85 @@ int ReadInt(Context& context, Id id, int minimum, int maximum, int fallback, boo
     return static_cast<int>(value);
 }
 
-void ReportInvalid(std::wstring& fields, Lang::Str label) {
+void ReportInvalid(std::wstring& fields, const std::wstring& text) {
     if (!fields.empty()) {
         fields += L", ";
     }
 
-    fields += Lang::Wide(label);
+    fields += text;
+}
+
+void ReportInvalid(std::wstring& fields, Lang::Str label) {
+    ReportInvalid(fields, Lang::Wide(label));
+}
+
+// The step of the grid of the device; a driver that reports none accepts every
+// value of its range.
+uint32_t BufferStep(const BufferRange& range) {
+    return range.step > 0 ? range.step : 1;
+}
+
+// The hint under the field of the fixed buffer: the range of the device in
+// frames and in milliseconds. Empty while no device has been seen.
+std::wstring BufferHintText(const Context& context) {
+    const BufferRange& range = context.bufferRange;
+    if (range.minimum == 0) {
+        return {};
+    }
+
+    const auto milliseconds = [&range](uint32_t frames) {
+        return range.sampleRate > 0
+            ? 1000.0 * static_cast<double>(frames) / static_cast<double>(range.sampleRate)
+            : 0.0;
+    };
+
+    return Text::ToWide(fmt::format(
+        Lang::Utf8(Lang::Str::SettingsBufferHint),
+        range.minimum,
+        range.maximum,
+        BufferStep(range),
+        Lang::Decimal(milliseconds(range.minimum)),
+        Lang::Decimal(milliseconds(range.maximum))));
+}
+
+// A fixed buffer has to be a value the device accepts: inside its range and on
+// its grid (a multiple of the step). Returns an empty text when the value fits
+// or the range is not known yet, otherwise the text of the message with the
+// range and the nearest values that fit.
+std::wstring CheckFixedBuffer(const Context& context, uint32_t frames) {
+    const BufferRange& range = context.bufferRange;
+    if (range.minimum == 0) {
+        return {};
+    }
+
+    const uint32_t step = BufferStep(range);
+    const std::string label = Lang::Utf8(Lang::Str::SettingsFixedBufferFrames);
+    const std::string device = Text::ToUtf8(
+        range.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : range.deviceName);
+
+    if (frames < range.minimum || frames > range.maximum) {
+        const uint32_t nearest = frames < range.minimum ? range.minimum : range.maximum;
+
+        return Text::ToWide(fmt::format(
+            Lang::Utf8(Lang::Str::SettingsBufferOutOfRange),
+            label, device, range.minimum, range.maximum, step, nearest));
+    }
+
+    if (frames % step != 0) {
+        const uint32_t lower = (std::max)(range.minimum, frames - frames % step);
+        const uint32_t upper = (std::min)(range.maximum, lower + step);
+
+        return Text::ToWide(fmt::format(
+            Lang::Utf8(Lang::Str::SettingsBufferNotOnStep),
+            label, device, range.minimum, range.maximum, step, lower, upper));
+    }
+
+    return {};
+}
+
+// The field of the fixed buffer is empty while no size is set (0 in the file).
+std::wstring FixedBufferText(unsigned int frames) {
+    return frames > 0 ? std::to_wstring(frames) : std::wstring();
 }
 
 // ---------------------------------------------------------------- pages -----
@@ -684,10 +757,26 @@ int BuildAudioPage(Context& context) {
     y = AddHeader(context, Lang::Str::SettingsHeaderAudio, y);
     y = AddCombo(context, Id::AudioDataFlow, Lang::Str::SettingsDataFlow, Texts(DATA_FLOWS),
         IndexOf(DATA_FLOWS, settings.audio.dataFlow), y);
-    y = AddCombo(context, Id::AudioPeriodSelection, Lang::Str::SettingsPeriod, Texts(PERIODS),
-        IndexOf(PERIODS, settings.audio.periodSelection), y);
-    y = AddEdit(context, Id::AudioRequestedPeriodFrames, Lang::Str::SettingsRequestedPeriod,
-        std::to_wstring(settings.audio.requestedPeriodFrames), FIELD_WIDTH, y);
+    y = AddCombo(context, Id::AudioBufferMode, Lang::Str::SettingsBuffer, Texts(BUFFER_MODES),
+        IndexOf(BUFFER_MODES, settings.audio.buffer), y);
+    y = AddEdit(context, Id::AudioFixedBufferFrames, Lang::Str::SettingsFixedBufferFrames,
+        FixedBufferText(settings.audio.fixedBufferFrames), FIELD_WIDTH, y);
+
+    // The range of the device under the field: the values the fixed buffer
+    // accepts, so that nobody has to look them up in the diagnostics report.
+    const std::wstring hint = BufferHintText(context);
+    if (!hint.empty()) {
+        const int x = MARGIN + context.labelWidth;
+        const int textWidth = DesignTextWidth(context, context.font, hint);
+        const int width = textWidth > 0 ? textWidth + HEADER_SLACK : FIELD_WIDTH;
+
+        BindToPage(context, CreateControl(
+            context, L"STATIC", hint, SS_LEFT | SS_CENTERIMAGE, Id::AudioBufferHint,
+            x, y, width, ROW_HEIGHT));
+
+        ExtendContent(context, x + width);
+        y += ROW_STEP;
+    }
 
     y += GROUP_GAP;
     y = AddHeader(context, Lang::Str::SettingsHeaderReinit, y);
@@ -723,15 +812,6 @@ int BuildOtherPage(Context& context) {
     y = AddHeader(context, Lang::Str::SettingsHeaderPerformance, y);
     y = AddCombo(context, Id::ProcessPriority, Lang::Str::SettingsProcessPriority, Texts(PRIORITIES),
         IndexOf(PRIORITIES, settings.performance.processPriority), y);
-
-    y += GROUP_GAP;
-    y = AddHeader(context, Lang::Str::SettingsHeaderHotkeys, y);
-    y = AddCheck(context, Id::HotkeysEnabled, Lang::Str::SettingsHotkeysEnabled,
-        settings.hotkeys.enabled, y);
-    y = AddEdit(context, Id::HotkeyToggle, Lang::Str::SettingsHotkeyToggle,
-        Text::ToWide(settings.hotkeys.toggleEnabled), FIELD_WIDTH, y);
-    y = AddEdit(context, Id::HotkeyReinitialize, Lang::Str::SettingsHotkeyReinitialize,
-        Text::ToWide(settings.hotkeys.reinitialize), FIELD_WIDTH, y);
 
     y += GROUP_GAP;
     y = AddHeader(context, Lang::Str::SettingsHeaderUpdates, y);
@@ -1105,18 +1185,39 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     updated.tray.menu.diagnostics = IsChecked(context, Id::TrayMenuDiagnostics);
 
     updated.audio.dataFlow = ValueAt(DATA_FLOWS, SelectedIndex(context, Id::AudioDataFlow));
-    updated.audio.periodSelection = ValueAt(PERIODS, SelectedIndex(context, Id::AudioPeriodSelection));
+    updated.audio.buffer = ValueAt(BUFFER_MODES, SelectedIndex(context, Id::AudioBufferMode));
 
     bool valid = true;
 
-    const int requestedPeriodFrames = ReadInt(
-        context, Id::AudioRequestedPeriodFrames, 0, 100000,
-        static_cast<int>(current.audio.requestedPeriodFrames), valid);
-    if (!valid) {
-        ReportInvalid(invalidFields, Lang::Str::SettingsRequestedPeriod);
-    }
+    // The size matters only for a fixed buffer: then it has to be a number the
+    // device accepts. With the minimum buffer the field is greyed out and keeps
+    // what it had.
+    const bool framesEmpty = ReadText(context, Id::AudioFixedBufferFrames, L"").empty();
+    const int maximumFrames = static_cast<int>(Config::FIXED_BUFFER_FRAMES_MAX);
 
-    updated.audio.requestedPeriodFrames = static_cast<unsigned int>(requestedPeriodFrames);
+    if (updated.audio.buffer == Config::BufferMode::Fixed) {
+        const int frames = ReadInt(context, Id::AudioFixedBufferFrames, 1, maximumFrames, 0, valid);
+
+        if (!valid || framesEmpty) {
+            ReportInvalid(invalidFields, Lang::Str::SettingsFixedBufferFrames);
+        } else {
+            const std::wstring problem = CheckFixedBuffer(context, static_cast<uint32_t>(frames));
+
+            if (problem.empty()) {
+                updated.audio.fixedBufferFrames = static_cast<unsigned int>(frames);
+            } else {
+                ReportInvalid(invalidFields, problem);
+            }
+        }
+    } else {
+        const int frames = ReadInt(
+            context, Id::AudioFixedBufferFrames, 0, maximumFrames,
+            static_cast<int>(current.audio.fixedBufferFrames), valid);
+
+        if (valid) {
+            updated.audio.fixedBufferFrames = framesEmpty ? 0u : static_cast<unsigned int>(frames);
+        }
+    }
 
     updated.audio.reinit.defaultDeviceChanged = IsChecked(context, Id::ReinitDefaultDevice);
     updated.audio.reinit.deviceStateChanged = IsChecked(context, Id::ReinitDeviceState);
@@ -1127,24 +1228,20 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
     updated.audio.reinit.enableWhenDisabled = IsChecked(context, Id::ReinitEnableWhenDisabled);
 
     updated.audio.reinit.failureTimeoutMs = ReadInt(
-        context, Id::ReinitFailureTimeout, 0, 3600000, current.audio.reinit.failureTimeoutMs, valid);
+        context, Id::ReinitFailureTimeout, Config::FAILURE_TIMEOUT_MS_MIN, Config::FAILURE_TIMEOUT_MS_MAX,
+        current.audio.reinit.failureTimeoutMs, valid);
     if (!valid) {
         ReportInvalid(invalidFields, Lang::Str::SettingsReinitFailureTimeout);
     }
 
     updated.audio.reinit.debounceMs = ReadInt(
-        context, Id::ReinitDebounce, 0, 600000, current.audio.reinit.debounceMs, valid);
+        context, Id::ReinitDebounce, Config::DEBOUNCE_MS_MIN, Config::DEBOUNCE_MS_MAX,
+        current.audio.reinit.debounceMs, valid);
     if (!valid) {
         ReportInvalid(invalidFields, Lang::Str::SettingsReinitDebounce);
     }
 
     updated.performance.processPriority = ValueAt(PRIORITIES, SelectedIndex(context, Id::ProcessPriority));
-
-    updated.hotkeys.enabled = IsChecked(context, Id::HotkeysEnabled);
-    updated.hotkeys.toggleEnabled = Text::ToUtf8(
-        ReadText(context, Id::HotkeyToggle, Text::ToWide(current.hotkeys.toggleEnabled)));
-    updated.hotkeys.reinitialize = Text::ToUtf8(
-        ReadText(context, Id::HotkeyReinitialize, Text::ToWide(current.hotkeys.reinitialize)));
 
     updated.updates.checkOnStartup = IsChecked(context, Id::UpdateCheckOnStartup);
 
@@ -1157,13 +1254,14 @@ bool ReadControls(Context& context, Config::Settings& updated, std::wstring& inv
         ReadText(context, Id::LogFilePath, Text::ToWide(current.logging.filePath)));
 
     updated.logging.maxFileSizeMb = ReadInt(
-        context, Id::LogMaxFileSize, 1, 1024, current.logging.maxFileSizeMb, valid);
+        context, Id::LogMaxFileSize, Config::LOG_FILE_SIZE_MB_MIN, Config::LOG_FILE_SIZE_MB_MAX,
+        current.logging.maxFileSizeMb, valid);
     if (!valid) {
         ReportInvalid(invalidFields, Lang::Str::SettingsLogMaxFileSize);
     }
 
     updated.logging.maxFiles = ReadInt(
-        context, Id::LogMaxFiles, 1, 100, current.logging.maxFiles, valid);
+        context, Id::LogMaxFiles, Config::LOG_FILES_MIN, Config::LOG_FILES_MAX, current.logging.maxFiles, valid);
     if (!valid) {
         ReportInvalid(invalidFields, Lang::Str::SettingsLogMaxFiles);
     }
@@ -1192,8 +1290,8 @@ void ApplyToControls(Context& context, const Config::Settings& settings) {
     SetChecked(context, Id::TrayMenuDiagnostics, settings.tray.menu.diagnostics);
 
     SetSelected(context, Id::AudioDataFlow, IndexOf(DATA_FLOWS, settings.audio.dataFlow));
-    SetSelected(context, Id::AudioPeriodSelection, IndexOf(PERIODS, settings.audio.periodSelection));
-    SetText(context, Id::AudioRequestedPeriodFrames, std::to_wstring(settings.audio.requestedPeriodFrames));
+    SetSelected(context, Id::AudioBufferMode, IndexOf(BUFFER_MODES, settings.audio.buffer));
+    SetText(context, Id::AudioFixedBufferFrames, FixedBufferText(settings.audio.fixedBufferFrames));
 
     SetChecked(context, Id::ReinitDefaultDevice, settings.audio.reinit.defaultDeviceChanged);
     SetChecked(context, Id::ReinitDeviceState, settings.audio.reinit.deviceStateChanged);
@@ -1206,10 +1304,6 @@ void ApplyToControls(Context& context, const Config::Settings& settings) {
     SetText(context, Id::ReinitDebounce, std::to_wstring(settings.audio.reinit.debounceMs));
 
     SetSelected(context, Id::ProcessPriority, IndexOf(PRIORITIES, settings.performance.processPriority));
-
-    SetChecked(context, Id::HotkeysEnabled, settings.hotkeys.enabled);
-    SetText(context, Id::HotkeyToggle, Text::ToWide(settings.hotkeys.toggleEnabled));
-    SetText(context, Id::HotkeyReinitialize, Text::ToWide(settings.hotkeys.reinitialize));
 
     SetChecked(context, Id::UpdateCheckOnStartup, settings.updates.checkOnStartup);
 
@@ -1224,8 +1318,11 @@ void ApplyToControls(Context& context, const Config::Settings& settings) {
 void UpdateEnabledStates(Context& context) {
     const bool tray = IsChecked(context, Id::TrayEnabled);
 
-    // The items of the tray menu and the balloons exist only with the icon.
+    // The items of the tray menu and the balloons exist only with the icon,
+    // and the window can go to the tray only when there is an icon to bring it
+    // back from: without it the buttons of the window do what they always do.
     const Id trayDependent[] = {
+        Id::StartMinimizedToTray, Id::MinimizeToTray, Id::CloseButtonAction,
         Id::TrayMenuToggle, Id::TrayMenuReinit, Id::TrayMenuLog, Id::TrayMenuDiagnostics,
         Id::NotificationError, Id::NotificationDeviceChange, Id::NotificationStateChange,
     };
@@ -1237,9 +1334,8 @@ void UpdateEnabledStates(Context& context) {
         }
     }
 
-    const bool hotkeys = IsChecked(context, Id::HotkeysEnabled);
-    const bool fixedPeriod =
-        ValueAt(PERIODS, SelectedIndex(context, Id::AudioPeriodSelection)) == Config::PeriodSelection::Fixed;
+    const bool fixedBuffer =
+        ValueAt(BUFFER_MODES, SelectedIndex(context, Id::AudioBufferMode)) == Config::BufferMode::Fixed;
 
     const bool fileLog = !IsLogLevelOff(SelectedIndex(context, Id::LogLevel));
 
@@ -1247,9 +1343,8 @@ void UpdateEnabledStates(Context& context) {
         Id id;
         bool enabled;
     } STATES[] = {
-        { Id::HotkeyToggle, hotkeys },
-        { Id::HotkeyReinitialize, hotkeys },
-        { Id::AudioRequestedPeriodFrames, fixedPeriod },
+        { Id::AudioFixedBufferFrames, fixedBuffer },
+        { Id::AudioBufferHint, fixedBuffer },
         { Id::LogFilePath, fileLog },
         { Id::LogMaxFileSize, fileLog },
         { Id::LogMaxFiles, fileLog },
@@ -1260,6 +1355,26 @@ void UpdateEnabledStates(Context& context) {
         if (control != nullptr) {
             ::EnableWindow(control, state.enabled ? TRUE : FALSE);
         }
+    }
+}
+
+// A fixed buffer starts from the buffer the device runs with: an empty field
+// next to "Fixed" would only send the user to look the number up.
+void PrefillFixedBuffer(Context& context) {
+    if (ValueAt(BUFFER_MODES, SelectedIndex(context, Id::AudioBufferMode)) != Config::BufferMode::Fixed) {
+        return;
+    }
+
+    const std::wstring text = ReadText(context, Id::AudioFixedBufferFrames, L"");
+    if (!text.empty() && text != L"0") {
+        return;
+    }
+
+    const BufferRange& range = context.bufferRange;
+    const uint32_t frames = range.current > 0 ? range.current : range.minimum;
+
+    if (frames > 0) {
+        SetText(context, Id::AudioFixedBufferFrames, std::to_wstring(frames));
     }
 }
 
@@ -1404,10 +1519,13 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
             // section can be used at all: the fields are greyed out accordingly.
             if (notification == BN_CLICKED || notification == CBN_SELCHANGE) {
                 if (id == static_cast<UINT>(ControlId(Id::TrayEnabled)) ||
-                    id == static_cast<UINT>(ControlId(Id::HotkeysEnabled)) ||
-                    id == static_cast<UINT>(ControlId(Id::AudioPeriodSelection)) ||
+                    id == static_cast<UINT>(ControlId(Id::AudioBufferMode)) ||
                     id == static_cast<UINT>(ControlId(Id::LogLevel))) {
                     UpdateEnabledStates(*context);
+                }
+
+                if (id == static_cast<UINT>(ControlId(Id::AudioBufferMode))) {
+                    PrefillFixedBuffer(*context);
                 }
             }
 
@@ -1428,6 +1546,20 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 
                 ShowPage(*context, PageOfIndex(selected));
                 return 0;
+            }
+
+            break;
+        }
+
+        case WM_CTLCOLORSTATIC: {
+            // The range under the fixed buffer is a note, not a value: it is
+            // written in the grey of the system.
+            const HWND control = reinterpret_cast<HWND>(lParam);
+
+            if (control != nullptr && control == Get(*context, Id::AudioBufferHint)) {
+                const LRESULT brush = ::DefWindowProcW(window, message, wParam, lParam);
+                ::SetTextColor(reinterpret_cast<HDC>(wParam), ::GetSysColor(COLOR_GRAYTEXT));
+                return brush;
             }
 
             break;
@@ -1487,11 +1619,13 @@ bool miniant::Windows::ShowSettingsWindow(
     HWND owner,
     HINSTANCE instance,
     Config::Settings& settings,
-    const std::wstring& settingsPath) {
+    const std::wstring& settingsPath,
+    const BufferRange& bufferRange) {
     Context context;
     context.instance = instance;
     context.settings = &settings;
     context.settingsPath = settingsPath;
+    context.bufferRange = bufferRange;
     context.dpi = Dpi::ForWindow(owner);
 
     WNDCLASSEXW windowClass = {};

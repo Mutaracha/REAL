@@ -52,7 +52,8 @@ std::wstring GetDeviceFriendlyName(IMMDevice* device) {
 // range of the periods it accepts (minimum...maximum) and the step of the grid
 // inside that range; the step itself is not a period, so a value below the
 // minimum (a driver may report a step of one frame) never reaches the engine:
-// the result is always inside [minimum, maximum].
+// the result is always inside [minimum, maximum]. A fixed value that is not on
+// the grid is rounded down to it (AudioSession reports the adjustment).
 uint32_t ChoosePeriod(
     PeriodSelection selection,
     uint32_t requestedPeriodFrames,
@@ -62,9 +63,7 @@ uint32_t ChoosePeriod(
 
     uint32_t desired = minimum;
 
-    if (selection == PeriodSelection::Fundamental) {
-        desired = info.fundamentalPeriod;
-    } else if (selection == PeriodSelection::Fixed) {
+    if (selection == PeriodSelection::Fixed && requestedPeriodFrames > 0) {
         desired = requestedPeriodFrames;
     }
 

@@ -6,6 +6,7 @@
 #include "Lang.h"
 #include "Settings.h"
 #include "Windows/MainWindow.h"
+#include "Windows/SettingsWindow.h"
 
 #include <Windows.h>
 
@@ -53,18 +54,19 @@ private:
     bool InitializeUi();
     void InitializeAudio();
     void InitializeTray();
+    // Minimize and the close button hide the window in the tray only while
+    // the tray icon is on screen.
+    void ApplyWindowBehaviour();
     void RegisterSignalMessages();
     // One copy of the program runs at a time: a second start passes its
     // command to the running copy and ends. True when this process has to end
     // (the exit code is in exitCode).
     bool HandOverToRunningInstance(int& exitCode);
     void ReportInstanceNotResponding() const;
-    void RegisterHotkeys();
-    void UnregisterHotkeys();
     void ApplyPerformanceSettings();
     void ApplyAudio();
-    // Switches the mode on or off the same way for every caller: the tray item,
-    // the hotkey and the command of a second copy of the program.
+    // Switches the mode on or off the same way for every caller: the menus and
+    // the command of a second copy of the program.
     void SetAudioEnabled(bool enabled);
     void UpdateStatus();
     void UpdateTrayMenuState();
@@ -169,6 +171,18 @@ private:
     bool m_audioSuspended = false;
     // The next apply is caused by a device change (affects the notification).
     bool m_deviceChangePending = false;
+    // The timer of the device events was started by a device event, not only
+    // by the end of a sleep or a lock (see OnTimer).
+    bool m_deviceEventPending = false;
+    // Why the streams are created again after a sleep or a lock, for the line
+    // of the journal.
+    std::wstring m_resumeReason;
+    // The next apply follows a switch the user asked for (the menus, a
+    // command, a restart): it is the one that may show a balloon about it.
+    bool m_stateChangePending = false;
+    // The buffer range of the default device, from the last apply: the settings
+    // window shows it next to the fixed buffer and checks the value with it.
+    Windows::BufferRange m_bufferRange;
 };
 
 }

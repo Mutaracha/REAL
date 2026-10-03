@@ -30,12 +30,8 @@ EDataFlow ToDataFlow(miniant::Config::DataFlow flow) {
     }
 }
 
-PeriodSelection ToPeriodSelection(miniant::Config::PeriodSelection selection) {
-    switch (selection) {
-        case miniant::Config::PeriodSelection::Fundamental: return PeriodSelection::Fundamental;
-        case miniant::Config::PeriodSelection::Fixed: return PeriodSelection::Fixed;
-        default: return PeriodSelection::Minimum;
-    }
+PeriodSelection ToPeriodSelection(miniant::Config::BufferMode buffer) {
+    return buffer == miniant::Config::BufferMode::Fixed ? PeriodSelection::Fixed : PeriodSelection::Minimum;
 }
 
 std::vector<EDataFlow> GetDataFlows(miniant::Config::DataFlow flow) {
@@ -236,8 +232,8 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
             *endpoint.device.Get(),
             endpoint.dataFlow,
             endpoint.role,
-            ToPeriodSelection(settings.audio.periodSelection),
-            settings.audio.requestedPeriodFrames);
+            ToPeriodSelection(settings.audio.buffer),
+            settings.audio.fixedBufferFrames);
 
         if (!stream) {
             const std::string message =
@@ -250,6 +246,27 @@ tl::expected<void, WindowsError> AudioSession::Apply(const miniant::Config::Sett
         }
 
         const AudioStreamInfo& info = stream->GetInfo();
+
+        // A fixed buffer that the device does not accept as it is: the nearest
+        // value of its grid is used, and the journal says so once for every
+        // device and value (see m_reportedAdjustments).
+        if (settings.audio.buffer == miniant::Config::BufferMode::Fixed &&
+            settings.audio.fixedBufferFrames > 0 &&
+            !info.acceptedLockedPeriod &&
+            info.requestedPeriod != settings.audio.fixedBufferFrames) {
+            const std::string adjustment = fmt::format(
+                Lang::Utf8(Lang::Str::LogFixedBufferAdjusted),
+                Lang::Frames(settings.audio.fixedBufferFrames),
+                Text::ToUtf8(info.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : info.deviceName),
+                info.minPeriod,
+                std::max(info.minPeriod, info.maxPeriod),
+                info.fundamentalPeriod,
+                Lang::Frames(info.requestedPeriod));
+
+            if (m_reportedAdjustments.insert(adjustment).second) {
+                Log::Warn("{}", adjustment);
+            }
+        }
 
         if (!stream->IsActive()) {
             // The driver has nothing smaller than the default buffer, so no
@@ -307,7 +324,7 @@ std::wstring AudioSession::GetStatusText() const {
         // Every inspected device already uses its smallest buffer.
         std::string text = fmt::format(
             Lang::Utf8(Lang::Str::StatusDriverMinimum),
-            first.PeriodMilliseconds(first.currentPeriod),
+            Lang::Milliseconds(first.PeriodMilliseconds(first.currentPeriod)),
             Text::ToUtf8(first.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : first.deviceName));
 
         if (m_streamsInfo.size() > 1) {
@@ -319,7 +336,7 @@ std::wstring AudioSession::GetStatusText() const {
 
     std::string text = fmt::format(
         Lang::Utf8(Lang::Str::StatusActive),
-        first.PeriodMilliseconds(first.currentPeriod),
+        Lang::Milliseconds(first.PeriodMilliseconds(first.currentPeriod)),
         Text::ToUtf8(first.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : first.deviceName));
 
     if (first.acceptedLockedPeriod) {

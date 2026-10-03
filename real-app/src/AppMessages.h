@@ -12,10 +12,4 @@ enum : UINT {
     WM_APP_TRAY = WM_APP + 4,
 };
 
-// Ids of the global hotkeys.
-enum : int {
-    HOTKEY_ID_TOGGLE = 1,
-    HOTKEY_ID_REINITIALIZE = 2,
-};
-
 }

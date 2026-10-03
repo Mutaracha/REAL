@@ -308,6 +308,10 @@ void MainWindow::ApplyLanguage() {
             MF_BYPOSITION | MF_STRING,
             MENU_ABOUT_ID,
             miniant::Lang::Wide(miniant::Lang::Str::MenuAbout).c_str());
+
+        // The menu bar is drawn by the frame of the window: without this its
+        // items kept the old texts until the mouse passed over each of them.
+        ::DrawMenuBar(m_window);
     }
 
     SetToolText(m_tooltip, m_window, m_restartButton, TTM_UPDATETIPTEXTW);
@@ -385,7 +389,11 @@ void MainWindow::AppendLogLines(const std::vector<std::string>& lines) {
 }
 
 void MainWindow::Notify(const std::wstring& title, const std::wstring& text, bool error) {
-    if (m_tray) {
+    // A balloon is for the user who does not see the window: while it is open
+    // (shown and not minimized) its journal already says the same.
+    const bool windowOpen = IsVisible() && ::IsIconic(m_window) == FALSE;
+
+    if (m_tray && !windowOpen) {
         m_tray->Notify(title, text, error);
     }
 }

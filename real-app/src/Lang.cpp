@@ -6,6 +6,7 @@
 
 #include <spdlog/fmt/fmt.h>
 
+#include <algorithm>
 #include <cctype>
 #include <cstddef>
 #include <iterator>
@@ -37,7 +38,7 @@ const Entry TABLE[] = {
 
     // Tray menu
     { Str::TrayToggleEnabled, "REAL is running", "REAL запущен" },
-    { Str::TrayReinitialize, "Restart now", "Перезапустить" },
+    { Str::TrayReinitialize, "Restart", "Перезапустить" },
     { Str::TrayLog, "Log file", "Файл журнала" },
     { Str::TrayDiagnostics, "Diagnostics", "Диагностика" },
     { Str::TraySettings, "Settings", "Настройки" },
@@ -46,9 +47,11 @@ const Entry TABLE[] = {
     // Status line
     { Str::StatusDisabled, "Latency reduction is off", "Снижение задержки выключено" },
     { Str::StatusNotActive, "Latency reduction is not active", "Снижение задержки не активно" },
-    { Str::StatusDriverMinimum, "driver already uses its smallest buffer ({:.2f} ms) - {}",
-                                "драйвер уже отдаёт минимальный буфер ({:.2f} мс) - {}" },
-    { Str::StatusPeriodLocked, " (period locked by another app)", " (период закреплён другим приложением)" },
+    // The milliseconds come written in the notation of the language (see
+    // Lang::Milliseconds): "7.00 ms", "7,00 мс".
+    { Str::StatusDriverMinimum, "driver already uses its smallest buffer ({}) - {}",
+                                "драйвер уже отдаёт минимальный буфер ({}) - {}" },
+    { Str::StatusPeriodLocked, " (buffer set by another app)", " (буфер задан другим приложением)" },
     { Str::StatusMoreDevices, " (+{} more)", " (+{} ещё)" },
 
     // Notifications: short texts, a balloon shows only a few words
@@ -70,13 +73,13 @@ const Entry TABLE[] = {
       "disabled: the device does not answer",
       "отключено: устройство не отвечает" },
     { Str::StatusActive,
-      "{:.2f} ms - {}",
-      "{:.2f} мс - {}" },
+      "{} - {}",
+      "{} - {}" },
     // The technical part of a stream in the journal: the format of the device
     // and the buffer it runs with ({1} and {3} come with their nouns).
     { Str::StreamDetails,
-      ", {0} Hz, {1}, {2} bit, period {3} ({4})",
-      ", {0} Гц, {1}, {2} бит, период {3} ({4})" },
+      ", {0} Hz, {1}, {2} bit, buffer {3} ({4})",
+      ", {0} Гц, {1}, {2} бит, буфер {3} ({4})" },
     { Str::UnknownDevice,
       "<unknown device>",
       "<неизвестное устройство>" },
@@ -89,9 +92,23 @@ const Entry TABLE[] = {
     { Str::LogUnknownArgument,
       "Unknown command line option: {0} (ignored).",
       "Неизвестный ключ командной строки: {0} (игнорируется)." },
+    // The settings of the latency reduction in the words of the settings
+    // window: {0} is the direction (DescribeFlow*), {1} the buffer
+    // (DescribeBuffer*). The diagnostics report builds its line from the same
+    // parts (DiagConfig).
     { Str::LogAudioSettings,
-      "Latency reduction settings: {0} (the default and the default communication devices).",
-      "Параметры снижения задержки: {0} (устройства по умолчанию и устройства связи по умолчанию)." },
+      "Latency reduction applied to {0} devices; {1}.",
+      "Снижение задержки применено для устройств {0}; {1}." },
+    { Str::DescribeFlowRender, "playback", "воспроизведения" },
+    { Str::DescribeFlowCapture, "recording", "записи" },
+    { Str::DescribeFlowBoth, "playback and recording", "воспроизведения и записи" },
+    { Str::DescribeBufferMinimum, "minimum buffer", "буфер минимальный" },
+    { Str::DescribeBufferFixed, "fixed buffer, {0}", "буфер фиксированный, {0}" },
+    // {0} is the fixed buffer of the settings, {1} the device, {2}-{3} the
+    // range of its buffer, {4} the step, {5} the buffer that is used instead.
+    { Str::LogFixedBufferAdjusted,
+      "The fixed buffer of {0} does not fit the device \"{1}\" ({2}–{3}, step {4}), using {5}.",
+      "Фиксированный буфер {0} не подходит устройству «{1}» ({2}–{3}, шаг {4}), используется {5}." },
     { Str::LogTrayForeignEvent,
       "Tray event 0x{0:04X} for the icon {1}, this icon is {2}.",
       "Событие значка 0x{0:04X} для значка {1}, а это значок {2}." },
@@ -105,7 +122,7 @@ const Entry TABLE[] = {
       "The settings file that could not be read is kept as {0}.",
       "Файл настроек, который не удалось прочитать, сохранён как {0}." },
     { Str::LogComFailed,
-      "Could not initialise COM: {0}",
+      "Could not initialize COM: {0}",
       "Не удалось инициализировать COM: {0}" },
     { Str::LogWindowFailed,
       "Could not create the main window: {0}",
@@ -117,8 +134,8 @@ const Entry TABLE[] = {
       "Session notifications are not available: {0}",
       "Уведомления о сеансах недоступны: {0}" },
     { Str::LogTrayHidden,
-      "The tray icon is disabled but the window would start hidden: showing the window.",
-      "Значок трея отключён, но окно стартовало бы скрытым: показываем окно." },
+      "The tray icon is off: the window is shown instead of starting in the tray.",
+      "Значок в трее выключен: окно показано, а не свёрнуто в трей." },
     { Str::LogPriorityFailed,
       "Could not change the process priority: {0}",
       "Не удалось изменить приоритет процесса: {0}" },
@@ -132,7 +149,7 @@ const Entry TABLE[] = {
       "Language changed to {0}.",
       "Язык изменён на {0}." },
     { Str::LogUpdatesDisabled,
-      "The update check at start-up is switched off.",
+      "The update check at startup is switched off.",
       "Проверка обновлений при запуске выключена." },
     { Str::LogUpdateRunning,
       "An update check is already running.",
@@ -143,15 +160,6 @@ const Entry TABLE[] = {
     { Str::LogReinitInvalid,
       "The audio streams are no longer valid, restarting: {0}",
       "Аудиопотоки недействительны, перезапускаю: {0}" },
-    { Str::LogResumeApply,
-      "The system reported {0}; re-applying the low latency mode.",
-      "Система сообщила {0}; применяем режим заново." },
-    { Str::LogHotkeyRegisterFailed,
-      "Could not register the hotkey '{0}'.",
-      "Не удалось зарегистрировать горячую клавишу «{0}»." },
-    { Str::LogHotkeyParseFailed,
-      "Could not parse the hotkey '{0}'.",
-      "Не удалось разобрать горячую клавишу «{0}»." },
     { Str::LogAutostartOpenFailed,
       "Could not open the registry key for the autostart entry: {0}",
       "Не удалось открыть раздел реестра для автозапуска: {0}" },
@@ -174,8 +182,8 @@ const Entry TABLE[] = {
       "Low latency stream started: {0}",
       "Поток с низкой задержкой запущен: {0}" },
     { Str::LogPeriodLocked,
-      "The audio engine period is already locked by another application, its period is used: {0}.",
-      "Период аудиодвижка уже закреплён другим приложением, используется его период: {0}." },
+      "The audio engine buffer is already set by another application, its size is used: {0}.",
+      "Буфер аудиодвижка уже задан другим приложением, используется его размер: {0}." },
     { Str::LogDiagCollected,
       "Diagnostics: location and configuration collected.",
       "Диагностика: расположение и настройки собраны." },
@@ -217,11 +225,11 @@ const Entry TABLE[] = {
       "Could not register for endpoint notifications: {0}",
       "Не удалось подписаться на уведомления об устройствах: {0}" },
     { Str::ErrNotInitialised,
-      "The audio session has not been initialised.",
+      "The audio session has not been initialized.",
       "Аудиосессия не инициализирована." },
     { Str::ErrLowLatency,
-      "Could not enable the low latency mode.",
-      "Не удалось включить режим низкой задержки." },
+      "Could not enable the latency reduction.",
+      "Не удалось включить снижение задержки." },
     { Str::WarnNoDefaultDevice,
       "No default audio device is connected.",
       "Аудиоустройство по умолчанию не подключено." },
@@ -247,13 +255,13 @@ const Entry TABLE[] = {
       "Could not read the device mix format: {0}",
       "Не удалось прочитать формат микширования устройства: {0}" },
     { Str::ErrEnginePeriods,
-      "Could not query the engine periods: {0}",
-      "Не удалось получить периоды аудиодвижка: {0}" },
+      "Could not query the buffer sizes of the engine: {0}",
+      "Не удалось получить размеры буфера аудиодвижка: {0}" },
     { Str::ErrEngineLocked,
       "The audio engine is currently locked by another application: {0}",
       "Аудиодвижок сейчас зафиксирован другим приложением: {0}" },
     { Str::ErrInitStream,
-      "Could not initialise the low latency stream: {0}",
+      "Could not initialize the low latency stream: {0}",
       "Не удалось инициализировать поток низкой задержки: {0}" },
     { Str::ErrStartStream,
       "Could not start the audio stream: {0}",
@@ -266,11 +274,11 @@ const Entry TABLE[] = {
       "Ответ слишком большой." },
 
     { Str::ReasonResume,
-      "resume from sleep",
-      "выход из спящего режима" },
+      "Resume from sleep",
+      "Выход из спящего режима" },
     { Str::ReasonUnlock,
-      "session unlock",
-      "разблокировка сеанса" },
+      "Session unlock",
+      "Разблокировка сеанса" },
     { Str::CliReportWritten,
       "Report written to {0}",
       "Отчёт записан в {0}" },
@@ -337,9 +345,11 @@ const Entry TABLE[] = {
     { Str::DiagSettings,
       "Settings:    {0}\n",
       "Настройки:   {0}\n" },
+    // {0} and {1} are the parts of LogAudioSettings: the direction and the
+    // buffer.
     { Str::DiagConfig,
-      "Config:      {0}\n",
-      "Параметры:   {0}\n" },
+      "Config:      {0} devices; {1}\n",
+      "Параметры:   устройства {0}; {1}\n" },
     { Str::DiagEnumeratorError,
       "ERROR: the audio device enumerator could not be created ({0}).\n",
       "ОШИБКА: не удалось создать перечислитель аудиоустройств ({0}).\n" },
@@ -371,8 +381,8 @@ const Entry TABLE[] = {
       "    format:   {0} Hz, {1}, {2} bit\n",
       "    формат:   {0} Гц, {1}, {2} бит\n" },
     { Str::DiagPeriods,
-      "    periods:  {0}\n",
-      "    периоды:  {0}\n" },
+      "    buffer:   {0}\n",
+      "    буфер:    {0}\n" },
     { Str::DiagUnknown,
       "unknown",
       "неизвестно" },
@@ -392,18 +402,18 @@ const Entry TABLE[] = {
       "--- Notes ---\n\n",
       "--- Примечания ---\n\n" },
     { Str::DiagNotes,
-      "A device is suitable for the latency reduction when its minimum period is smaller than its default period (see 'result'). Typical exceptions: Bluetooth endpoints (10 ms by design), HDMI/DisplayPort receivers, some vendor drivers (Realtek, Nahimic, ACX) and virtual devices.\n"
-      "The base step is the amount by which the engine can change its period: any value between the minimum and the maximum with that step is allowed. The step itself is not a period, so a value like \"step of 1 frame\" cannot be requested; REAL never asks for a period below the minimum.\n"
+      "A device is suitable for the latency reduction when its minimum buffer is smaller than its default one (see 'result'). Typical exceptions: Bluetooth endpoints (10 ms by design), HDMI/DisplayPort receivers, some vendor drivers (Realtek, Nahimic, ACX) and virtual devices.\n"
+      "The base step is the amount by which the engine can change the size of its buffer: any value between the minimum and the maximum with that step is allowed, and these are the values a fixed buffer of the settings accepts. The step itself is not a buffer size, so a value like \"step of 1 frame\" cannot be requested; REAL never asks for a buffer below the minimum.\n"
       "The small buffer is taken on both default devices of the chosen direction: the usual default device and the default communication device (Settings - System - Sound).\n"
       "A processor reserved for audio (the CPU line above) is kept by Windows for the audio engine while a stream with a small buffer runs: other programs get it last, so monitoring tools may show it underused. This is the low latency mode of Windows itself, not a fault of REAL.\n",
-      "Устройство подходит для снижения задержки, если его минимальный период меньше стандартного (см. «итог»). Обычные исключения: Bluetooth (10 мс по замыслу), приёмники HDMI/DisplayPort, некоторые драйверы производителей (Realtek, Nahimic, ACX) и виртуальные устройства.\n"
-      "Базовый шаг — это ступень, с которой движок меняет период: допустимы значения от минимального до максимального с этим шагом. Сам шаг периодом не является, поэтому значение вида «шаг 1 фрейм» использовать нельзя — программа запрашивает период не меньше минимального.\n"
+      "Устройство подходит для снижения задержки, если его минимальный буфер меньше стандартного (см. «итог»). Обычные исключения: Bluetooth (10 мс по замыслу), приёмники HDMI/DisplayPort, некоторые драйверы производителей (Realtek, Nahimic, ACX) и виртуальные устройства.\n"
+      "Базовый шаг — это ступень, с которой движок меняет размер буфера: допустимы значения от минимального до максимального с этим шагом, их и принимает фиксированный буфер в настройках. Сам шаг размером буфера не является, поэтому значение вида «шаг 1 фрейм» использовать нельзя — программа не запрашивает буфер меньше минимального.\n"
       "Малый буфер берётся на обоих устройствах по умолчанию выбранного направления: на обычном устройстве по умолчанию и на устройстве связи по умолчанию («Параметры → Система → Звук»).\n"
       "Ядро, зарезервированное для звука (строка «Процессор» выше), Windows держит для аудиодвижка, пока работает поток с малым буфером: другие программы получают его в последнюю очередь, поэтому в мониторинге оно может выглядеть недогруженным. Это особый режим низкой задержки самой Windows, а не ошибка REAL.\n" },
 
     { Str::DiagPeriodsNoClient3,
-      "device period {0} ({1})",
-      "период устройства {0} ({1})" },
+      "device buffer {0} ({1})",
+      "буфер устройства {0} ({1})" },
     { Str::DiagPeriodDefault,
       "default {0} ({1})",
       "стандартный {0} ({1})" },
@@ -423,8 +433,8 @@ const Entry TABLE[] = {
       "the mix format could not be read",
       "не удалось прочитать формат микширования" },
     { Str::DiagEnginePeriodsFailed,
-      "the engine periods could not be queried: {0}",
-      "не удалось получить периоды аудиодвижка: {0}" },
+      "the buffer sizes of the engine could not be queried: {0}",
+      "не удалось получить размеры буфера аудиодвижка: {0}" },
     { Str::DiagActivateFailed,
       "the audio client could not be created: {0}",
       "не удалось создать аудиоклиент: {0}" },
@@ -457,6 +467,9 @@ const Entry TABLE[] = {
     { Str::CfgWarnUnknownValue,
       "{0}: unknown value \"{1}\" (allowed: {2}), the default value is used",
       "{0}: неизвестное значение «{1}» (допустимо: {2}), взято значение по умолчанию" },
+    { Str::CfgWarnFixedBufferZero,
+      "{0}: \"fixed\" needs a size above 0, the minimum buffer is used",
+      "{0}: для «fixed» нужен размер больше 0, взят минимальный буфер" },
 
     // Command line help
     { Str::HelpText,
@@ -464,15 +477,15 @@ const Entry TABLE[] = {
       "\n"
       "Usage: REAL.exe [options]\n"
       "\n"
-      "  (no options)          Start with the main window; the tray icon is created as well\n"
-      "  --tray                Start minimised to the system tray\n"
+      "  (no options)          Start with the main window (and the tray icon when it is on)\n"
+      "  --tray                Start minimized to the system tray\n"
       "  --no-tray             Start with the main window visible\n"
       "  --config <path>       Use the given settings file instead of real.settings.json\n"
       "  --no-config           Ignore the settings file, use the built-in defaults\n"
       "  --log-level <level>   off | error | warn | info | debug | trace\n"
       "\n"
       "Commands for a running instance (the command is passed to it and this process exits):\n"
-      "  --reinit              Restart: re-create the audio streams, the mode is enabled\n"
+      "  --reinit              Restart: re-create the audio streams, the latency reduction is enabled\n"
       "  --enable              Enable the latency reduction\n"
       "  --disable             Disable the latency reduction (the engine returns to its default)\n"
       "  --exit                Close the running instance\n"
@@ -489,7 +502,7 @@ const Entry TABLE[] = {
       "\n"
       "Использование: REAL.exe [ключи]\n"
       "\n"
-      "  (без ключей)          запуск с окном; значок в трее создаётся всегда\n"
+      "  (без ключей)          запуск с окном (и значком в трее, если он включён)\n"
       "  --tray                стартовать свёрнутым в системный трей\n"
       "  --no-tray             стартовать с видимым окном\n"
       "  --config <путь>       использовать другой файл настроек вместо real.settings.json\n"
@@ -497,7 +510,7 @@ const Entry TABLE[] = {
       "  --log-level <уровень> off | error | warn | info | debug | trace\n"
       "\n"
       "Команды для работающей копии (передаются ей, этот процесс завершается):\n"
-      "  --reinit              перезапустить: заново создать аудиопотоки, режим включается\n"
+      "  --reinit              перезапустить: заново создать аудиопотоки, снижение задержки включается\n"
       "  --enable              включить снижение задержки\n"
       "  --disable             выключить снижение задержки (движок вернётся к 10 мс)\n"
       "  --exit                закрыть работающую копию\n"
@@ -552,12 +565,13 @@ const Entry TABLE[] = {
                      "Устройство не ответило за {} с, снижение задержки выключено" },
     { Str::OpDiagnostics, "Diagnostics report: {}", "Отчёт диагностики: {}" },
     { Str::OpDiagnosticsFailed, "Could not write the diagnostics report", "Не удалось записать отчёт диагностики" },
-    { Str::OpHotkeys, "Hotkeys: on/off {}, restart {}", "Горячие клавиши: включить/выключить {}, перезапустить {}" },
     { Str::OpAutostart, "Autostart: {}", "Автозапуск: {}" },
     { Str::OpUpdateChecking, "Checking for updates...", "Проверяю обновления..." },
     { Str::OpExiting, "Exiting", "Выход" },
     { Str::OpTrayUnavailable, "The tray icon is unavailable, the window stays visible",
                               "Значок в трее недоступен, окно остаётся видимым" },
+    // {} is the reason (ReasonResume, ReasonUnlock).
+    { Str::OpResumeApply, "{}, applying again", "{}, применяю заново" },
     { Str::OpDiagHint, "The device does not answer. Check the available devices by running the diagnostics.",
                        "Устройство не отвечает. Проверьте доступные устройства, запустив диагностику." },
     { Str::ValueOn, "on", "вкл" },
@@ -582,15 +596,14 @@ const Entry TABLE[] = {
     { Str::SettingsHeaderNotifications, "Notifications", "Уведомления" },
     { Str::SettingsHeaderAudio, "Audio streams", "Аудиопотоки" },
     { Str::SettingsHeaderReinit, "Automatic restart", "Автоматический перезапуск" },
-    { Str::SettingsHeaderPerformance, "Performance", "Производительность" },
-    { Str::SettingsHeaderHotkeys, "Hotkeys", "Горячие клавиши" },
+    { Str::SettingsHeaderPerformance, "REAL process", "Процесс REAL" },
     { Str::SettingsHeaderUpdates, "Updates", "Обновления" },
     { Str::SettingsHeaderLog, "Log", "Журнал" },
     { Str::SettingsLanguage, "Language", "Язык" },
     { Str::SettingsLanguageAuto, "As in Windows", "Как в Windows" },
     { Str::SettingsLanguageEnglish, "English", "Английский" },
     { Str::SettingsLanguageRussian, "Russian", "Русский" },
-    { Str::SettingsStartWithWindows, "Start with Windows", "Запускать вместе с Windows" },
+    { Str::SettingsStartWithWindows, "Start with Windows", "Запускать с Windows" },
     { Str::SettingsStartMinimized, "Start minimized to tray", "Запускать свёрнутым в трей" },
     { Str::SettingsMinimizeToTray, "Minimize to tray", "Сворачивать в трей" },
     { Str::SettingsCloseAction, "Close button", "Кнопка закрытия" },
@@ -598,34 +611,42 @@ const Entry TABLE[] = {
     { Str::SettingsCloseExit, "Exit", "Завершить программу" },
     { Str::SettingsTrayEnabled, "Show the tray icon", "Показывать значок в трее" },
     { Str::SettingsNotifyError, "Notify about errors", "Уведомлять об ошибках" },
-    { Str::SettingsNotifyDeviceChange, "Notify about device changes", "Уведомлять о смене устройств" },
-    { Str::SettingsNotifyStateChange, "Notify about the mode switching", "Уведомлять о переключении режима" },
-    { Str::SettingsDataFlow, "Streams", "Потоки" },
-    { Str::SettingsFlowRender, "Playback (render)", "Воспроизведение (render)" },
-    { Str::SettingsFlowCapture, "Recording (capture)", "Запись (capture)" },
+    { Str::SettingsNotifyDeviceChange, "Notify about a device change", "Уведомлять о смене устройства" },
+    { Str::SettingsNotifyStateChange, "Notify when switched on or off", "Уведомлять о включении и выключении" },
+    { Str::SettingsDataFlow, "Devices", "Устройства" },
+    { Str::SettingsFlowRender, "Playback", "Воспроизведение" },
+    { Str::SettingsFlowCapture, "Recording", "Запись" },
     { Str::SettingsFlowBoth, "Playback and recording", "Воспроизведение и запись" },
-    { Str::SettingsPeriod, "Period", "Период" },
-    { Str::SettingsPeriodMinimum, "Minimum", "Минимальный" },
-    { Str::SettingsPeriodFundamental, "By the base step", "По базовому шагу" },
-    { Str::SettingsPeriodFixed, "Fixed value", "Фиксированный" },
-    { Str::SettingsRequestedPeriod, "Requested period, frames", "Запрашиваемый период, фреймы" },
-    { Str::SettingsReinitDeviceChanged, "Default device changed", "Сменилось устройство по умолчанию" },
-    { Str::SettingsReinitDeviceState, "Device state changed", "Сменилось состояние устройства" },
-    { Str::SettingsReinitDeviceAdded, "Device added", "Устройство добавлено" },
-    { Str::SettingsReinitDeviceRemoved, "Device removed", "Устройство удалено" },
+    { Str::SettingsBuffer, "Buffer", "Буфер" },
+    { Str::SettingsBufferMinimum, "Minimum", "Минимальный" },
+    { Str::SettingsBufferFixed, "Fixed", "Фиксированный" },
+    { Str::SettingsFixedBufferFrames, "Fixed buffer, frames", "Фиксированный буфер, фреймы" },
+    // The range of the buffer of the device under the field: {0}-{1} frames,
+    // {2} the step, {3}-{4} the same range in milliseconds.
+    { Str::SettingsBufferHint, "Allowed: {0}–{1}, step {2} ({3}–{4} ms)", "Допустимо: {0}–{1}, шаг {2} ({3}–{4} мс)" },
+    // A value of the fixed buffer that the device does not accept: {0} is the
+    // label of the field, {1} the device, {2}-{3} the range, {4} the step,
+    // {5} and {6} the nearest values it accepts.
+    { Str::SettingsBufferOutOfRange,
+      "{0} (the device \"{1}\" accepts {2} to {3} in steps of {4}; the nearest value: {5})",
+      "{0} (устройство «{1}» принимает от {2} до {3} с шагом {4}; ближайшее подходящее значение: {5})" },
+    { Str::SettingsBufferNotOnStep,
+      "{0} (the device \"{1}\" accepts {2} to {3} in steps of {4}; the nearest values: {5} and {6})",
+      "{0} (устройство «{1}» принимает от {2} до {3} с шагом {4}; ближайшие подходящие значения: {5} и {6})" },
+    { Str::SettingsReinitDeviceChanged, "Default device change", "Смена устройства по умолчанию" },
+    { Str::SettingsReinitDeviceState, "Device connected or disconnected", "Подключение и отключение устройства" },
+    { Str::SettingsReinitDeviceAdded, "New device", "Появление нового устройства" },
+    { Str::SettingsReinitDeviceRemoved, "Device removal", "Удаление устройства" },
     { Str::SettingsReinitResume, "Resume from sleep", "Выход из спящего режима" },
     { Str::SettingsReinitUnlock, "Session unlock", "Разблокировка сеанса" },
-    { Str::SettingsReinitEnableWhenDisabled, "Switch on at a device change if off", "Включать при смене устройства, если выключено" },
+    { Str::SettingsReinitEnableWhenDisabled, "Turn the latency reduction on at a device change", "Включать снижение задержки при смене устройства" },
     { Str::SettingsReinitFailureTimeout, "Wait for the device, ms", "Ждать ответа устройства, мс" },
     { Str::SettingsReinitDebounce, "Pause before restarting, ms", "Пауза перед перезапуском, мс" },
     { Str::SettingsProcessPriority, "Process priority", "Приоритет процесса" },
     { Str::SettingsPriorityNormal, "Normal", "Обычный" },
     { Str::SettingsPriorityBelowNormal, "Below normal", "Ниже среднего" },
     { Str::SettingsPriorityIdle, "Low", "Низкий" },
-    { Str::SettingsHotkeysEnabled, "Use hotkeys", "Использовать горячие клавиши" },
-    { Str::SettingsHotkeyToggle, "Enable / disable", "Включить / выключить" },
-    { Str::SettingsHotkeyReinitialize, "Restart", "Перезапустить" },
-    { Str::SettingsCheckOnStartup, "Check on start-up", "Проверять при запуске" },
+    { Str::SettingsCheckOnStartup, "Check at startup", "Проверять при запуске" },
     { Str::SettingsLogLevel, "Level", "Уровень" },
     // The value of the file stays in parentheses: the list and the settings
     // file read the same, and the reference names the value.
@@ -635,68 +656,69 @@ const Entry TABLE[] = {
     { Str::SettingsLogLevelInfo, "Main events (info)", "Основное (info)" },
     { Str::SettingsLogLevelDebug, "Detailed (debug)", "Подробно (debug)" },
     { Str::SettingsLogLevelTrace, "Everything (trace)", "Всё (trace)" },
-    { Str::SettingsLogFilePath, "File", "Файл" },
-    { Str::SettingsLogMaxFileSize, "Max size, MB", "Максимальный размер, МБ" },
-    { Str::SettingsLogMaxFiles, "Files to keep", "Хранить файлов, шт." },
+    { Str::SettingsLogFilePath, "File path", "Путь к файлу" },
+    { Str::SettingsLogMaxFileSize, "File size, MB", "Размер файла, МБ" },
+    { Str::SettingsLogMaxFiles, "Files to keep", "Сколько файлов хранить" },
 
     // Settings file comments
     { Str::CfgFileHeader,
       "Settings of REAL. The file is created automatically and is read when the program starts or when the settings are reloaded. Comments can be removed.",
       "Настройки REAL. Файл создаётся автоматически и читается при запуске и перезагрузке настроек. Комментарии можно удалять." },
     { Str::CfgApplicationSection, "Window, start and autostart.", "Окно, запуск и автозапуск приложения." },
-    { Str::CfgStartMinimizedToTray, "true - start minimised in the tray (same as the --tray key).",
-                                    "true - стартовать сразу свёрнутым в трей (то же, что ключ запуска --tray)." },
-    { Str::CfgMinimizeToTray, "true - the Minimise button hides the window to the tray, not to the taskbar.",
-                              "true - кнопка \"Свернуть\" прячет окно в трей, а не в панель задач." },
-    { Str::CfgCloseButtonAction, "What the close button does: \"minimize\" (to the tray) or \"exit\" (quit).",
-                                 "Что делает крестик окна: \"minimize\" (в трей) или \"exit\" (завершить программу)." },
+    { Str::CfgStartMinimizedToTray, "true - start minimized in the tray (same as the --tray key); needs the tray icon.",
+                                    "true - стартовать сразу свёрнутым в трей (то же, что ключ запуска --tray); нужен значок в трее." },
+    { Str::CfgMinimizeToTray, "true - the Minimize button hides the window to the tray, not to the taskbar; needs the tray icon.",
+                              "true - кнопка \"Свернуть\" прячет окно в трей, а не в панель задач; нужен значок в трее." },
+    { Str::CfgCloseButtonAction, "What the close button does: \"minimize\" (to the tray) or \"exit\" (quit); without the tray icon it always quits.",
+                                 "Что делает крестик окна: \"minimize\" (в трей) или \"exit\" (завершить программу); без значка в трее - всегда завершает." },
     { Str::CfgStartWithWindows, "true - start automatically after logon (HKCU Run key).",
                                 "true - автозапуск при входе в систему (запись REAL в HKCU Run)." },
-    { Str::CfgLanguage, "Language of the interface, the log and these comments: \"auto\" (Windows), \"en\", \"ru\". When the language changes, the comments are rewritten on the next start, the values stay.",
-                        "Язык интерфейса, журнала и этих комментариев: \"auto\" (язык Windows), \"en\", \"ru\". При смене языка комментарии перезаписываются при следующем запуске, значения сохраняются." },
+    { Str::CfgLanguage, "Language of the interface, the log and these comments: \"auto\" (Windows), \"en\", \"ru\". The comments follow the language: at once when it is changed in the settings window, on the next start after an edit of this file; the values stay.",
+                        "Язык интерфейса, журнала и этих комментариев: \"auto\" (язык Windows), \"en\", \"ru\". Комментарии переписываются на новом языке: сразу при смене в окне настроек, при правке этого файла - при следующем запуске; значения сохраняются." },
     { Str::CfgTraySection, "Icon in the notification area.", "Значок в системном трее." },
     { Str::CfgTrayEnabled, "true - show the tray icon (left click shows the window, right click opens the menu).",
                            "true - показывать значок в трее (левый клик - окно, правый - меню)." },
-    { Str::CfgNotificationsSection, "Balloon notifications.", "Всплывающие уведомления." },
-    { Str::CfgNotifyOnError, "true - notify about failures (at most one message per minute).",
-                             "true - уведомлять об ошибках (не чаще одного сообщения в минуту)." },
-    { Str::CfgNotifyOnDeviceChange, "true - notify when the audio device changed.",
-                                    "true - уведомлять о смене аудиоустройства." },
-    { Str::CfgNotifyOnStateChange, "true - notify when the latency reduction is switched on or off.",
-                                   "true - уведомлять о включении и выключении режима." },
+    { Str::CfgNotificationsSection, "Balloon notifications: shown only while the window of the program is hidden or minimized.",
+                                    "Всплывающие уведомления: показываются, только когда окно программы скрыто или свёрнуто." },
+    { Str::CfgNotifyOnError, "true - notify about failures (one notification per outage, not per retry).",
+                             "true - уведомлять об ошибках (одно уведомление на сбой, а не на каждую попытку)." },
+    { Str::CfgNotifyOnDeviceChange, "true - notify about a device change.",
+                                    "true - уведомлять о смене устройства." },
+    { Str::CfgNotifyOnStateChange, "true - notify when the latency reduction is switched on or off (and about a manual restart).",
+                                   "true - уведомлять о включении и выключении снижения задержки (и о ручном перезапуске)." },
     { Str::CfgMenuSection, "Tray menu items that can be hidden (false hides an item); the status line, \"Settings\" and \"Exit\" are always there.",
                            "Пункты меню значка, которые можно скрыть (false - пункт скрыт); строка состояния, \"Настройки\" и \"Выход\" есть всегда." },
     { Str::CfgMenuToggle, "The \"REAL is running\" item: switches the latency reduction on and off.",
                           "Пункт \"REAL запущен\": включает и выключает снижение задержки." },
     { Str::CfgMenuReinitialize, "The \"Restart\" item: the audio streams are created again.",
                                 "Пункт \"Перезапустить\": аудиопотоки создаются заново." },
-    { Str::CfgMenuLog, "Item that opens the log.", "Пункт открытия журнала." },
-    { Str::CfgMenuDiagnostics, "Item that writes a report about the audio devices.",
-                               "Пункт создания отчёта об аудиоустройствах." },
+    { Str::CfgMenuLog, "The \"Log file\" item: opens the log.", "Пункт \"Файл журнала\": открывает журнал." },
+    { Str::CfgMenuDiagnostics, "The \"Diagnostics\" item: a report about the audio devices.",
+                               "Пункт \"Диагностика\": отчёт об аудиоустройствах." },
     { Str::CfgAudioSection, "How REAL talks to the audio engine.", "Параметры работы с аудиодвижком." },
-    { Str::CfgDataFlow, "Devices to process: \"render\" (playback), \"capture\" (recording), \"both\".",
-                        "Какие устройства обрабатывать: \"render\" (воспроизведение), \"capture\" (запись), \"both\"." },
-    { Str::CfgPeriodSelection, "Which buffer to request: \"min\" - the smallest period of the device; \"fundamental\" - the same smallest period rounded up to the base step of the engine (the step itself is not a period, so a value below the minimum is never requested); \"fixed\" - exactly the number of frames written in requestedPeriodFrames.",
-                               "Какой буфер запрашивать: \"min\" - минимальный период устройства; \"fundamental\" - он же, выровненный по базовому шагу движка (сам шаг периодом не является, поэтому меньше минимального не запрашивается никогда); \"fixed\" - ровно столько фреймов, сколько указано в requestedPeriodFrames." },
-    { Str::CfgRequestedPeriodFrames, "The buffer in frames that \"fixed\" asks for: it is rounded to the base step of the engine and kept inside the range the device supports (0 - the smallest period of the device).",
-                                     "Буфер во фреймах, который запрашивает \"fixed\": округляется по базовому шагу движка и удерживается в поддерживаемом устройством диапазоне (0 - минимальный период устройства)." },
+    { Str::CfgDataFlow, "Devices to process: \"render\" (playback), \"capture\" (recording), \"both\" (playback and recording).",
+                        "Какие устройства обрабатывать: \"render\" (воспроизведение), \"capture\" (запись), \"both\" (воспроизведение и запись)." },
+    { Str::CfgBuffer, "Buffer: \"min\" - the smallest one the device driver supports; \"fixed\" - a fixed one, its size is in fixedBufferFrames.",
+                      "Буфер: \"min\" - минимальный, который поддерживает драйвер устройства; \"fixed\" - фиксированный, размер в fixedBufferFrames." },
+    { Str::CfgFixedBufferFrames, "Size of the fixed buffer in frames, for \"fixed\" only: from the minimum to the maximum buffer of the device in its base step (see the diagnostics report); a value that does not fit is adjusted, and the journal says so. 0 - not set.",
+                                 "Размер фиксированного буфера во фреймах, только для \"fixed\": от минимального до максимального буфера устройства с его базовым шагом (см. отчёт диагностики); неподходящее значение подгоняется, о чём пишется в журнал. 0 - не задан." },
     { Str::CfgReinitSection, "When to restart automatically (the audio streams are created again).",
                              "Когда перезапускать автоматически (аудиопотоки создаются заново)." },
-    { Str::CfgReinitDeviceChanged, "The default device changed (the main case).",
-                                   "Сменилось устройство по умолчанию (основной случай)." },
-    { Str::CfgReinitDeviceState, "A device became active or inactive (headphones switched on).",
-                                 "Устройство стало активным или неактивным (включение наушников)." },
-    { Str::CfgReinitDeviceAdded, "A device that was never connected before appeared (a known device plugged back in is a state change).",
-                                 "Подключено устройство, которого раньше не было (повторное подключение знакомого - смена состояния)." },
-    { Str::CfgReinitDeviceRemoved, "A device was removed.", "Устройство удалено." },
+    { Str::CfgReinitDeviceChanged, "Default device change (the main case).",
+                                   "Смена устройства по умолчанию (основной случай)." },
+    { Str::CfgReinitDeviceState, "A device connected or disconnected: it became active or inactive (headphones, USB).",
+                                 "Подключение и отключение устройства: оно стало активным или неактивным (наушники, USB)." },
+    { Str::CfgReinitDeviceAdded, "A new device that did not exist in the system before (a known device plugged back in belongs to deviceStateChanged).",
+                                 "Появление нового устройства, которого раньше не было в системе (знакомое устройство при повторном подключении относится к deviceStateChanged)." },
+    { Str::CfgReinitDeviceRemoved, "A device removed from the system.", "Удаление устройства из системы." },
     { Str::CfgReinitResume, "Resume from sleep or Modern Standby.", "Выход из сна или Modern Standby." },
     { Str::CfgReinitUnlock, "Session unlock (Win+L).", "Разблокировка сеанса (Win+L)." },
     { Str::CfgReinitEnableWhenDisabled, "true - a device change switches the latency reduction back on if it was off.",
                                         "true - при смене устройства включать снижение задержки, если оно было выключено." },
-    { Str::CfgReinitFailureTimeout, "How long to keep retrying before the mode is switched off and polling stops (ms).",
-                                    "Сколько миллисекунд повторять попытки, прежде чем выключить режим и прекратить опрос." },
-    { Str::CfgReinitDebounce, "Pause before restarting: Windows sends a burst of events (ms).",
-                              "Пауза перед перезапуском: Windows присылает пачку событий подряд (мс)." },
+    { Str::CfgReinitFailureTimeout, "How long to keep retrying before the latency reduction is switched off and polling stops (ms, 5000–3600000).",
+                                    "Сколько миллисекунд повторять попытки, прежде чем выключить снижение задержки и прекратить опрос (5000–3600000)." },
+    { Str::CfgReinitDebounce, "Pause before restarting: Windows sends a burst of events (ms, 0–60000).",
+                              "Пауза перед перезапуском: Windows присылает пачку событий подряд (мс, 0–60000)." },
     { Str::CfgPerformanceSection, "The REAL process itself. It does not affect the sound: the sound is processed by the Windows Audio service.",
                                   "Сам процесс REAL. На звук не влияет: звук обрабатывает служба Windows Audio." },
     { Str::CfgProcessPriority, "Process priority as in the Task Manager: \"normal\", \"belowNormal\" (below normal) or \"idle\" (low).",
@@ -705,19 +727,15 @@ const Entry TABLE[] = {
                               "Проверка обновлений: не больше одного раза при запуске, во время работы запросов нет." },
     { Str::CfgUpdatesCheckOnStartup, "true - check once at startup; false - no network request at all.",
                                      "true - один раз проверить обновления при запуске; false - ни одного сетевого запроса." },
-    { Str::CfgHotkeysSection, "Global hotkeys.", "Глобальные горячие клавиши." },
-    { Str::CfgHotkeysEnabled, "true - register the hotkeys.", "true - регистрировать горячие клавиши." },
-    { Str::CfgHotkeysToggle, "Enable or disable the mode. Keys: Ctrl, Alt, Shift, Win, A-Z, 0-9, F1-F24.",
-                             "Включить и выключить режим. Клавиши: Ctrl, Alt, Shift, Win, A-Z, 0-9, F1-F24." },
-    { Str::CfgHotkeysReinitialize, "Restart: create the audio streams again.", "Перезапустить: заново создать аудиопотоки." },
     { Str::CfgLoggingSection, "Log file. The window of the program always shows the operations at the info level.",
                               "Файл журнала. В окне программы всегда видны основные операции уровня info." },
     { Str::CfgLoggingLevel, "\"off\" - the file is not written at all; \"error\", \"warn\", \"info\", \"debug\", \"trace\" - from the shortest file to the most detailed one.",
                             "\"off\" - файл не ведётся совсем; \"error\", \"warn\", \"info\", \"debug\", \"trace\" - от самого краткого файла к самому подробному." },
-    { Str::CfgLoggingFilePath, "Log path: relative to the REAL.exe directory or absolute.",
-                               "Путь к журналу: относительно каталога REAL.exe или абсолютный." },
-    { Str::CfgLoggingMaxFileSize, "Log file size before rotation (MB).", "Размер файла журнала до ротации (МБ)." },
-    { Str::CfgLoggingMaxFiles, "How many log files to keep.", "Сколько файлов журнала хранить." },
+    { Str::CfgLoggingFilePath, "Path of the log file: relative to the REAL.exe directory or absolute.",
+                               "Путь к файлу журнала: относительно каталога REAL.exe или абсолютный." },
+    { Str::CfgLoggingMaxFileSize, "Size of one log file before the next one is started (MB, 1–1024).",
+                                  "Размер одного файла журнала, после которого начинается следующий (МБ, 1–1024)." },
+    { Str::CfgLoggingMaxFiles, "How many log files to keep (1–100).", "Сколько файлов журнала хранить (1–100)." },
 };
 
 constexpr size_t TABLE_SIZE = sizeof(TABLE) / sizeof(TABLE[0]);
@@ -868,6 +886,17 @@ std::string miniant::Lang::Channels(unsigned int count) {
     return Counted(count, "channel", "channels", "канал", "канала", "каналов");
 }
 
+std::string miniant::Lang::Decimal(double value) {
+    std::string text = fmt::format("{:.2f}", value);
+
+    // A decimal comma in Russian: "7,00 мс", not "7.00 мс".
+    if (Current() == Language::Russian) {
+        std::replace(text.begin(), text.end(), '.', ',');
+    }
+
+    return text;
+}
+
 std::string miniant::Lang::Milliseconds(double value) {
-    return fmt::format(Current() == Language::Russian ? "{:.2f} мс" : "{:.2f} ms", value);
+    return Decimal(value) + (Current() == Language::Russian ? " мс" : " ms");
 }
