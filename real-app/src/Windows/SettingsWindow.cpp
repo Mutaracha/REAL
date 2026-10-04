@@ -62,10 +62,6 @@ const int COMBO_CHROME = 30;
 // A field of a number is as wide as the largest value it takes plus its border
 // and the margins of the text.
 const int EDIT_CHROME = 16;
-// A row of choices ("Language:" and its buttons): the space after the caption
-// and between two buttons.
-const int CHOICE_CAPTION_GAP = 10;
-const int CHOICE_GAP = 16;
 // The space between two columns of check boxes.
 const int COLUMN_GAP = 24;
 // The longest path the field of the log file takes.
@@ -91,26 +87,23 @@ const int PAGE_AIR = 2;
 // pixels of reserve keep its last letter from being cut off.
 const int HEADER_SLACK = 4;
 
-// A value that the window does not take is put back, and a balloon at its
+// "Save" puts back a value that the window does not take, and a balloon at its
 // field says why: it disappears by itself after a while, or when the user
-// types, switches the page or leaves the window. The check of a field runs
-// after the keyboard has really moved on (see WM_APP_CHECK_FIELD).
+// types, switches the page or leaves the window (see CheckAllFields).
 const UINT_PTR TIP_TIMER_ID = 1;
 const UINT TIP_DURATION_MS = 6000;
 const int TIP_MAX_WIDTH = 320;
 // The note that the folder of the settings file has been copied: shorter, it
 // only confirms the click.
 const UINT COPY_TIP_DURATION_MS = 3000;
-const UINT WM_APP_CHECK_FIELD = WM_APP + 1;
 
 // The background of the pages is made again after a change of the theme or of
 // the colours of the system, once the tab control has taken it.
 const UINT WM_APP_PAGE_BRUSH = WM_APP + 2;
 
-// A language chosen in the window (or read by "Reload"): the window is built
-// again in it after the click is over, never inside the notification of a
-// button that the rebuild destroys. wParam is the control that keeps the
-// keyboard (see SwitchLanguage).
+// A language chosen in the window (or read by "Reload"): the window takes it
+// once the notification of the control is over (see SwitchLanguage). wParam is
+// the control that keeps the keyboard.
 const UINT WM_APP_LANGUAGE = WM_APP + 3;
 
 // The descriptions of the settings that show when the mouse rests on them stay
@@ -123,9 +116,7 @@ const UINT_PTR HINT_AREA_BASE = 0x10000;
 // a control that is not on screen at the moment (another page is open) keeps
 // its state.
 enum class Id : int {
-    LanguageAuto = 1000,
-    LanguageEnglish,
-    LanguageRussian,
+    Language = 1000,
     StartWithWindows,
     StartMinimizedToTray,
     MinimizeToTray,
@@ -207,8 +198,10 @@ struct Context {
         return Dpi::Scale(value, dpi);
     }
 
-    // Every control of the window: the pages use the list to show and hide
-    // themselves, and a change of the DPI uses it to build the window again.
+    // Every control of the window in the order of creation: the pages use the
+    // list to show and hide themselves, a change of the DPI uses it to build
+    // the window again, and a change of the language to lay the same controls
+    // out again (see Relayout).
     std::vector<HWND> allControls;
 
     std::vector<std::pair<HWND, Page>> pageControls;
@@ -237,9 +230,13 @@ struct Context {
     // The right edge of the widest control of the pages in design pixels.
     int contentRight = 0;
 
+    // The right edge of the last tab in real pixels, with the labels of the
+    // language that makes it longer (see CreateTabs).
+    int tabsRight = 0;
+
     // The column of the labels in front of the lists and the fields of the
-    // group being built, and the width of a button: both follow the texts of
-    // the current language.
+    // group being built, and the width of a button: both follow the longer of
+    // the two texts of every caption, so they do not depend on the language.
     int labelWidth = 0;
     int buttonWidth = 75;
 
@@ -252,6 +249,19 @@ struct Context {
 
     bool saved = false;
     bool done = false;
+
+    // The window is being laid out again over the controls it has (another
+    // language, see Relayout): CreateControl takes them in the order of their
+    // creation instead of making new ones, and the size of the window waits
+    // until the window may be drawn again.
+    struct Relayout {
+        bool active = false;
+        bool failed = false;
+        size_t next = 0;
+        SIZE windowSize = {};
+    };
+
+    Relayout relayout;
 
     HFONT font = nullptr;
 
@@ -273,8 +283,9 @@ struct Context {
     HWND hints = nullptr;
     std::vector<HintArea> hintAreas;
 
-    // The last value of every checked field that the window took: a value it
-    // does not take is replaced with it. At first it is the value in use.
+    // The value of every checked field that the window took last: the one in
+    // use when it opened, then the one of Reload or of the device. "Save"
+    // replaces a value it does not take with it.
     std::vector<std::pair<Id, std::wstring>> lastValid;
 
     // The balloon of a field whose value was put back (see ShowFieldTip).
@@ -412,8 +423,8 @@ bool IsLogLevelOff(int index) {
         std::string(LOG_LEVELS[static_cast<size_t>(index)].value) == "off";
 }
 
-// The buttons of the language, in the order of their identifiers
-// (LanguageAuto, LanguageEnglish, LanguageRussian).
+// The items of the list of the language. The window shows the chosen language
+// at once (see SwitchLanguage).
 const Choice<const char*> LANGUAGES[] = {
     { "auto", Lang::Str::SettingsLanguageAuto },
     { "en", Lang::Str::SettingsLanguageEnglish },
@@ -440,10 +451,6 @@ const char* LanguageCode(int index) {
     return index >= 0 && index < static_cast<int>(LANGUAGE_COUNT)
         ? LANGUAGES[static_cast<size_t>(index)].value
         : LANGUAGES[0].value;
-}
-
-Id LanguageId(int index) {
-    return static_cast<Id>(static_cast<int>(Id::LanguageAuto) + index);
 }
 
 // Every control of the page that is being built is remembered: switching a page
@@ -492,6 +499,78 @@ int CheckWidth(Context& context, const std::wstring& text, int x) {
     return textWidth > 0 ? (std::min)(textWidth + CHECK_GLYPH_WIDTH, available) : available;
 }
 
+// The languages of the window. The layout makes room for the longer of the two
+// texts of every caption: a change of the language moves nothing, and the
+// window keeps its size.
+const Lang::Language LAYOUT_LANGUAGES[] = { Lang::Language::English, Lang::Language::Russian };
+
+// The width of a text of the window in design pixels in the language that
+// needs more room for it; the suffix is the colon of a label.
+int WidestTextWidth(Context& context, Lang::Str id, const wchar_t* suffix = L"") {
+    int widest = 0;
+
+    for (const Lang::Language language : LAYOUT_LANGUAGES) {
+        widest = (std::max)(widest, DesignTextWidth(context, context.font, Lang::Wide(id, language) + suffix));
+    }
+
+    return widest;
+}
+
+// The room of a check box in the language that needs more of it: the next
+// column and the width of the window follow it, while the box itself is as
+// wide as its own text in the language shown.
+int WidestCheckWidth(Context& context, Lang::Str text, int x) {
+    int widest = 0;
+
+    for (const Lang::Language language : LAYOUT_LANGUAGES) {
+        widest = (std::max)(widest, CheckWidth(context, Lang::Wide(text, language), x));
+    }
+
+    return widest;
+}
+
+// The text of a control as it is now.
+std::wstring WindowText(HWND control) {
+    const int length = ::GetWindowTextLengthW(control);
+    if (length <= 0) {
+        return {};
+    }
+
+    std::wstring text(static_cast<size_t>(length) + 1, L'\0');
+    const int copied = ::GetWindowTextW(control, text.data(), length + 1);
+    text.resize(copied > 0 ? static_cast<size_t>(copied) : 0);
+
+    return text;
+}
+
+// The control created at this point of the layout, when the window lays its
+// controls out again (see Relayout): it gets the text of the language shown -
+// unless its text is a value, then text is null - and its new place. A control
+// that does not answer to the layout stops the relayout, and the window is
+// built again instead.
+HWND ReuseControl(Context& context, const std::wstring* text, Id id, int x, int y, int width, int height) {
+    Context::Relayout& relayout = context.relayout;
+
+    if (relayout.failed || relayout.next >= context.allControls.size()) {
+        relayout.failed = true;
+        return nullptr;
+    }
+
+    const HWND control = context.allControls[relayout.next++];
+
+    if (::GetDlgCtrlID(control) != ControlId(id)) {
+        relayout.failed = true;
+        return nullptr;
+    }
+
+    if (text != nullptr && WindowText(control) != *text) {
+        ::SetWindowTextW(control, text->c_str());
+    }
+
+    ::SetWindowPos(control, nullptr, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+    return control;
+}
+
 HWND CreateControl(
     Context& context,
     const wchar_t* className,
@@ -503,13 +582,26 @@ HWND CreateControl(
     int width,
     int height,
     DWORD extendedStyle = 0) {
+    const int left = context.Scale(x) + context.offsetX;
+    const int top = context.Scale(y) + context.offsetY;
+
+    // Laid out again, the window keeps its controls. A field keeps what is
+    // typed in it; a list and the tabs have no text of their own.
+    if (context.relayout.active) {
+        const bool valueText = ::lstrcmpiW(className, L"EDIT") == 0 || ::lstrcmpiW(className, L"COMBOBOX") == 0 ||
+            ::lstrcmpiW(className, WC_TABCONTROLW) == 0;
+
+        return ReuseControl(
+            context, valueText ? nullptr : &text, id, left, top, context.Scale(width), context.Scale(height));
+    }
+
     const HWND control = ::CreateWindowExW(
         extendedStyle,
         className,
         text.c_str(),
         style | WS_CHILD | WS_VISIBLE,
-        context.Scale(x) + context.offsetX,
-        context.Scale(y) + context.offsetY,
+        left,
+        top,
         context.Scale(width),
         context.Scale(height),
         context.window,
@@ -534,14 +626,15 @@ HWND Get(Context& context, Id id);
 
 // A group starts at y: its rows begin at ROW_X under the caption of the frame,
 // and its lists and fields stand in a column of their own, right after the
-// longest of the given labels (see RowColumn for a longer one).
+// longest of the given labels in either language (see RowColumn for a longer
+// one).
 int BeginGroup(Context& context, Lang::Str caption, int y, const std::vector<Lang::Str>& labels = {}) {
     context.groupTop = y;
     context.groupCaption = caption;
 
     int widest = 0;
     for (const Lang::Str label : labels) {
-        widest = (std::max)(widest, DesignTextWidth(context, context.font, LabelText(context, label)));
+        widest = (std::max)(widest, WidestTextWidth(context, label, L":"));
     }
 
     context.labelWidth = widest > 0 ? widest + LABEL_GAP : 0;
@@ -569,8 +662,8 @@ int EndGroup(Context& context, int y) {
 
     BindToPage(context, frame);
 
-    // The caption has to fit into the frame as well.
-    ExtendContent(context, ROW_X + DesignTextWidth(context, context.font, caption) + HEADER_SLACK);
+    // The caption has to fit into the frame as well, in either language.
+    ExtendContent(context, ROW_X + WidestTextWidth(context, context.groupCaption) + HEADER_SLACK);
 
     return bottom;
 }
@@ -588,6 +681,10 @@ void AddHint(Context& context, HWND control, HWND label, Lang::Str text) {
 
     std::wstring body = TextOf(context, text);
 
+    // Laid out again, the window keeps its tools and gives them the texts of
+    // the language shown.
+    const UINT message = context.relayout.active ? TTM_UPDATETIPTEXTW : TTM_ADDTOOLW;
+
     for (const HWND tool : { control, label }) {
         if (tool == nullptr) {
             continue;
@@ -599,7 +696,7 @@ void AddHint(Context& context, HWND control, HWND label, Lang::Str text) {
         info.hwnd = context.window;
         info.uId = reinterpret_cast<UINT_PTR>(tool);
         info.lpszText = body.data();
-        ::SendMessageW(context.hints, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&info));
+        ::SendMessageW(context.hints, message, 0, reinterpret_cast<LPARAM>(&info));
     }
 
     // The area starts empty: UpdateHintAreas sets it while the control is
@@ -610,7 +707,7 @@ void AddHint(Context& context, HWND control, HWND label, Lang::Str text) {
     area.hwnd = context.window;
     area.uId = HINT_AREA_BASE + context.hintAreas.size();
     area.lpszText = body.data();
-    ::SendMessageW(context.hints, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&area));
+    ::SendMessageW(context.hints, message, 0, reinterpret_cast<LPARAM>(&area));
 
     context.hintAreas.push_back({ control, context.page });
 }
@@ -679,103 +776,49 @@ void DestroyHints(Context& context) {
 // ------------------------------------------------------------- rows -------
 
 // A check box at the given left edge: ROW_X, or the second column of a group.
-// WS_GROUP in extraStyle starts a new group of controls (see AddChoiceRow).
-HWND AddCheckAt(Context& context, Id id, Lang::Str text, bool value, int x, int y, DWORD extraStyle = 0) {
+// The box is as wide as its own text; the page makes room for the text of
+// either language.
+HWND AddCheckAt(Context& context, Id id, Lang::Str text, bool value, int x, int y) {
     const std::wstring caption = TextOf(context, text);
     const int width = CheckWidth(context, caption, x);
 
     const HWND check = CreateControl(
-        context, L"BUTTON", caption, BS_AUTOCHECKBOX | WS_TABSTOP | extraStyle, id,
+        context, L"BUTTON", caption, BS_AUTOCHECKBOX | WS_TABSTOP, id,
         x, y, width, ROW_HEIGHT);
 
-    if (check != nullptr) {
+    // Laid out again, a check box keeps the state the user has given it.
+    if (check != nullptr && !context.relayout.active) {
         ::SendMessageW(check, BM_SETCHECK, value ? BST_CHECKED : BST_UNCHECKED, 0);
     }
 
     BindToPage(context, check);
-    ExtendContent(context, x + width);
+    ExtendContent(context, x + WidestCheckWidth(context, text, x));
     return check;
 }
 
-int AddCheck(
-    Context& context, Id id, Lang::Str text, bool value, int y,
-    Lang::Str hint = Lang::Str::Count, DWORD extraStyle = 0) {
-    AddHint(context, AddCheckAt(context, id, text, value, ROW_X, y, extraStyle), nullptr, hint);
+int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y, Lang::Str hint = Lang::Str::Count) {
+    AddHint(context, AddCheckAt(context, id, text, value, ROW_X, y), nullptr, hint);
     return y + ROW_STEP;
 }
 
 // The caption of a part of a group ("Icon menu items:"): plain text of a row.
 int AddCaption(Context& context, Id id, Lang::Str text, int y) {
-    const std::wstring caption = TextOf(context, text);
     const int available = context.pageRight - ROW_X;
-    const int textWidth = DesignTextWidth(context, context.font, caption);
-    const int width = textWidth > 0 ? (std::min)(textWidth + HEADER_SLACK, available) : available;
+    const auto widthOf = [&context, available](const std::wstring& caption) {
+        const int textWidth = DesignTextWidth(context, context.font, caption);
+        return textWidth > 0 ? (std::min)(textWidth + HEADER_SLACK, available) : available;
+    };
+
+    const std::wstring caption = TextOf(context, text);
 
     BindToPage(context, CreateControl(
         context, L"STATIC", caption, SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX, id,
-        ROW_X, y, width, ROW_HEIGHT));
+        ROW_X, y, widthOf(caption), ROW_HEIGHT));
 
-    ExtendContent(context, ROW_X + width);
-    return y + ROW_STEP;
-}
-
-// Tab enters a group of choices at its selected button, as in every dialog
-// box of the system: only that button is a tab stop.
-void UpdateChoiceTabStop(Context& context, Id firstId, size_t count) {
-    bool anyChecked = false;
-
-    for (size_t i = 0; i < count; ++i) {
-        const HWND button = Get(context, static_cast<Id>(static_cast<int>(firstId) + static_cast<int>(i)));
-        anyChecked = anyChecked || (button != nullptr && ::SendMessageW(button, BM_GETCHECK, 0, 0) == BST_CHECKED);
+    for (const Lang::Language language : LAYOUT_LANGUAGES) {
+        ExtendContent(context, ROW_X + widthOf(Lang::Wide(text, language)));
     }
 
-    for (size_t i = 0; i < count; ++i) {
-        const HWND button = Get(context, static_cast<Id>(static_cast<int>(firstId) + static_cast<int>(i)));
-        if (button == nullptr) {
-            continue;
-        }
-
-        const bool stop = anyChecked ? ::SendMessageW(button, BM_GETCHECK, 0, 0) == BST_CHECKED : i == 0;
-        const LONG_PTR style = ::GetWindowLongPtrW(button, GWL_STYLE);
-        ::SetWindowLongPtrW(
-            button, GWL_STYLE, stop ? (style | WS_TABSTOP) : (style & ~static_cast<LONG_PTR>(WS_TABSTOP)));
-    }
-}
-
-// A row of choices right after its caption, outside the column of the labels:
-// "Language:  (o) As in Windows  ( ) English  ( ) Русский". The buttons have
-// consecutive identifiers from firstId and are one group: the arrows move
-// between them, and the control after the row starts the next group.
-int AddChoiceRow(
-    Context& context, Id firstId, Lang::Str label, const std::vector<Lang::Str>& texts, int selected, int y) {
-    const std::wstring caption = TextOf(context, label);
-    const int captionWidth = DesignTextWidth(context, context.font, caption) + HEADER_SLACK;
-
-    BindToPage(context, CreateControl(
-        context, L"STATIC", caption, SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
-        ROW_X, y, captionWidth, ROW_HEIGHT));
-
-    int x = ROW_X + captionWidth + CHOICE_CAPTION_GAP;
-
-    for (size_t i = 0; i < texts.size(); ++i) {
-        const std::wstring text = TextOf(context, texts[i]);
-        const int width = CheckWidth(context, text, x);
-        const Id id = static_cast<Id>(static_cast<int>(firstId) + static_cast<int>(i));
-
-        const HWND button = CreateControl(
-            context, L"BUTTON", text, BS_AUTORADIOBUTTON | (i == 0 ? WS_GROUP : 0), id,
-            x, y, width, ROW_HEIGHT);
-
-        if (button != nullptr && static_cast<int>(i) == selected) {
-            ::SendMessageW(button, BM_SETCHECK, BST_CHECKED, 0);
-        }
-
-        BindToPage(context, button);
-        ExtendContent(context, x + width);
-        x += width + CHOICE_GAP;
-    }
-
-    UpdateChoiceTabStop(context, firstId, texts.size());
     return y + ROW_STEP;
 }
 
@@ -785,7 +828,7 @@ int ComboWidth(Context& context, const std::vector<Lang::Str>& texts) {
     int widest = 0;
 
     for (const Lang::Str text : texts) {
-        for (const Lang::Language language : { Lang::Language::English, Lang::Language::Russian }) {
+        for (const Lang::Language language : LAYOUT_LANGUAGES) {
             widest = (std::max)(widest, DesignTextWidth(context, context.font, Lang::Wide(text, language)));
         }
     }
@@ -797,8 +840,7 @@ int ComboWidth(Context& context, const std::vector<Lang::Str>& texts) {
 // when that label is longer ("Fixed buffer, frames:" under the lists that
 // follow "Devices:").
 int RowColumn(Context& context, Lang::Str label) {
-    return (std::max)(
-        context.labelWidth, DesignTextWidth(context, context.font, LabelText(context, label)) + LABEL_GAP);
+    return (std::max)(context.labelWidth, WidestTextWidth(context, label, L":") + LABEL_GAP);
 }
 
 // The label of a list or a field, with its colon, up to the column of its row.
@@ -832,12 +874,22 @@ int AddCombo(
     BindToPage(context, combo);
 
     if (combo != nullptr) {
+        // Laid out again, a list gets the items of the language shown and keeps
+        // the one the user has chosen.
+        const int chosen = context.relayout.active
+            ? static_cast<int>(::SendMessageW(combo, CB_GETCURSEL, 0, 0))
+            : selected;
+
+        if (context.relayout.active) {
+            ::SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+        }
+
         for (const Lang::Str text : texts) {
             ::SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(TextOf(context, text).c_str()));
         }
 
-        if (selected >= 0 && selected < static_cast<int>(texts.size())) {
-            ::SendMessageW(combo, CB_SETCURSEL, static_cast<WPARAM>(selected), 0);
+        if (chosen >= 0 && chosen < static_cast<int>(texts.size())) {
+            ::SendMessageW(combo, CB_SETCURSEL, static_cast<WPARAM>(chosen), 0);
         }
     }
 
@@ -886,7 +938,13 @@ int AddEdit(
     }
 
     BindToPage(context, edit);
-    RememberValid(context, id, value);
+
+    // Laid out again, a field keeps what is typed in it and the value the
+    // window took last.
+    if (!context.relayout.active) {
+        RememberValid(context, id, value);
+    }
+
     AddHint(context, edit, caption, hint);
 
     ExtendContent(context, x + width);
@@ -949,15 +1007,7 @@ std::wstring ReadText(Context& context, Id id, const std::wstring& fallback) {
         return fallback;
     }
 
-    const int length = ::GetWindowTextLengthW(control);
-    if (length <= 0) {
-        return fallback;
-    }
-
-    std::wstring text(static_cast<size_t>(length) + 1, L'\0');
-    const int copied = ::GetWindowTextW(control, text.data(), length + 1);
-    text.resize(copied > 0 ? static_cast<size_t>(copied) : 0);
-
+    const std::wstring text = WindowText(control);
     return text.empty() ? fallback : text;
 }
 
@@ -992,8 +1042,9 @@ int ReadNumber(Context& context, Id id, const Config::NumberLimits& limits, int 
 }
 
 // The hint under the field of the fixed buffer: the range of the device in
-// frames and in milliseconds. Empty while no device has been seen.
-std::wstring BufferHintText(const Context& context) {
+// frames and in milliseconds, in the given language. Empty while no device has
+// been seen.
+std::wstring BufferHintText(const Context& context, Lang::Language language) {
     const BufferRange& range = context.bufferRange;
     if (range.minimum == 0) {
         return {};
@@ -1006,12 +1057,12 @@ std::wstring BufferHintText(const Context& context) {
     };
 
     return Text::ToWide(fmt::format(
-        Lang::Utf8(Lang::Str::SettingsBufferHint, context.language),
+        Lang::Utf8(Lang::Str::SettingsBufferHint, language),
         range.minimum,
         range.maximum,
         BufferStep(range),
-        Lang::Decimal(milliseconds(range.minimum), context.language),
-        Lang::Decimal(milliseconds(range.maximum), context.language)));
+        Lang::Decimal(milliseconds(range.minimum), language),
+        Lang::Decimal(milliseconds(range.maximum), language)));
 }
 
 // ------------------------------------------------------------ checks ------
@@ -1115,15 +1166,15 @@ int BuildWindowPage(Context& context) {
     // sides.
     int y = PAGE_TOP + GROUP_INSET;
 
-    y = BeginGroup(context, Lang::Str::SettingsHeaderApplication, y, { Lang::Str::SettingsCloseAction });
+    y = BeginGroup(context, Lang::Str::SettingsHeaderApplication, y,
+        { Lang::Str::SettingsLanguage, Lang::Str::SettingsCloseAction });
 
-    // The language as a row of buttons right after its caption.
-    y = AddChoiceRow(context, Id::LanguageAuto, Lang::Str::SettingsLanguage, Texts(LANGUAGES),
+    // The language is a list, as wide as its longest item in either language:
+    // the window keeps its size whatever the language (see SwitchLanguage).
+    y = AddCombo(context, Id::Language, Lang::Str::SettingsLanguage, Texts(LANGUAGES),
         LanguageIndex(settings.application.language), y);
-
-    // WS_GROUP: the buttons of the language end here, the arrows stay in them.
     y = AddCheck(context, Id::StartWithWindows, Lang::Str::SettingsStartWithWindows,
-        settings.application.startWithWindows, y, Lang::Str::SettingsHintStartWithWindows, WS_GROUP);
+        settings.application.startWithWindows, y, Lang::Str::SettingsHintStartWithWindows);
     y = AddCheck(context, Id::StartMinimizedToTray, Lang::Str::SettingsStartMinimized,
         settings.application.startMinimizedToTray, y, Lang::Str::SettingsHintStartMinimized);
     y = AddCheck(context, Id::MinimizeToTray, Lang::Str::SettingsMinimizeToTray,
@@ -1143,8 +1194,8 @@ int BuildWindowPage(Context& context) {
     y = AddCaption(context, Id::TrayMenuCaption, Lang::Str::SettingsTrayMenuCaption, y);
     {
         const int secondColumn = ROW_X + COLUMN_GAP + (std::max)(
-            CheckWidth(context, TextOf(context, Lang::Str::TrayToggleEnabled), ROW_X),
-            CheckWidth(context, TextOf(context, Lang::Str::TrayReinitialize), ROW_X));
+            WidestCheckWidth(context, Lang::Str::TrayToggleEnabled, ROW_X),
+            WidestCheckWidth(context, Lang::Str::TrayReinitialize, ROW_X));
 
         AddCheckAt(context, Id::TrayMenuToggle, Lang::Str::TrayToggleEnabled,
             settings.tray.menu.toggleEnabled, ROW_X, y);
@@ -1199,16 +1250,22 @@ int BuildAudioPage(Context& context) {
     // stays when it is hidden: nothing below moves with the choice of the
     // buffer (see UpdateHintVisibility).
     {
-        const std::wstring hint = BufferHintText(context);
         const int available = context.pageRight - GROUP_INSET - GROUP_PADDING - ROW_X;
-        const int textWidth = hint.empty() ? 0 : DesignTextWidth(context, context.font, hint);
-        const int width = textWidth > 0 ? (std::min)(textWidth + HEADER_SLACK, available) : context.labelWidth;
+        const auto widthOf = [&context, available](const std::wstring& hint) {
+            const int textWidth = hint.empty() ? 0 : DesignTextWidth(context, context.font, hint);
+            return textWidth > 0 ? (std::min)(textWidth + HEADER_SLACK, available) : context.labelWidth;
+        };
+
+        const std::wstring hint = BufferHintText(context, context.language);
 
         BindToPage(context, CreateControl(
             context, L"STATIC", hint, SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX, Id::AudioBufferHint,
-            ROW_X, y, width, ROW_HEIGHT));
+            ROW_X, y, widthOf(hint), ROW_HEIGHT));
 
-        ExtendContent(context, ROW_X + width);
+        for (const Lang::Language language : LAYOUT_LANGUAGES) {
+            ExtendContent(context, ROW_X + widthOf(BufferHintText(context, language)));
+        }
+
         y += ROW_STEP;
     }
 
@@ -1319,19 +1376,36 @@ int BuildOtherPage(Context& context) {
     return EndGroup(context, y);
 }
 
+// The labels of the tabs, in the order of the pages.
+const Lang::Str TAB_TEXTS[] = {
+    Lang::Str::SettingsTabWindow,
+    Lang::Str::SettingsTabAudio,
+    Lang::Str::SettingsTabOther,
+};
+
+const size_t TAB_COUNT = sizeof(TAB_TEXTS) / sizeof(TAB_TEXTS[0]);
+
+// Puts the labels of a language on the tabs: inserted when the tabs are made,
+// replaced afterwards.
+void PutTabTexts(Context& context, Lang::Language language, bool insert) {
+    for (size_t i = 0; i < TAB_COUNT; ++i) {
+        const std::wstring text = Lang::Wide(TAB_TEXTS[i], language);
+
+        TCITEMW item = {};
+        item.mask = TCIF_TEXT;
+        item.pszText = const_cast<wchar_t*>(text.c_str());
+
+        ::SendMessageW(
+            context.tabs, insert ? TCM_INSERTITEMW : TCM_SETITEMW, static_cast<WPARAM>(i),
+            reinterpret_cast<LPARAM>(&item));
+    }
+}
+
 // The tab control of the system: it draws the tabs itself, so they can never
 // overlap each other or the page. The pages are ordinary controls of the window
 // that are placed inside the display area of the tabs and are shown one page at
 // a time.
 void CreateTabs(Context& context) {
-    const struct {
-        Lang::Str text;
-    } ITEMS[] = {
-        { Lang::Str::SettingsTabWindow },
-        { Lang::Str::SettingsTabAudio },
-        { Lang::Str::SettingsTabOther },
-    };
-
     const int top = MARGIN;
     // A provisional bottom: FitWindowToContent sets the real one when the pages
     // are built and their height is known.
@@ -1349,14 +1423,25 @@ void CreateTabs(Context& context) {
         return;
     }
 
-    for (size_t i = 0; i < sizeof(ITEMS) / sizeof(ITEMS[0]); ++i) {
-        const std::wstring text = TextOf(context, ITEMS[i].text);
+    // The tabs get the labels of the other language first and are measured
+    // with both: the window fits them in either language (see
+    // FitWindowToContent). The labels of the language shown stay; laid out
+    // again, the window keeps its tabs and replaces their labels.
+    const Lang::Language other =
+        context.language == Lang::Language::English ? Lang::Language::Russian : Lang::Language::English;
+    bool insert = !context.relayout.active;
+    context.tabsRight = 0;
 
-        TCITEMW item = {};
-        item.mask = TCIF_TEXT;
-        item.pszText = const_cast<wchar_t*>(text.c_str());
+    for (const Lang::Language language : { other, context.language }) {
+        PutTabTexts(context, language, insert);
+        insert = false;
 
-        ::SendMessageW(context.tabs, TCM_INSERTITEMW, static_cast<WPARAM>(i), reinterpret_cast<LPARAM>(&item));
+        RECT lastTab = {};
+        if (::SendMessageW(
+                context.tabs, TCM_GETITEMRECT, static_cast<WPARAM>(TAB_COUNT - 1),
+                reinterpret_cast<LPARAM>(&lastTab)) != FALSE) {
+            context.tabsRight = (std::max)(context.tabsRight, static_cast<int>(lastTab.right));
+        }
     }
 
     // The display area of the tabs: the pages are built in its coordinates.
@@ -1446,12 +1531,9 @@ void FitWindowToContent(Context& context, int contentBottom) {
     const int contentRight = context.Scale(context.contentRight) + context.offsetX + PAGE_AIR;
     int width = contentRight - tabsRect.left + borderRight;
 
-    // The labels of the tabs fit as well...
-    const int count = static_cast<int>(::SendMessageW(context.tabs, TCM_GETITEMCOUNT, 0, 0));
-    RECT lastTab = {};
-    if (count > 0 &&
-        ::SendMessageW(context.tabs, TCM_GETITEMRECT, static_cast<WPARAM>(count - 1), reinterpret_cast<LPARAM>(&lastTab)) != FALSE) {
-        width = (std::max)(width, static_cast<int>(lastTab.right) + context.Scale(4));
+    // The labels of the tabs fit as well, in either language...
+    if (context.tabsRight > 0) {
+        width = (std::max)(width, context.tabsRight + context.Scale(4));
     }
 
     // ...and so do the two buttons under the tabs.
@@ -1472,6 +1554,13 @@ void FitWindowToContent(Context& context, int contentBottom) {
     RECT window = { 0, 0, clientWidth, context.Scale(context.frameTop + FRAME_HEIGHT + MARGIN) };
     Dpi::AdjustWindowRect(
         window, static_cast<DWORD>(::GetWindowLongPtrW(context.window, GWL_STYLE)), context.dpi);
+
+    // Laid out again, the window is not drawn at the moment: its size is set
+    // when it may be drawn again (see Relayout).
+    if (context.relayout.active) {
+        context.relayout.windowSize = { window.right - window.left, window.bottom - window.top };
+        return;
+    }
 
     ::SetWindowPos(
         context.window, nullptr, 0, 0, window.right - window.left, window.bottom - window.top,
@@ -1653,19 +1742,24 @@ void BuildFrame(Context& context) {
         right - buttonWidth, rowY, buttonWidth, BUTTON_HEIGHT);
 }
 
-// Every control of the window for the current DPI. The order of creation is
-// the order of Tab: the fields of the pages, the buttons of the frame, and the
-// tabs, which are put under everything else at the end (see below). The frame
-// is built after the pages because it is placed under the tabs, whose height
-// follows the tallest page.
+// Every control of the window for the current DPI, or the same controls laid
+// out again (see Relayout). The order of creation is the order of Tab: the
+// fields of the pages, the buttons of the frame, and the tabs, which are put
+// under everything else at the end (see below). The frame is built after the
+// pages because it is placed under the tabs, whose height follows the tallest
+// page.
 void BuildContent(Context& context) {
-    // The sizes that follow the texts of the current language and font.
+    // The sizes that follow the texts of both languages and the font.
     context.buttonWidth = StandardButtonWidth(context.font, context.dpi);
     context.contentRight = 0;
     context.groupBoxes.clear();
 
     CreateTabs(context);
-    CreateHints(context);
+
+    // Laid out again, the window keeps its tooltip (see AddHint).
+    if (!context.relayout.active) {
+        CreateHints(context);
+    }
 
     const int windowBottom = BuildWindowPage(context);
     const int audioBottom = BuildAudioPage(context);
@@ -1691,18 +1785,23 @@ void BuildContent(Context& context) {
     }
 }
 
-// Builds the content again for another DPI or another language. The design
+// Builds the content again for another DPI (or for another language when the
+// controls do not answer to the layout, see SwitchLanguage). The design
 // coordinates never change, CreateControl scales them: the window of one
-// monitor keeps the layout that was approved, only larger or smaller; in
-// another language the columns and the width follow the new texts.
+// monitor keeps the layout that was approved, only larger or smaller.
 void Rebuild(Context& context, UINT dpi) {
     // Whatever the user has already typed is read back first: the controls are
-    // destroyed and built again, and a typed value must not be lost because the
-    // window was moved to another monitor or got another language. A value that
-    // cannot be used stays as it is in the settings; the window shows it again.
+    // destroyed and built again, and nothing typed may be lost because the
+    // window was moved to another monitor. A field keeps its text even when the
+    // window does not take the value: "Save" checks it.
     Config::Settings edited = *context.settings;
     ReadControls(context, edited);
     *context.settings = edited;
+
+    std::vector<std::pair<Id, std::wstring>> typed;
+    for (const CheckedField& field : CHECKED_FIELDS) {
+        typed.emplace_back(field.id, ReadText(context, field.id, L""));
+    }
 
     // The balloon and the descriptions point at controls that are about to be
     // destroyed.
@@ -1734,6 +1833,10 @@ void Rebuild(Context& context, UINT dpi) {
 
     BuildContent(context);
 
+    for (const auto& entry : typed) {
+        SetText(context, entry.first, entry.second);
+    }
+
     ShowPage(context, page);
     UpdateEnabledStates(context);
 
@@ -1744,6 +1847,58 @@ void Rebuild(Context& context, UINT dpi) {
     }
 
     ::RedrawWindow(context.window, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+}
+
+// Lays the window out again over the controls it has, in the language it shows
+// now: every control gets the text of that language and its place, the values
+// stay as the user has left them, and so do the open page and the keyboard. The
+// layout makes room for both languages, so nothing moves and the window keeps
+// its size; only a check box follows the length of its own text. Nothing is
+// drawn meanwhile: the screen keeps the old picture, and then the window is
+// drawn once, whole. False when the controls do not answer to the layout: the
+// window has to be built again then.
+bool Relayout(Context& context) {
+    const HWND window = context.window;
+    const Page page = context.page;
+
+    HideFieldTip(context);
+    ::SendMessageW(window, WM_SETREDRAW, FALSE, 0);
+
+    context.pageControls.clear();
+    context.hintAreas.clear();
+    context.relayout = Context::Relayout();
+    context.relayout.active = true;
+
+    BuildContent(context);
+
+    context.relayout.active = false;
+
+    if (context.relayout.failed || context.relayout.next != context.allControls.size()) {
+        context.page = page;
+        ::SendMessageW(window, WM_SETREDRAW, TRUE, 0);
+        return false;
+    }
+
+    ShowPage(context, page);
+    UpdateEnabledStates(context);
+
+    ::SendMessageW(window, WM_SETREDRAW, TRUE, 0);
+    ::SetWindowTextW(window, TextOf(context, Lang::Str::SettingsWindowTitle).c_str());
+
+    // The size does not depend on the language; should it differ all the same,
+    // it is set before the window is drawn.
+    RECT current = {};
+    const SIZE size = context.relayout.windowSize;
+
+    if (::GetWindowRect(window, &current) != FALSE && size.cx > 0 && size.cy > 0 &&
+        (size.cx != current.right - current.left || size.cy != current.bottom - current.top)) {
+        ::SetWindowPos(
+            window, nullptr, 0, 0, size.cx, size.cy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW);
+    }
+
+    ::RedrawWindow(
+        window, nullptr, nullptr, RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+    return true;
 }
 
 Page PageOfIndex(int index) {
@@ -1840,50 +1995,47 @@ bool HandlePageKeys(Context& context, const MSG& message) {
     return true;
 }
 
-// The button of the language that is on.
+// The item of the list of the language.
 int SelectedLanguage(Context& context) {
-    for (size_t i = 0; i < LANGUAGE_COUNT; ++i) {
-        if (IsChecked(context, LanguageId(static_cast<int>(i)))) {
-            return static_cast<int>(i);
-        }
-    }
-
-    return 0;
+    const int index = SelectedIndex(context, Id::Language);
+    return index >= 0 && index < static_cast<int>(LANGUAGE_COUNT) ? index : 0;
 }
 
-void SetLanguage(Context& context, int index) {
-    for (size_t i = 0; i < LANGUAGE_COUNT; ++i) {
-        SetChecked(context, LanguageId(static_cast<int>(i)), static_cast<int>(i) == index);
-    }
-
-    UpdateChoiceTabStop(context, Id::LanguageAuto, LANGUAGE_COUNT);
-}
-
-// The window takes the language of its buttons at once: the title, the tabs,
-// the frames, the labels, the lists, the descriptions and the balloons. The
-// content is built again, as for another monitor, so whatever is typed and the
-// open page stay; the width follows the new texts. Nothing happens when the
-// choice means the language already shown ("As in Windows" on a Windows of
-// that language). The rest of the program takes the language with "Save".
+// The window takes the language of its list at once: the title, the tabs, the
+// frames, the labels, the lists, the descriptions and the balloons (see
+// Relayout). Whatever is typed, the open page and the keyboard stay, and the
+// window keeps its size. Nothing happens when the choice means the language
+// already shown ("As in Windows" on a Windows of that language), and nothing
+// while the list is open: the user may still be going through it, and the
+// window takes the language once it closes. The rest of the program takes the
+// language with "Save".
 void SwitchLanguage(Context& context, Id focus) {
-    const int selected = SelectedLanguage(context);
-    const Lang::Language language = Lang::FromCode(LanguageCode(selected));
+    if (context.window == nullptr) {
+        return;
+    }
 
-    if (context.window == nullptr || language == context.language) {
+    const HWND list = Get(context, Id::Language);
+    if (list != nullptr && IsOpenList(list)) {
+        return;
+    }
+
+    const Lang::Language language = Lang::FromCode(LanguageCode(SelectedLanguage(context)));
+    if (language == context.language) {
         return;
     }
 
     context.language = language;
-    ::SetWindowTextW(context.window, TextOf(context, Lang::Str::SettingsWindowTitle).c_str());
 
+    if (Relayout(context)) {
+        return;
+    }
+
+    // The controls did not answer to the layout: the window is built again,
+    // and the control that had the keyboard gets it back.
+    ::SetWindowTextW(context.window, TextOf(context, Lang::Str::SettingsWindowTitle).c_str());
     Rebuild(context, context.dpi);
 
-    // The keyboard stays where it was: on the button of the language (the
-    // arrows go on through the languages), or on "Reload".
-    const bool languageButton = static_cast<int>(focus) >= static_cast<int>(Id::LanguageAuto) &&
-        static_cast<int>(focus) < static_cast<int>(Id::LanguageAuto) + static_cast<int>(LANGUAGE_COUNT);
-
-    if (const HWND control = Get(context, languageButton ? LanguageId(selected) : focus)) {
+    if (const HWND control = Get(context, focus)) {
         ::SetFocus(control);
     }
 }
@@ -1969,7 +2121,7 @@ void ReadControls(Context& context, Config::Settings& updated) {
 // so "Reload" brings its values into the window exactly like the page builder
 // does when the window opens.
 void ApplyToControls(Context& context, const Config::Settings& settings) {
-    SetLanguage(context, LanguageIndex(settings.application.language));
+    SetSelected(context, Id::Language, LanguageIndex(settings.application.language));
     SetChecked(context, Id::StartWithWindows, settings.application.startWithWindows);
     SetChecked(context, Id::StartMinimizedToTray, settings.application.startMinimizedToTray);
     SetChecked(context, Id::MinimizeToTray, settings.application.minimizeToTray);
@@ -2176,29 +2328,11 @@ void RejectField(Context& context, const CheckedField& field, const std::wstring
     }
 }
 
-// A field the keyboard has left (see WM_APP_CHECK_FIELD): a value the window
-// does not take is put back at once, a value it takes is remembered.
-void CheckField(Context& context, const CheckedField& field) {
-    const HWND control = Get(context, field.id);
-    if (control == nullptr || ::IsWindowEnabled(control) == FALSE || ::IsWindowVisible(control) == FALSE) {
-        return;
-    }
-
-    const std::wstring text = ReadText(context, field.id, L"");
-    const std::wstring problem = FieldProblem(context, field.id, text);
-
-    if (problem.empty()) {
-        RememberValid(context, field.id, text);
-        return;
-    }
-
-    RejectField(context, field, problem, true);
-}
-
-// Before the settings are saved: every value the window does not take is put
-// back. The first such field is brought to the front with its balloon, and
-// the window stays open so that the user sees what has changed. A greyed out
-// field does not count (its value is not used).
+// Before the settings are saved - the only time the fields are checked: every
+// value the window does not take is put back. The first such field is brought
+// to the front with its balloon, and the window stays open so that the user
+// sees what has changed. A greyed out field does not count (its value is not
+// used).
 bool CheckAllFields(Context& context) {
     bool rejected = false;
 
@@ -2373,25 +2507,20 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
                 break;
             }
 
-            // A checked field: its value is checked once the keyboard has
-            // really moved on (the new focus is known only then), and typing
-            // in it hides the balloon.
+            // A checked field is checked with "Save" only (see CheckAllFields);
+            // typing in it hides the balloon.
             if (FindCheckedField(id) != nullptr) {
-                if (notification == EN_KILLFOCUS) {
-                    ::PostMessageW(window, WM_APP_CHECK_FIELD, static_cast<WPARAM>(id), 0);
-                } else if (notification == EN_CHANGE) {
+                if (notification == EN_CHANGE) {
                     HideFieldTip(*context);
                 }
 
                 break;
             }
 
-            // Tab enters the buttons of the language at the selected one, and
-            // the window shows the chosen language once the click is over.
-            if (notification == BN_CLICKED &&
-                id >= static_cast<UINT>(ControlId(Id::LanguageAuto)) &&
-                id < static_cast<UINT>(ControlId(Id::LanguageAuto)) + LANGUAGE_COUNT) {
-                UpdateChoiceTabStop(*context, Id::LanguageAuto, LANGUAGE_COUNT);
+            // The window shows the chosen language once the notification is
+            // over; while the list is open it waits for the list to close.
+            if (id == static_cast<UINT>(ControlId(Id::Language)) &&
+                (notification == CBN_SELCHANGE || notification == CBN_CLOSEUP)) {
                 ::PostMessageW(window, WM_APP_LANGUAGE, static_cast<WPARAM>(id), 0);
                 return 0;
             }
@@ -2491,25 +2620,6 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
         case WM_APP_LANGUAGE:
             SwitchLanguage(*context, static_cast<Id>(static_cast<int>(wParam)));
             return 0;
-
-        case WM_APP_CHECK_FIELD: {
-            const CheckedField* field = FindCheckedField(static_cast<UINT>(wParam));
-            const HWND focus = ::GetFocus();
-
-            // Nothing is checked when the keyboard went to another program, came
-            // back to the field, or went to Save (it checks every field itself)
-            // or Cancel (the values are dropped).
-            const bool inWindow = focus != nullptr && (focus == window || ::IsChild(window, focus) != FALSE);
-
-            if (field != nullptr && inWindow &&
-                focus != Get(*context, field->id) &&
-                focus != Get(*context, Id::Save) &&
-                focus != Get(*context, Id::Cancel)) {
-                CheckField(*context, *field);
-            }
-
-            return 0;
-        }
 
         case WM_TIMER:
             if (context->tip.OnTimer(static_cast<UINT_PTR>(wParam))) {

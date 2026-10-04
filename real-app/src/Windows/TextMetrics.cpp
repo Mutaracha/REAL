@@ -19,6 +19,14 @@ const miniant::Lang::Str BUTTON_CAPTIONS[] = {
     miniant::Lang::Str::SettingsSave,
 };
 
+// The languages of the interface: a button is as wide as its longest caption in
+// either of them, so the settings window keeps its size when it changes its
+// language.
+const miniant::Lang::Language LANGUAGES[] = {
+    miniant::Lang::Language::English,
+    miniant::Lang::Language::Russian,
+};
+
 // The screen is enough for measuring: the letter spacing of a font does not
 // depend on the device the text is finally drawn on.
 HDC GetMeasuringDC() {
@@ -55,7 +63,9 @@ int miniant::Windows::StandardButtonWidth(HFONT font, UINT dpi) {
     int widest = 0;
 
     for (const miniant::Lang::Str caption : BUTTON_CAPTIONS) {
-        widest = (std::max)(widest, MeasureTextWidth(font, miniant::Lang::Wide(caption)));
+        for (const miniant::Lang::Language language : LANGUAGES) {
+            widest = (std::max)(widest, MeasureTextWidth(font, miniant::Lang::Wide(caption, language)));
+        }
     }
 
     // The width is measured in real pixels of the DPI, the layout is in design ones.

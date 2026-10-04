@@ -619,7 +619,7 @@ const Entry TABLE[] = {
     { Str::SettingsHeaderUpdates, "Updates", "Обновления" },
     { Str::SettingsHeaderLog, "Log", "Журнал" },
     { Str::SettingsHeaderSettingsFile, "Settings file", "Файл настроек" },
-    { Str::SettingsLanguage, "Language:", "Язык:" },
+    { Str::SettingsLanguage, "Language", "Язык" },
     { Str::SettingsLanguageAuto, "As in Windows", "Как в Windows" },
     // The names of the languages are written in the languages themselves and
     // do not change with the language of the interface.
@@ -700,7 +700,7 @@ const Entry TABLE[] = {
       "How many log files to keep; the oldest one is deleted when a new one starts.",
       "Сколько файлов журнала хранить; самый старый удаляется, когда начинается новый." },
     { Str::SettingsHintSettingsPath,
-      "A click copies the path of the folder with the file.",
+      "Click to copy the path of the folder containing the file.",
       "Щелчок копирует путь к папке с файлом." },
     { Str::SettingsReinitDeviceChanged, "Default device change", "Смена устройства по умолчанию" },
     { Str::SettingsReinitDeviceState, "Device connected or disconnected", "Подключение и отключение устройства" },
