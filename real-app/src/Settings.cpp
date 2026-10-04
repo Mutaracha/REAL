@@ -522,16 +522,13 @@ LoadResult miniant::Config::Load(const std::wstring& path, const Settings& previ
             const char* name = "audio.reinit";
 
             ReadBool(*reinit, "defaultDeviceChanged", now.defaultDeviceChanged, was.defaultDeviceChanged, warnings, name);
-            ReadBool(*reinit, "deviceStateChanged", now.deviceStateChanged, was.deviceStateChanged, warnings, name);
-            ReadBool(*reinit, "deviceAdded", now.deviceAdded, was.deviceAdded, warnings, name);
-            ReadBool(*reinit, "deviceRemoved", now.deviceRemoved, was.deviceRemoved, warnings, name);
             ReadBool(*reinit, "resumeFromSleep", now.resumeFromSleep, was.resumeFromSleep, warnings, name);
             ReadBool(*reinit, "sessionUnlock", now.sessionUnlock, was.sessionUnlock, warnings, name);
             ReadInt(*reinit, FAILURE_TIMEOUT_MS_LIMITS, now.failureTimeoutMs, was.failureTimeoutMs, warnings, name);
             ReadInt(*reinit, DEBOUNCE_MS_LIMITS, now.debounceMs, was.debounceMs, warnings, name);
             WarnUnknownKeys(*reinit, name,
-                { "defaultDeviceChanged", "deviceStateChanged", "deviceAdded", "deviceRemoved", "resumeFromSleep",
-                  "sessionUnlock", FAILURE_TIMEOUT_MS_LIMITS.key, DEBOUNCE_MS_LIMITS.key },
+                { "defaultDeviceChanged", "resumeFromSleep", "sessionUnlock", FAILURE_TIMEOUT_MS_LIMITS.key,
+                  DEBOUNCE_MS_LIMITS.key },
                 warnings);
         }
 
@@ -663,9 +660,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
 
     json& reinit = root["audio"]["reinit"];
     reinit["defaultDeviceChanged"] = settings.audio.reinit.defaultDeviceChanged;
-    reinit["deviceStateChanged"] = settings.audio.reinit.deviceStateChanged;
-    reinit["deviceAdded"] = settings.audio.reinit.deviceAdded;
-    reinit["deviceRemoved"] = settings.audio.reinit.deviceRemoved;
     reinit["resumeFromSleep"] = settings.audio.reinit.resumeFromSleep;
     reinit["sessionUnlock"] = settings.audio.reinit.sessionUnlock;
     reinit[FAILURE_TIMEOUT_MS_LIMITS.key] = settings.audio.reinit.failureTimeoutMs;
@@ -729,9 +723,6 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.Key(4, FIXED_BUFFER_FRAMES_LIMITS.key, settings.audio.fixedBufferFrames, text(Str::CfgFixedBufferFrames), true);
     document.SectionOpen(4, "reinit", text(Str::CfgReinitSection));
     document.Key(6, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged, text(Str::CfgReinitDeviceChanged), true);
-    document.Key(6, "deviceStateChanged", settings.audio.reinit.deviceStateChanged, text(Str::CfgReinitDeviceState), true);
-    document.Key(6, "deviceAdded", settings.audio.reinit.deviceAdded, text(Str::CfgReinitDeviceAdded), true);
-    document.Key(6, "deviceRemoved", settings.audio.reinit.deviceRemoved, text(Str::CfgReinitDeviceRemoved), true);
     document.Key(6, "resumeFromSleep", settings.audio.reinit.resumeFromSleep, text(Str::CfgReinitResume), true);
     document.Key(6, "sessionUnlock", settings.audio.reinit.sessionUnlock, text(Str::CfgReinitUnlock), true);
     document.Key(6, FAILURE_TIMEOUT_MS_LIMITS.key, settings.audio.reinit.failureTimeoutMs,

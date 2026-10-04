@@ -60,13 +60,11 @@ enum class ProcessPriority {
 };
 
 struct ReinitSettings {
+    // The only device event: a change of a default device of any role. REAL
+    // holds its streams on the default devices, and Windows reports a default
+    // device that goes away or comes back as such a change as well; the other
+    // events of the devices concern any device and are not listened to.
     bool defaultDeviceChanged = true;
-    bool deviceStateChanged = true;
-    // An endpoint that did not exist before. A device that is plugged back in
-    // keeps its endpoint and only changes its state (deviceStateChanged), so
-    // this flag is off by default.
-    bool deviceAdded = false;
-    bool deviceRemoved = false;
     bool resumeFromSleep = true;
     bool sessionUnlock = true;
     // How long the application keeps trying before it gives up (and stops

@@ -93,7 +93,7 @@ private:
     void OnCommand(Command command);
     void OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam);
     void OnTimer(UINT_PTR timerId);
-    void OnDeviceEvent(WPARAM wParam, LPARAM lParam);
+    void OnDeviceEvent(LPARAM lParam);
     void OnSystemResume(bool sessionUnlock, const std::wstring& reason);
     void ScheduleDeviceRestart();
     void ScheduleAudioRetry();

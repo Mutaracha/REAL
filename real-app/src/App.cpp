@@ -399,7 +399,7 @@ void App::InitializeAudio() {
         ::PostMessageW(
             windowHandle,
             WM_APP_DEVICE_EVENT,
-            static_cast<WPARAM>(static_cast<int>(event.type)),
+            0,
             MAKELPARAM(static_cast<WORD>(event.dataFlow), static_cast<WORD>(event.role)));
         });
 
@@ -1115,7 +1115,7 @@ void App::OnWindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
 
     if (message == WM_APP_DEVICE_EVENT) {
-        OnDeviceEvent(wParam, lParam);
+        OnDeviceEvent(lParam);
         return;
     }
 
@@ -1225,9 +1225,10 @@ void App::OnTimer(UINT_PTR timerId) {
 
         CancelAudioRetry();
 
-        // A device appeared or became the default one: this is the moment to
-        // start over, always including switching the latency reduction back on
-        // when it was off (by the user or after the device stopped answering).
+        // The default device has changed (a device became the default one,
+        // or the default one went away): this is the moment to start over,
+        // always including switching the latency reduction back on when it was
+        // off (by the user or after the device stopped answering).
         m_failureSince = 0;
         m_audioSuspended = false;
         m_deviceChangePending = true;
@@ -1243,38 +1244,15 @@ void App::OnTimer(UINT_PTR timerId) {
     }
 }
 
-void App::OnDeviceEvent(WPARAM wParam, LPARAM lParam) {
-    const auto type = static_cast<Windows::DeviceEventType>(static_cast<int>(wParam));
+// A default device has changed. Any role matters: the program keeps a stream on
+// the default device of every role, so a change of the usual default device and
+// a change of the communication one are both worth re-applying. A default
+// device that goes away or comes back is reported the same way, so this is the
+// only event of the devices the program needs (see DeviceNotificationClient).
+void App::OnDeviceEvent(LPARAM lParam) {
     const EDataFlow flow = static_cast<EDataFlow>(LOWORD(lParam));
 
-    bool interesting = false;
-
-    switch (type) {
-        case Windows::DeviceEventType::DefaultDeviceChanged:
-            // Any role matters now: the program keeps a stream on the default
-            // device of every role, so a change of the usual default device and
-            // a change of the communication one are both worth re-applying.
-            interesting = m_settings.audio.reinit.defaultDeviceChanged &&
-                FlowMatches(m_settings.audio.dataFlow, flow);
-            break;
-
-        case Windows::DeviceEventType::DeviceStateChanged:
-            interesting = m_settings.audio.reinit.deviceStateChanged && FlowMatches(m_settings.audio.dataFlow, flow);
-            break;
-
-        case Windows::DeviceEventType::DeviceAdded:
-            interesting = m_settings.audio.reinit.deviceAdded && FlowMatches(m_settings.audio.dataFlow, flow);
-            break;
-
-        case Windows::DeviceEventType::DeviceRemoved:
-            interesting = m_settings.audio.reinit.deviceRemoved && FlowMatches(m_settings.audio.dataFlow, flow);
-            break;
-
-        default:
-            break;
-    }
-
-    if (!interesting) {
+    if (!m_settings.audio.reinit.defaultDeviceChanged || !FlowMatches(m_settings.audio.dataFlow, flow)) {
         return;
     }
 

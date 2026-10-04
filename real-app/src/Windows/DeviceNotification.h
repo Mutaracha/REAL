@@ -9,24 +9,22 @@
 
 namespace miniant::Windows {
 
-enum class DeviceEventType {
-    DefaultDeviceChanged,
-    DeviceStateChanged,
-    DeviceAdded,
-    DeviceRemoved,
-};
-
+// A change of a default device: its flow, its role and the endpoint that is the
+// default one now (empty when there is none left).
 struct DeviceEvent {
-    DeviceEventType type = DeviceEventType::DefaultDeviceChanged;
     EDataFlow dataFlow = eRender;
     ERole role = eConsole;
     std::wstring deviceId;
-    DWORD state = 0;
 };
 
 using DeviceEventHandler = std::function<void(const DeviceEvent&)>;
 
-// Receives endpoint notifications from the audio service (IMMNotificationClient).
+// Receives endpoint notifications from the audio service (IMMNotificationClient)
+// and hands the changes of the default devices to the handler. The program
+// holds its streams on the default devices only, and a default device that goes
+// away or comes back is reported as a change of the default device as well:
+// the other notifications concern any device (a microphone, the sound of a
+// monitor that falls asleep) and are not passed on.
 //
 // The callbacks are invoked on a thread owned by the audio system, so the
 // handler must not call into the audio client: it should only post a message to

@@ -139,9 +139,6 @@ enum class Id : int {
     AudioBufferHint,
 
     ReinitDefaultDevice,
-    ReinitDeviceState,
-    ReinitDeviceAdded,
-    ReinitDeviceRemoved,
     ReinitResumeFromSleep,
     ReinitSessionUnlock,
     ReinitFailureTimeout,
@@ -500,8 +497,9 @@ int CheckWidth(Context& context, const std::wstring& text, int x) {
 }
 
 // The languages of the window. The layout makes room for the longer of the two
-// texts of every caption: a change of the language moves nothing, and the
-// window keeps its size.
+// texts of every caption: a change of the language moves nothing but the field
+// of a row with a label of its own (see RowColumn), and the window keeps its
+// size.
 const Lang::Language LAYOUT_LANGUAGES[] = { Lang::Language::English, Lang::Language::Russian };
 
 // The width of a text of the window in design pixels in the language that
@@ -626,8 +624,8 @@ HWND Get(Context& context, Id id);
 
 // A group starts at y: its rows begin at ROW_X under the caption of the frame,
 // and its lists and fields stand in a column of their own, right after the
-// longest of the given labels in either language (see RowColumn for a longer
-// one).
+// longest of the given labels in either language (see RowColumn for a row with
+// a longer label).
 int BeginGroup(Context& context, Lang::Str caption, int y, const std::vector<Lang::Str>& labels = {}) {
     context.groupTop = y;
     context.groupCaption = caption;
@@ -836,11 +834,21 @@ int ComboWidth(Context& context, const std::vector<Lang::Str>& texts) {
     return widest > 0 ? widest + COMBO_CHROME : 160;
 }
 
+// The room of the column of a row in the language that needs more of it: the
+// width of the window follows it (see RowColumn).
+int RowRoom(Context& context, Lang::Str label) {
+    return (std::max)(context.labelWidth, WidestTextWidth(context, label, L":") + LABEL_GAP);
+}
+
 // The column of a row: the column of its group, or the end of its own label
 // when that label is longer ("Fixed buffer, frames:" under the lists that
-// follow "Devices:").
+// follow "Devices:"). Such a field stands right after its label in the
+// language shown, as every other field does after its column, so it moves
+// with a change of the language; the window keeps the room of the longer label.
 int RowColumn(Context& context, Lang::Str label) {
-    return (std::max)(context.labelWidth, WidestTextWidth(context, label, L":") + LABEL_GAP);
+    const int own = DesignTextWidth(context, context.font, LabelText(context, label));
+
+    return own > 0 ? (std::max)(context.labelWidth, own + LABEL_GAP) : RowRoom(context, label);
 }
 
 // The label of a list or a field, with its colon, up to the column of its row.
@@ -867,7 +875,7 @@ int AddCombo(
         WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, id,
         x, y, width, ROW_HEIGHT * 8);
 
-    ExtendContent(context, x + width);
+    ExtendContent(context, ROW_X + RowRoom(context, label) + width);
 
     // A list belongs to its page like every other control: without this the
     // lists of all three pages would be drawn in the same place at once.
@@ -947,7 +955,7 @@ int AddEdit(
 
     AddHint(context, edit, caption, hint);
 
-    ExtendContent(context, x + width);
+    ExtendContent(context, ROW_X + RowRoom(context, label) + width);
     return y + ROW_STEP;
 }
 
@@ -1233,7 +1241,8 @@ int BuildAudioPage(Context& context) {
     int y = PAGE_TOP + GROUP_INSET;
 
     // The lists stand right after "Devices:"; the longer label of the fixed
-    // buffer keeps its field right after itself (see RowColumn).
+    // buffer keeps its field right after itself in the language shown (see
+    // RowColumn).
     y = BeginGroup(context, Lang::Str::SettingsHeaderAudio, y,
         { Lang::Str::SettingsDataFlow, Lang::Str::SettingsBuffer });
     y = AddCombo(context, Id::AudioDataFlow, Lang::Str::SettingsDataFlow, Texts(DATA_FLOWS),
@@ -1271,16 +1280,14 @@ int BuildAudioPage(Context& context) {
 
     y = EndGroup(context, y) + GROUP_GAP;
 
+    // Of the device events only the change of a default device restarts the
+    // streams: REAL holds them on the default devices, and Windows reports a
+    // default device that goes away or comes back as such a change as well
+    // (see App::OnDeviceEvent).
     y = BeginGroup(context, Lang::Str::SettingsHeaderReinit, y,
         { Lang::Str::SettingsReinitFailureTimeout, Lang::Str::SettingsReinitDebounce });
     y = AddCheck(context, Id::ReinitDefaultDevice, Lang::Str::SettingsReinitDeviceChanged,
         settings.audio.reinit.defaultDeviceChanged, y);
-    y = AddCheck(context, Id::ReinitDeviceState, Lang::Str::SettingsReinitDeviceState,
-        settings.audio.reinit.deviceStateChanged, y);
-    y = AddCheck(context, Id::ReinitDeviceAdded, Lang::Str::SettingsReinitDeviceAdded,
-        settings.audio.reinit.deviceAdded, y);
-    y = AddCheck(context, Id::ReinitDeviceRemoved, Lang::Str::SettingsReinitDeviceRemoved,
-        settings.audio.reinit.deviceRemoved, y);
     y = AddCheck(context, Id::ReinitResumeFromSleep, Lang::Str::SettingsReinitResume,
         settings.audio.reinit.resumeFromSleep, y);
     y = AddCheck(context, Id::ReinitSessionUnlock, Lang::Str::SettingsReinitUnlock,
@@ -1852,11 +1859,12 @@ void Rebuild(Context& context, UINT dpi) {
 // Lays the window out again over the controls it has, in the language it shows
 // now: every control gets the text of that language and its place, the values
 // stay as the user has left them, and so do the open page and the keyboard. The
-// layout makes room for both languages, so nothing moves and the window keeps
-// its size; only a check box follows the length of its own text. Nothing is
-// drawn meanwhile: the screen keeps the old picture, and then the window is
-// drawn once, whole. False when the controls do not answer to the layout: the
-// window has to be built again then.
+// layout makes room for both languages, so the window keeps its size; a check
+// box follows the length of its own text, and a field after a label of its own
+// follows that label (see RowColumn). Nothing is drawn meanwhile: the screen
+// keeps the old picture, and then the window is drawn once, whole. False when
+// the controls do not answer to the layout: the window has to be built again
+// then.
 bool Relayout(Context& context) {
     const HWND window = context.window;
     const Page page = context.page;
@@ -2088,9 +2096,6 @@ void ReadControls(Context& context, Config::Settings& updated) {
     }
 
     updated.audio.reinit.defaultDeviceChanged = IsChecked(context, Id::ReinitDefaultDevice);
-    updated.audio.reinit.deviceStateChanged = IsChecked(context, Id::ReinitDeviceState);
-    updated.audio.reinit.deviceAdded = IsChecked(context, Id::ReinitDeviceAdded);
-    updated.audio.reinit.deviceRemoved = IsChecked(context, Id::ReinitDeviceRemoved);
     updated.audio.reinit.resumeFromSleep = IsChecked(context, Id::ReinitResumeFromSleep);
     updated.audio.reinit.sessionUnlock = IsChecked(context, Id::ReinitSessionUnlock);
     updated.audio.reinit.failureTimeoutMs = ReadNumber(
@@ -2142,9 +2147,6 @@ void ApplyToControls(Context& context, const Config::Settings& settings) {
     SetFieldText(context, Id::AudioFixedBufferFrames, FixedBufferText(settings.audio.fixedBufferFrames));
 
     SetChecked(context, Id::ReinitDefaultDevice, settings.audio.reinit.defaultDeviceChanged);
-    SetChecked(context, Id::ReinitDeviceState, settings.audio.reinit.deviceStateChanged);
-    SetChecked(context, Id::ReinitDeviceAdded, settings.audio.reinit.deviceAdded);
-    SetChecked(context, Id::ReinitDeviceRemoved, settings.audio.reinit.deviceRemoved);
     SetChecked(context, Id::ReinitResumeFromSleep, settings.audio.reinit.resumeFromSleep);
     SetChecked(context, Id::ReinitSessionUnlock, settings.audio.reinit.sessionUnlock);
     SetFieldText(context, Id::ReinitFailureTimeout, std::to_wstring(settings.audio.reinit.failureTimeoutMs));
