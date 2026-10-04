@@ -94,6 +94,14 @@ const char* ToString(ProcessPriority value) {
     }
 }
 
+// The warnings of one reading of the file, in the language they are shown in:
+// the program writes them to its log in its own language, the settings window
+// lists them in the one it shows (see Load).
+struct Warnings {
+    Language language;
+    std::vector<std::string>& list;
+};
+
 // The readers below leave a missing key with its default value. A value that
 // is there but cannot be used gets the fallback - the value in use when the
 // file is read again, the default at startup - and a warning that names the
@@ -106,7 +114,7 @@ void ReadEnum(
     const std::pair<const char*, T> (&table)[N],
     T& target,
     T fallback,
-    std::vector<std::string>& warnings,
+    Warnings& warnings,
     const std::string& sectionName) {
     const auto it = section.find(key);
     if (it == section.end()) {
@@ -115,8 +123,9 @@ void ReadEnum(
 
     if (!it->is_string()) {
         target = fallback;
-        warnings.push_back(fmt::format(
-            Lang::Utf8(Str::CfgWarnString), KeyName(sectionName, key), JsonValue(ToString(fallback))));
+        warnings.list.push_back(fmt::format(
+            Lang::Utf8(Str::CfgWarnString, warnings.language), KeyName(sectionName, key),
+            JsonValue(ToString(fallback))));
         return;
     }
 
@@ -139,9 +148,9 @@ void ReadEnum(
     }
 
     target = fallback;
-    warnings.push_back(fmt::format(
-        Lang::Utf8(Str::CfgWarnUnknownValue), KeyName(sectionName, key), it->get<std::string>(), allowed,
-        JsonValue(ToString(fallback))));
+    warnings.list.push_back(fmt::format(
+        Lang::Utf8(Str::CfgWarnUnknownValue, warnings.language), KeyName(sectionName, key), it->get<std::string>(),
+        allowed, JsonValue(ToString(fallback))));
 }
 
 // A word of the file with its synonyms: the value is kept in its main form
@@ -185,7 +194,7 @@ void ReadWord(
     const char* allowed,
     std::string& target,
     const std::string& fallback,
-    std::vector<std::string>& warnings,
+    Warnings& warnings,
     const std::string& sectionName) {
     const auto it = section.find(key);
     if (it == section.end()) {
@@ -194,7 +203,8 @@ void ReadWord(
 
     if (!it->is_string()) {
         target = fallback;
-        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnString), KeyName(sectionName, key), JsonValue(fallback)));
+        warnings.list.push_back(fmt::format(
+            Lang::Utf8(Str::CfgWarnString, warnings.language), KeyName(sectionName, key), JsonValue(fallback)));
         return;
     }
 
@@ -207,9 +217,9 @@ void ReadWord(
     }
 
     target = fallback;
-    warnings.push_back(fmt::format(
-        Lang::Utf8(Str::CfgWarnUnknownValue), KeyName(sectionName, key), it->get<std::string>(), allowed,
-        JsonValue(fallback)));
+    warnings.list.push_back(fmt::format(
+        Lang::Utf8(Str::CfgWarnUnknownValue, warnings.language), KeyName(sectionName, key), it->get<std::string>(),
+        allowed, JsonValue(fallback)));
 }
 
 void ReadBool(
@@ -217,7 +227,7 @@ void ReadBool(
     const char* key,
     bool& target,
     bool fallback,
-    std::vector<std::string>& warnings,
+    Warnings& warnings,
     const std::string& sectionName) {
     const auto it = section.find(key);
     if (it == section.end()) {
@@ -226,7 +236,8 @@ void ReadBool(
 
     if (!it->is_boolean()) {
         target = fallback;
-        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnBool), KeyName(sectionName, key), JsonValue(fallback)));
+        warnings.list.push_back(fmt::format(
+            Lang::Utf8(Str::CfgWarnBool, warnings.language), KeyName(sectionName, key), JsonValue(fallback)));
         return;
     }
 
@@ -258,18 +269,19 @@ bool ReadNumber(
     const NumberLimits& limits,
     long long& value,
     const std::string& fallbackText,
-    std::vector<std::string>& warnings,
+    Warnings& warnings,
     const std::string& sectionName) {
     const auto it = section.find(limits.key);
 
     if (!it->is_number_integer()) {
-        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnInteger), KeyName(sectionName, limits.key), fallbackText));
+        warnings.list.push_back(fmt::format(
+            Lang::Utf8(Str::CfgWarnInteger, warnings.language), KeyName(sectionName, limits.key), fallbackText));
         return false;
     }
 
     if (!WithinLimits(*it, limits, value)) {
-        warnings.push_back(fmt::format(
-            Lang::Utf8(Str::CfgWarnRange), KeyName(sectionName, limits.key), it->dump(),
+        warnings.list.push_back(fmt::format(
+            Lang::Utf8(Str::CfgWarnRange, warnings.language), KeyName(sectionName, limits.key), it->dump(),
             limits.minimum, limits.maximum, fallbackText));
         return false;
     }
@@ -282,7 +294,7 @@ void ReadInt(
     const NumberLimits& limits,
     int& target,
     int fallback,
-    std::vector<std::string>& warnings,
+    Warnings& warnings,
     const std::string& sectionName) {
     if (section.find(limits.key) == section.end()) {
         return;
@@ -299,7 +311,7 @@ void ReadUnsigned(
     const NumberLimits& limits,
     unsigned int& target,
     unsigned int fallback,
-    std::vector<std::string>& warnings,
+    Warnings& warnings,
     const std::string& sectionName) {
     if (section.find(limits.key) == section.end()) {
         return;
@@ -316,7 +328,7 @@ void ReadString(
     const char* key,
     std::string& target,
     const std::string& fallback,
-    std::vector<std::string>& warnings,
+    Warnings& warnings,
     const std::string& sectionName) {
     const auto it = section.find(key);
     if (it == section.end()) {
@@ -325,7 +337,8 @@ void ReadString(
 
     if (!it->is_string()) {
         target = fallback;
-        warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnString), KeyName(sectionName, key), JsonValue(fallback)));
+        warnings.list.push_back(fmt::format(
+            Lang::Utf8(Str::CfgWarnString, warnings.language), KeyName(sectionName, key), JsonValue(fallback)));
         return;
     }
 
@@ -336,7 +349,7 @@ void WarnUnknownKeys(
     const json& section,
     const std::string& sectionName,
     std::initializer_list<const char*> known,
-    std::vector<std::string>& warnings) {
+    Warnings& warnings) {
     for (auto it = section.begin(); it != section.end(); ++it) {
         const std::string key = it.key();
         bool found = false;
@@ -348,7 +361,8 @@ void WarnUnknownKeys(
         }
 
         if (!found) {
-            warnings.push_back(fmt::format(Lang::Utf8(Str::CfgWarnUnknownKey), KeyName(sectionName, key)));
+            warnings.list.push_back(fmt::format(
+                Lang::Utf8(Str::CfgWarnUnknownKey, warnings.language), KeyName(sectionName, key)));
         }
     }
 }
@@ -389,7 +403,7 @@ std::wstring miniant::Config::GetDefaultPath() {
     return Windows::Filesystem::JoinPath(Windows::Filesystem::GetExecutableDirectory(), L"real.settings.json");
 }
 
-LoadResult miniant::Config::Load(const std::wstring& path, const Settings& previous) {
+LoadResult miniant::Config::Load(const std::wstring& path, const Settings& previous, Language language) {
     LoadResult result;
 
     bool readSucceeded = false;
@@ -402,7 +416,7 @@ LoadResult miniant::Config::Load(const std::wstring& path, const Settings& previ
         result.fileExists = Windows::Filesystem::IsFile(path);
         if (result.fileExists) {
             result.parseFailed = true;
-            result.error = Lang::Utf8(tooLarge ? Str::CfgErrTooLarge : Str::CfgErrRead);
+            result.error = Lang::Utf8(tooLarge ? Str::CfgErrTooLarge : Str::CfgErrRead, language);
         }
 
         return result;
@@ -417,18 +431,18 @@ LoadResult miniant::Config::Load(const std::wstring& path, const Settings& previ
         root = json::parse(content);
     } catch (const json::exception& error) {
         result.parseFailed = true;
-        result.error = fmt::format(Lang::Utf8(Str::CfgErrParse), error.what());
+        result.error = fmt::format(Lang::Utf8(Str::CfgErrParse, language), error.what());
         return result;
     }
 
     if (!root.is_object()) {
         result.parseFailed = true;
-        result.error = Lang::Utf8(Str::CfgErrNotObject);
+        result.error = Lang::Utf8(Str::CfgErrNotObject, language);
         return result;
     }
 
     Settings& settings = result.settings;
-    std::vector<std::string>& warnings = result.warnings;
+    Warnings warnings{ language, result.warnings };
 
     ReadInt(root, CONFIG_VERSION_LIMITS, settings.configVersion, previous.configVersion, warnings, "");
     ReadString(root, "commentLanguage", settings.commentLanguage, previous.commentLanguage, warnings, "");
@@ -497,9 +511,9 @@ LoadResult miniant::Config::Load(const std::wstring& path, const Settings& previ
             audio.buffer = fixedBefore ? BufferMode::Fixed : BufferMode::Minimum;
             audio.fixedBufferFrames = fixedBefore ? before.fixedBufferFrames : 0;
 
-            warnings.push_back(fmt::format(
-                Lang::Utf8(Str::CfgWarnFixedBufferZero), KeyName("audio", FIXED_BUFFER_FRAMES_LIMITS.key),
-                DescribeBuffer(settings)));
+            warnings.list.push_back(fmt::format(
+                Lang::Utf8(Str::CfgWarnFixedBufferZero, warnings.language),
+                KeyName("audio", FIXED_BUFFER_FRAMES_LIMITS.key), DescribeBuffer(settings, language)));
         }
 
         if (const json* reinit = FindSection(*section, "reinit")) {
@@ -789,12 +803,13 @@ std::string miniant::Config::DescribeFlow(const Settings& settings) {
     }
 }
 
-std::string miniant::Config::DescribeBuffer(const Settings& settings) {
+std::string miniant::Config::DescribeBuffer(const Settings& settings, Language language) {
     if (settings.audio.buffer == BufferMode::Fixed && settings.audio.fixedBufferFrames > 0) {
-        return fmt::format(Lang::Utf8(Str::DescribeBufferFixed), Lang::Frames(settings.audio.fixedBufferFrames));
+        return fmt::format(
+            Lang::Utf8(Str::DescribeBufferFixed, language), Lang::Frames(settings.audio.fixedBufferFrames, language));
     }
 
-    return Lang::Utf8(Str::DescribeBufferMinimum);
+    return Lang::Utf8(Str::DescribeBufferMinimum, language);
 }
 
 namespace {

@@ -943,13 +943,14 @@ const char* RussianForm(unsigned int count, const char* one, const char* few, co
 }
 
 std::string Counted(
+    Language language,
     unsigned int count,
     const char* englishOne,
     const char* englishMany,
     const char* russianOne,
     const char* russianFew,
     const char* russianMany) {
-    const char* noun = miniant::Lang::Current() == Language::Russian
+    const char* noun = language == Language::Russian
         ? RussianForm(count, russianOne, russianFew, russianMany)
         : (count == 1 ? englishOne : englishMany);
 
@@ -959,18 +960,26 @@ std::string Counted(
 }
 
 std::string miniant::Lang::Frames(unsigned int count) {
-    return Counted(count, "frame", "frames", "фрейм", "фрейма", "фреймов");
+    return Frames(count, Current());
+}
+
+std::string miniant::Lang::Frames(unsigned int count, Language language) {
+    return Counted(language, count, "frame", "frames", "фрейм", "фрейма", "фреймов");
 }
 
 std::string miniant::Lang::Channels(unsigned int count) {
-    return Counted(count, "channel", "channels", "канал", "канала", "каналов");
+    return Counted(Current(), count, "channel", "channels", "канал", "канала", "каналов");
 }
 
 std::string miniant::Lang::Decimal(double value) {
+    return Decimal(value, Current());
+}
+
+std::string miniant::Lang::Decimal(double value, Language language) {
     std::string text = fmt::format("{:.2f}", value);
 
     // A decimal comma in Russian: "7,00 мс", not "7.00 мс".
-    if (Current() == Language::Russian) {
+    if (language == Language::Russian) {
         std::replace(text.begin(), text.end(), '.', ',');
     }
 

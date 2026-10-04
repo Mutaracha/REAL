@@ -385,11 +385,13 @@ std::wstring Wide(Str id, Language language);
 // A number with its noun in the current language: "1344 frames", and in
 // Russian the noun agrees with the numeral ("1 фрейм", "2 фрейма", "5 фреймов").
 std::string Frames(unsigned int count);
+std::string Frames(unsigned int count, Language language);
 std::string Channels(unsigned int count);
 
 // A number with two decimals in the notation of the current language: "7.00"
-// in English, "7,00" in Russian.
+// in English, "7,00" in Russian. The settings window gives its own language.
 std::string Decimal(double value);
+std::string Decimal(double value, Language language);
 
 // "7.00 ms" with the unit of the current language ("7,00 мс" in Russian).
 std::string Milliseconds(double value);

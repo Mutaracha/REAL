@@ -107,6 +107,12 @@ const UINT WM_APP_CHECK_FIELD = WM_APP + 1;
 // the colours of the system, once the tab control has taken it.
 const UINT WM_APP_PAGE_BRUSH = WM_APP + 2;
 
+// A language chosen in the window (or read by "Reload"): the window is built
+// again in it after the click is over, never inside the notification of a
+// button that the rebuild destroys. wParam is the control that keeps the
+// keyboard (see SwitchLanguage).
+const UINT WM_APP_LANGUAGE = WM_APP + 3;
+
 // The descriptions of the settings that show when the mouse rests on them stay
 // long enough to be read. The tools of the areas of greyed out controls have
 // numbers of their own (see UpdateHintAreas).
@@ -187,6 +193,11 @@ struct Context {
     // The buffer range of the device: the hint under the fixed buffer and the
     // check of its value (see FixedBufferProblem).
     BufferRange bufferRange;
+
+    // The language the window shows: the language of the program when it
+    // opens, then the one chosen in it (see SwitchLanguage). The rest of the
+    // program takes a new language only with "Save".
+    Lang::Language language = Lang::Language::English;
 
     // The dots per inch of the monitor the window is on: every coordinate below
     // is a design pixel of a 96 DPI layout and is scaled by CreateControl.
@@ -461,9 +472,14 @@ void ExtendContent(Context& context, int right) {
     context.contentRight = (std::max)(context.contentRight, right);
 }
 
+// A text of the window in the language it shows.
+std::wstring TextOf(const Context& context, Lang::Str id) {
+    return Lang::Wide(id, context.language);
+}
+
 // The label of a list or a field ends with a colon: the value follows it.
-std::wstring LabelText(Lang::Str label) {
-    return Lang::Wide(label) + L":";
+std::wstring LabelText(const Context& context, Lang::Str label) {
+    return TextOf(context, label) + L":";
 }
 
 // A control is never wider than its own text: a click far to the right of a
@@ -525,7 +541,7 @@ int BeginGroup(Context& context, Lang::Str caption, int y, const std::vector<Lan
 
     int widest = 0;
     for (const Lang::Str label : labels) {
-        widest = (std::max)(widest, DesignTextWidth(context, context.font, LabelText(label)));
+        widest = (std::max)(widest, DesignTextWidth(context, context.font, LabelText(context, label)));
     }
 
     context.labelWidth = widest > 0 ? widest + LABEL_GAP : 0;
@@ -540,7 +556,7 @@ int BeginGroup(Context& context, Lang::Str caption, int y, const std::vector<Lan
 int EndGroup(Context& context, int y) {
     const int left = MARGIN + GROUP_INSET;
     const int bottom = y + GROUP_BOTTOM;
-    const std::wstring caption = Lang::Wide(context.groupCaption);
+    const std::wstring caption = TextOf(context, context.groupCaption);
 
     // The caption is in the font of the window, as the rest of the text.
     const HWND frame = CreateControl(
@@ -570,7 +586,7 @@ void AddHint(Context& context, HWND control, HWND label, Lang::Str text) {
         return;
     }
 
-    std::wstring body = Lang::Wide(text);
+    std::wstring body = TextOf(context, text);
 
     for (const HWND tool : { control, label }) {
         if (tool == nullptr) {
@@ -665,7 +681,7 @@ void DestroyHints(Context& context) {
 // A check box at the given left edge: ROW_X, or the second column of a group.
 // WS_GROUP in extraStyle starts a new group of controls (see AddChoiceRow).
 HWND AddCheckAt(Context& context, Id id, Lang::Str text, bool value, int x, int y, DWORD extraStyle = 0) {
-    const std::wstring caption = Lang::Wide(text);
+    const std::wstring caption = TextOf(context, text);
     const int width = CheckWidth(context, caption, x);
 
     const HWND check = CreateControl(
@@ -690,7 +706,7 @@ int AddCheck(
 
 // The caption of a part of a group ("Icon menu items:"): plain text of a row.
 int AddCaption(Context& context, Id id, Lang::Str text, int y) {
-    const std::wstring caption = Lang::Wide(text);
+    const std::wstring caption = TextOf(context, text);
     const int available = context.pageRight - ROW_X;
     const int textWidth = DesignTextWidth(context, context.font, caption);
     const int width = textWidth > 0 ? (std::min)(textWidth + HEADER_SLACK, available) : available;
@@ -732,7 +748,7 @@ void UpdateChoiceTabStop(Context& context, Id firstId, size_t count) {
 // between them, and the control after the row starts the next group.
 int AddChoiceRow(
     Context& context, Id firstId, Lang::Str label, const std::vector<Lang::Str>& texts, int selected, int y) {
-    const std::wstring caption = Lang::Wide(label);
+    const std::wstring caption = TextOf(context, label);
     const int captionWidth = DesignTextWidth(context, context.font, caption) + HEADER_SLACK;
 
     BindToPage(context, CreateControl(
@@ -742,7 +758,7 @@ int AddChoiceRow(
     int x = ROW_X + captionWidth + CHOICE_CAPTION_GAP;
 
     for (size_t i = 0; i < texts.size(); ++i) {
-        const std::wstring text = Lang::Wide(texts[i]);
+        const std::wstring text = TextOf(context, texts[i]);
         const int width = CheckWidth(context, text, x);
         const Id id = static_cast<Id>(static_cast<int>(firstId) + static_cast<int>(i));
 
@@ -781,14 +797,15 @@ int ComboWidth(Context& context, const std::vector<Lang::Str>& texts) {
 // when that label is longer ("Fixed buffer, frames:" under the lists that
 // follow "Devices:").
 int RowColumn(Context& context, Lang::Str label) {
-    return (std::max)(context.labelWidth, DesignTextWidth(context, context.font, LabelText(label)) + LABEL_GAP);
+    return (std::max)(
+        context.labelWidth, DesignTextWidth(context, context.font, LabelText(context, label)) + LABEL_GAP);
 }
 
 // The label of a list or a field, with its colon, up to the column of its row.
 // A described label takes the mouse, so that its description shows.
 HWND AddLabel(Context& context, Lang::Str label, int y, int column, bool described) {
     const HWND control = CreateControl(
-        context, L"STATIC", LabelText(label), SS_LEFT | SS_CENTERIMAGE | (described ? SS_NOTIFY : 0),
+        context, L"STATIC", LabelText(context, label), SS_LEFT | SS_CENTERIMAGE | (described ? SS_NOTIFY : 0),
         static_cast<Id>(0), ROW_X, y, column, ROW_HEIGHT);
 
     BindToPage(context, control);
@@ -816,7 +833,7 @@ int AddCombo(
 
     if (combo != nullptr) {
         for (const Lang::Str text : texts) {
-            ::SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(Lang::Wide(text).c_str()));
+            ::SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(TextOf(context, text).c_str()));
         }
 
         if (selected >= 0 && selected < static_cast<int>(texts.size())) {
@@ -989,12 +1006,12 @@ std::wstring BufferHintText(const Context& context) {
     };
 
     return Text::ToWide(fmt::format(
-        Lang::Utf8(Lang::Str::SettingsBufferHint),
+        Lang::Utf8(Lang::Str::SettingsBufferHint, context.language),
         range.minimum,
         range.maximum,
         BufferStep(range),
-        Lang::Decimal(milliseconds(range.minimum)),
-        Lang::Decimal(milliseconds(range.maximum))));
+        Lang::Decimal(milliseconds(range.minimum), context.language),
+        Lang::Decimal(milliseconds(range.maximum), context.language)));
 }
 
 // ------------------------------------------------------------ checks ------
@@ -1042,16 +1059,16 @@ const CheckedField* FindCheckedField(UINT controlId) {
 // Empty when the window takes the value.
 std::wstring FieldProblem(const Context& context, Id id, const std::wstring& text) {
     if (id == Id::AudioFixedBufferFrames) {
-        return FixedBufferProblem(context.bufferRange, text);
+        return FixedBufferProblem(context.bufferRange, text, context.language);
     }
 
     if (id == Id::LogFilePath) {
-        return PathProblem(text);
+        return PathProblem(text, context.language);
     }
 
     for (const NumberField& field : NUMBER_FIELDS) {
         if (field.id == id) {
-            return NumberProblem(text, field.limits);
+            return NumberProblem(text, field.limits, context.language);
         }
     }
 
@@ -1126,8 +1143,8 @@ int BuildWindowPage(Context& context) {
     y = AddCaption(context, Id::TrayMenuCaption, Lang::Str::SettingsTrayMenuCaption, y);
     {
         const int secondColumn = ROW_X + COLUMN_GAP + (std::max)(
-            CheckWidth(context, Lang::Wide(Lang::Str::TrayToggleEnabled), ROW_X),
-            CheckWidth(context, Lang::Wide(Lang::Str::TrayReinitialize), ROW_X));
+            CheckWidth(context, TextOf(context, Lang::Str::TrayToggleEnabled), ROW_X),
+            CheckWidth(context, TextOf(context, Lang::Str::TrayReinitialize), ROW_X));
 
         AddCheckAt(context, Id::TrayMenuToggle, Lang::Str::TrayToggleEnabled,
             settings.tray.menu.toggleEnabled, ROW_X, y);
@@ -1286,12 +1303,12 @@ int BuildOtherPage(Context& context) {
         const int buttonWidth = context.buttonWidth;
 
         BindToPage(context, CreateControl(
-            context, L"BUTTON", Lang::Wide(Lang::Str::SettingsOpenFile),
+            context, L"BUTTON", TextOf(context, Lang::Str::SettingsOpenFile),
             BS_PUSHBUTTON | WS_TABSTOP, Id::OpenFile,
             ROW_X, y, buttonWidth, BUTTON_HEIGHT));
 
         BindToPage(context, CreateControl(
-            context, L"BUTTON", Lang::Wide(Lang::Str::SettingsReload),
+            context, L"BUTTON", TextOf(context, Lang::Str::SettingsReload),
             BS_PUSHBUTTON | WS_TABSTOP, Id::Reload,
             ROW_X + buttonWidth + BUTTON_GAP, y, buttonWidth, BUTTON_HEIGHT));
 
@@ -1333,7 +1350,7 @@ void CreateTabs(Context& context) {
     }
 
     for (size_t i = 0; i < sizeof(ITEMS) / sizeof(ITEMS[0]); ++i) {
-        const std::wstring text = Lang::Wide(ITEMS[i].text);
+        const std::wstring text = TextOf(context, ITEMS[i].text);
 
         TCITEMW item = {};
         item.mask = TCIF_TEXT;
@@ -1372,7 +1389,8 @@ void HideFieldTip(Context& context) {
 // the label of the field, the text says what it takes and what it got back.
 void ShowFieldTip(Context& context, HWND field, Lang::Str title, const std::wstring& text) {
     ::MessageBeep(MB_ICONWARNING);
-    context.tip.Show(context.window, field, Lang::Wide(title), text, context.Scale(TIP_MAX_WIDTH), TIP_DURATION_MS);
+    context.tip.Show(
+        context.window, field, TextOf(context, title), text, context.Scale(TIP_MAX_WIDTH), TIP_DURATION_MS);
 }
 
 // The range of the device is a note for the fixed buffer only: with the
@@ -1625,12 +1643,12 @@ void BuildFrame(Context& context) {
     const int right = context.windowWidth - MARGIN;
 
     CreateControl(
-        context, L"BUTTON", Lang::Wide(Lang::Str::SettingsCancel),
+        context, L"BUTTON", TextOf(context, Lang::Str::SettingsCancel),
         BS_PUSHBUTTON | WS_TABSTOP, Id::Cancel,
         right - 2 * buttonWidth - BUTTON_GAP, rowY, buttonWidth, BUTTON_HEIGHT);
 
     CreateControl(
-        context, L"BUTTON", Lang::Wide(Lang::Str::SettingsSave),
+        context, L"BUTTON", TextOf(context, Lang::Str::SettingsSave),
         BS_DEFPUSHBUTTON | WS_TABSTOP, Id::Save,
         right - buttonWidth, rowY, buttonWidth, BUTTON_HEIGHT);
 }
@@ -1673,14 +1691,15 @@ void BuildContent(Context& context) {
     }
 }
 
-// Builds the content again for another DPI. The design coordinates never
-// change, CreateControl scales them: the window of one monitor keeps the
-// layout that was approved, only larger or smaller.
+// Builds the content again for another DPI or another language. The design
+// coordinates never change, CreateControl scales them: the window of one
+// monitor keeps the layout that was approved, only larger or smaller; in
+// another language the columns and the width follow the new texts.
 void Rebuild(Context& context, UINT dpi) {
     // Whatever the user has already typed is read back first: the controls are
     // destroyed and built again, and a typed value must not be lost because the
-    // window was moved to another monitor. A value that cannot be used stays as
-    // it is in the settings; the window shows it again.
+    // window was moved to another monitor or got another language. A value that
+    // cannot be used stays as it is in the settings; the window shows it again.
     Config::Settings edited = *context.settings;
     ReadControls(context, edited);
     *context.settings = edited;
@@ -1840,6 +1859,35 @@ void SetLanguage(Context& context, int index) {
     UpdateChoiceTabStop(context, Id::LanguageAuto, LANGUAGE_COUNT);
 }
 
+// The window takes the language of its buttons at once: the title, the tabs,
+// the frames, the labels, the lists, the descriptions and the balloons. The
+// content is built again, as for another monitor, so whatever is typed and the
+// open page stay; the width follows the new texts. Nothing happens when the
+// choice means the language already shown ("As in Windows" on a Windows of
+// that language). The rest of the program takes the language with "Save".
+void SwitchLanguage(Context& context, Id focus) {
+    const int selected = SelectedLanguage(context);
+    const Lang::Language language = Lang::FromCode(LanguageCode(selected));
+
+    if (context.window == nullptr || language == context.language) {
+        return;
+    }
+
+    context.language = language;
+    ::SetWindowTextW(context.window, TextOf(context, Lang::Str::SettingsWindowTitle).c_str());
+
+    Rebuild(context, context.dpi);
+
+    // The keyboard stays where it was: on the button of the language (the
+    // arrows go on through the languages), or on "Reload".
+    const bool languageButton = static_cast<int>(focus) >= static_cast<int>(Id::LanguageAuto) &&
+        static_cast<int>(focus) < static_cast<int>(Id::LanguageAuto) + static_cast<int>(LANGUAGE_COUNT);
+
+    if (const HWND control = Get(context, languageButton ? LanguageId(selected) : focus)) {
+        ::SetFocus(control);
+    }
+}
+
 // A checked field gets a value that the window takes from now on (the page
 // builder, Reload).
 void SetFieldText(Context& context, Id id, const std::wstring& text) {
@@ -1908,7 +1956,8 @@ void ReadControls(Context& context, Config::Settings& updated) {
     }
 
     const std::wstring path = ReadText(context, Id::LogFilePath, L"");
-    updated.logging.filePath = PathProblem(path).empty() ? Text::ToUtf8(path) : current.logging.filePath;
+    updated.logging.filePath =
+        PathProblem(path, context.language).empty() ? Text::ToUtf8(path) : current.logging.filePath;
 
     updated.logging.maxFileSizeMb = ReadNumber(
         context, Id::LogMaxFileSize, Config::LOG_FILE_SIZE_MB_LIMITS, current.logging.maxFileSizeMb);
@@ -2035,10 +2084,10 @@ void OnReload(Context& context) {
 
     // A value of the file that cannot be used does not replace the one of the
     // window: the reader keeps the value in use and says so.
-    const Config::LoadResult result = Config::Load(context.settingsPath, *context.settings);
+    const Config::LoadResult result = Config::Load(context.settingsPath, *context.settings, context.language);
 
     if (!result.fileExists || result.parseFailed) {
-        std::wstring text = Lang::Wide(Lang::Str::SettingsReloadFailed);
+        std::wstring text = TextOf(context, Lang::Str::SettingsReloadFailed);
         const std::wstring placeholder = L"{0}";
         const size_t position = text.find(placeholder);
 
@@ -2053,7 +2102,7 @@ void OnReload(Context& context) {
         }
 
         ::MessageBoxW(
-            context.window, text.c_str(), Lang::Wide(Lang::Str::SettingsWindowTitle).c_str(),
+            context.window, text.c_str(), TextOf(context, Lang::Str::SettingsWindowTitle).c_str(),
             MB_OK | MB_ICONWARNING);
         return;
     }
@@ -2070,7 +2119,7 @@ void OnReload(Context& context) {
     UpdateEnabledStates(context);
 
     if (!result.warnings.empty()) {
-        std::wstring text = Lang::Wide(Lang::Str::SettingsReloadWarnings);
+        std::wstring text = TextOf(context, Lang::Str::SettingsReloadWarnings);
         text += L"\n";
 
         for (const std::string& warning : result.warnings) {
@@ -2078,8 +2127,14 @@ void OnReload(Context& context) {
         }
 
         ::MessageBoxW(
-            context.window, text.c_str(), Lang::Wide(Lang::Str::SettingsWindowTitle).c_str(),
+            context.window, text.c_str(), TextOf(context, Lang::Str::SettingsWindowTitle).c_str(),
             MB_OK | MB_ICONWARNING);
+    }
+
+    // The file may choose another language: the window takes it after its list
+    // of problems has been read in the language the window had.
+    if (context.window != nullptr) {
+        ::PostMessageW(context.window, WM_APP_LANGUAGE, static_cast<WPARAM>(ControlId(Id::Reload)), 0);
     }
 }
 
@@ -2112,7 +2167,8 @@ void RejectField(Context& context, const CheckedField& field, const std::wstring
         ::SetWindowTextW(control, restored.c_str());
         RememberValid(context, field.id, restored);
 
-        text += L" " + Text::ToWide(fmt::format(Lang::Utf8(Lang::Str::SettingsValueRestored), Text::ToUtf8(restored)));
+        text += L" " + Text::ToWide(fmt::format(
+            Lang::Utf8(Lang::Str::SettingsValueRestored, context.language), Text::ToUtf8(restored)));
     }
 
     if (showTip) {
@@ -2198,8 +2254,8 @@ void OnOpenFile(Context& context) {
 
     if (reinterpret_cast<INT_PTR>(result) <= 32) {
         ::MessageBoxW(
-            context.window, Lang::Wide(Lang::Str::SettingsOpenFileFailed).c_str(),
-            Lang::Wide(Lang::Str::SettingsWindowTitle).c_str(), MB_OK | MB_ICONWARNING);
+            context.window, TextOf(context, Lang::Str::SettingsOpenFileFailed).c_str(),
+            TextOf(context, Lang::Str::SettingsWindowTitle).c_str(), MB_OK | MB_ICONWARNING);
     }
 }
 
@@ -2254,8 +2310,8 @@ void CopySettingsFolder(Context& context) {
     const std::wstring folder = Filesystem::GetDirectory(context.settingsPath);
 
     const std::wstring note = !folder.empty() && CopyToClipboard(context.window, folder)
-        ? Text::ToWide(fmt::format(Lang::Utf8(Lang::Str::SettingsPathCopied), Text::ToUtf8(folder)))
-        : Lang::Wide(Lang::Str::SettingsPathCopyFailed);
+        ? Text::ToWide(fmt::format(Lang::Utf8(Lang::Str::SettingsPathCopied, context.language), Text::ToUtf8(folder)))
+        : TextOf(context, Lang::Str::SettingsPathCopyFailed);
 
     context.tip.Show(context.window, path, L"", note, context.Scale(TIP_MAX_WIDTH), COPY_TIP_DURATION_MS);
 }
@@ -2330,11 +2386,13 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
                 break;
             }
 
-            // Tab enters the buttons of the language at the selected one.
+            // Tab enters the buttons of the language at the selected one, and
+            // the window shows the chosen language once the click is over.
             if (notification == BN_CLICKED &&
                 id >= static_cast<UINT>(ControlId(Id::LanguageAuto)) &&
                 id < static_cast<UINT>(ControlId(Id::LanguageAuto)) + LANGUAGE_COUNT) {
                 UpdateChoiceTabStop(*context, Id::LanguageAuto, LANGUAGE_COUNT);
+                ::PostMessageW(window, WM_APP_LANGUAGE, static_cast<WPARAM>(id), 0);
                 return 0;
             }
 
@@ -2428,6 +2486,10 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
         case WM_APP_PAGE_BRUSH:
             CreatePageBrush(*context);
             ::RedrawWindow(window, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+            return 0;
+
+        case WM_APP_LANGUAGE:
+            SwitchLanguage(*context, static_cast<Id>(static_cast<int>(wParam)));
             return 0;
 
         case WM_APP_CHECK_FIELD: {
@@ -2534,6 +2596,7 @@ bool miniant::Windows::ShowSettingsWindow(
     context.settings = &settings;
     context.settingsPath = settingsPath;
     context.bufferRange = bufferRange;
+    context.language = Lang::Current();
     context.dpi = Dpi::ForWindow(owner);
 
     WNDCLASSEXW windowClass = {};
@@ -2576,7 +2639,7 @@ bool miniant::Windows::ShowSettingsWindow(
     const HWND window = ::CreateWindowExW(
         extendedStyle,
         SETTINGS_CLASS_NAME,
-        Lang::Wide(Lang::Str::SettingsWindowTitle).c_str(),
+        TextOf(context, Lang::Str::SettingsWindowTitle).c_str(),
         style,
         x,
         y,

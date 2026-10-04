@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Lang.h"
+
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -180,8 +182,11 @@ std::wstring GetDefaultPath();
 // Reads the file. A key that is missing gets its default value; a value that
 // cannot be used (a wrong type, a number out of its range, an unknown word)
 // is replaced with the one of "previous" - the settings in use when the file
-// is read again, the defaults at startup - and a warning names both.
-LoadResult Load(const std::wstring& path, const Settings& previous = Settings());
+// is read again, the defaults at startup - and a warning names both. The
+// warnings and the error are written in the given language: the program
+// reads the file in its own, the settings window in the one it shows.
+LoadResult Load(
+    const std::wstring& path, const Settings& previous = Settings(), Lang::Language language = Lang::Current());
 bool Write(const Settings& settings, const std::wstring& path);
 // Plain JSON without comments (used as a fallback).
 std::string ToJsonString(const Settings& settings);
@@ -194,7 +199,7 @@ std::string ToDocumentedJsonString(const Settings& settings);
 // "буфер фиксированный, 480 фреймов"). The journal and the diagnostics report
 // put them into sentences of their own (LogAudioSettings, DiagConfig).
 std::string DescribeFlow(const Settings& settings);
-std::string DescribeBuffer(const Settings& settings);
+std::string DescribeBuffer(const Settings& settings, Lang::Language language = Lang::Current());
 
 // The "commentLanguage" field of a file on disk, read without touching the
 // rest: the application compares it with the current language and rewrites the
