@@ -513,12 +513,11 @@ LoadResult miniant::Config::Load(const std::wstring& path, const Settings& previ
             ReadBool(*reinit, "deviceRemoved", now.deviceRemoved, was.deviceRemoved, warnings, name);
             ReadBool(*reinit, "resumeFromSleep", now.resumeFromSleep, was.resumeFromSleep, warnings, name);
             ReadBool(*reinit, "sessionUnlock", now.sessionUnlock, was.sessionUnlock, warnings, name);
-            ReadBool(*reinit, "enableWhenDisabled", now.enableWhenDisabled, was.enableWhenDisabled, warnings, name);
             ReadInt(*reinit, FAILURE_TIMEOUT_MS_LIMITS, now.failureTimeoutMs, was.failureTimeoutMs, warnings, name);
             ReadInt(*reinit, DEBOUNCE_MS_LIMITS, now.debounceMs, was.debounceMs, warnings, name);
             WarnUnknownKeys(*reinit, name,
                 { "defaultDeviceChanged", "deviceStateChanged", "deviceAdded", "deviceRemoved", "resumeFromSleep",
-                  "sessionUnlock", "enableWhenDisabled", FAILURE_TIMEOUT_MS_LIMITS.key, DEBOUNCE_MS_LIMITS.key },
+                  "sessionUnlock", FAILURE_TIMEOUT_MS_LIMITS.key, DEBOUNCE_MS_LIMITS.key },
                 warnings);
         }
 
@@ -655,7 +654,6 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     reinit["deviceRemoved"] = settings.audio.reinit.deviceRemoved;
     reinit["resumeFromSleep"] = settings.audio.reinit.resumeFromSleep;
     reinit["sessionUnlock"] = settings.audio.reinit.sessionUnlock;
-    reinit["enableWhenDisabled"] = settings.audio.reinit.enableWhenDisabled;
     reinit[FAILURE_TIMEOUT_MS_LIMITS.key] = settings.audio.reinit.failureTimeoutMs;
     reinit[DEBOUNCE_MS_LIMITS.key] = settings.audio.reinit.debounceMs;
 
@@ -722,7 +720,6 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.Key(6, "deviceRemoved", settings.audio.reinit.deviceRemoved, text(Str::CfgReinitDeviceRemoved), true);
     document.Key(6, "resumeFromSleep", settings.audio.reinit.resumeFromSleep, text(Str::CfgReinitResume), true);
     document.Key(6, "sessionUnlock", settings.audio.reinit.sessionUnlock, text(Str::CfgReinitUnlock), true);
-    document.Key(6, "enableWhenDisabled", settings.audio.reinit.enableWhenDisabled, text(Str::CfgReinitEnableWhenDisabled), true);
     document.Key(6, FAILURE_TIMEOUT_MS_LIMITS.key, settings.audio.reinit.failureTimeoutMs,
         fmt::format(Lang::Utf8(Str::CfgReinitFailureTimeout), FAILURE_TIMEOUT_MS_LIMITS.minimum, FAILURE_TIMEOUT_MS_LIMITS.maximum),
         true);

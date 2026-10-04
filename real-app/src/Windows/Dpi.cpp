@@ -135,10 +135,6 @@ HFONT miniant::Windows::Dpi::CreateUiFont(UINT dpi) {
     return CreateFontFromMessage(nullptr, 100, 0, false, dpi);
 }
 
-HFONT miniant::Windows::Dpi::CreateHeaderFont(UINT dpi) {
-    return CreateFontFromMessage(nullptr, 108, FW_SEMIBOLD, false, dpi);
-}
-
 HFONT miniant::Windows::Dpi::CreateCaptionFont(UINT dpi) {
     return CreateFontFromMessage(nullptr, 100, FW_SEMIBOLD, false, dpi);
 }

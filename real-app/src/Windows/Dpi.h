@@ -20,12 +20,11 @@ int Scale(int value, UINT dpi);
 void AdjustWindowRect(RECT& rect, DWORD style, UINT dpi, bool hasMenu = false);
 
 // The fonts of the interface, for the given DPI: the message font of the system
-// (so that the user's font size and face are respected), its slightly larger
-// and semibold variant for headers, and a monospaced font for the log.
+// (so that the user's font size and face are respected) and a monospaced font
+// for the log.
 HFONT CreateUiFont(UINT dpi);
-HFONT CreateHeaderFont(UINT dpi);
-// The caption of a group of controls inside a section: as bold as a header,
-// but of the size of the controls.
+// The caption of a group of settings (the frames of the settings window):
+// semibold, of the size of the text.
 HFONT CreateCaptionFont(UINT dpi);
 HFONT CreateMonoFont(UINT dpi);
 

@@ -67,8 +67,6 @@ struct ReinitSettings {
     bool deviceRemoved = false;
     bool resumeFromSleep = true;
     bool sessionUnlock = true;
-    // A device change switches the latency reduction back on when it was off.
-    bool enableWhenDisabled = true;
     // How long the application keeps trying before it gives up (and stops
     // polling) when the device does not answer at all.
     int failureTimeoutMs = 60000;

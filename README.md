@@ -34,8 +34,8 @@ that is still maintained and adds quality-of-life features:
   of the device under the name of the field and accepts only a value from it
 * Automatic re-application when the default device changes, when a device is
   switched on or off (plugged in or out), after resume from sleep or after the
-  audio service restarts; the latency reduction is switched back on when it was
-  off (`reinit.enableWhenDisabled`)
+  audio service restarts; a device event switches the latency reduction back on
+  when it was off
 * Minimizes to the system tray; the tray icon survives an `explorer.exe` restart.
   Without the tray icon the window behaves as usual: Minimize goes to the taskbar,
   the close button exits

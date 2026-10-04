@@ -1226,12 +1226,13 @@ void App::OnTimer(UINT_PTR timerId) {
         CancelAudioRetry();
 
         // A device appeared or became the default one: this is the moment to
-        // start over, including switching the mode back on when it was off.
+        // start over, always including switching the latency reduction back on
+        // when it was off (by the user or after the device stopped answering).
         m_failureSince = 0;
         m_audioSuspended = false;
         m_deviceChangePending = true;
 
-        if (!m_audioEnabled && m_settings.audio.reinit.enableWhenDisabled) {
+        if (!m_audioEnabled) {
             m_audioEnabled = true;
             m_stateChangePending = true;
             Log::Operation(Lang::Utf8(Str::OpEnabled));

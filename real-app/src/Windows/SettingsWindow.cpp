@@ -38,18 +38,34 @@ const int WINDOW_HEIGHT = 660;
 const int MARGIN = 14;
 const int ROW_HEIGHT = 24;
 const int ROW_STEP = 24;
-const int HEADER_STEP = 30;
-const int GROUP_GAP = 12;
-// The space between the longest label and the fields next to it.
-const int LABEL_GAP = 16;
-const int FIELD_WIDTH = 220;
+
+// The settings of a page stand in groups: a frame of the system with its
+// caption on the top line. A frame keeps GROUP_INSET from the border of the
+// tabs and GROUP_GAP from the next frame; its rows start GROUP_PADDING inside
+// it, GROUP_TOP below its top (under the caption) and end GROUP_BOTTOM above
+// its bottom.
+const int GROUP_INSET = 4;
+const int GROUP_PADDING = 10;
+const int GROUP_TOP = 22;
+const int GROUP_BOTTOM = 8;
+const int GROUP_GAP = 8;
+// The left edge of the rows of a group.
+const int ROW_X = MARGIN + GROUP_INSET + GROUP_PADDING;
+
+// The space between the longest label of a group and its lists and fields.
+const int LABEL_GAP = 8;
 // A list is as wide as its longest item in either language plus what the list
 // draws around it: the borders, the margins of the text and the arrow button.
 const int COMBO_CHROME = 30;
+// A field of a number is as wide as the largest value it takes plus its border
+// and the margins of the text.
+const int EDIT_CHROME = 16;
 // A row of choices ("Language:" and its buttons): the space after the caption
 // and between two buttons.
 const int CHOICE_CAPTION_GAP = 10;
 const int CHOICE_GAP = 16;
+// The space between two columns of check boxes.
+const int COLUMN_GAP = 24;
 // The longest path the field of the log file takes.
 const int MAX_PATH_LENGTH = 1024;
 const int PAGE_TOP = 62;
@@ -57,23 +73,20 @@ const int PAGE_TOP = 62;
 // StandardButtonWidth): the width is known once the font is.
 const int BUTTON_HEIGHT = STANDARD_BUTTON_HEIGHT;
 const int BUTTON_GAP = 8;
-// The part of the first row of buttons that is at least left for the path of
-// the settings file; a longer path loses its middle.
-const int MINIMUM_PATH_WIDTH = 160;
 
-// The two rows of buttons at the bottom of the window, the space between them
-// and the tabs, and the space between the lowest control of a page and the
-// bottom border of the tabs.
-const int FRAME_HEIGHT = 2 * BUTTON_HEIGHT + BUTTON_GAP;
+// The row of buttons at the bottom of the window, the space between it and the
+// tabs, and the space between the lowest frame of a page and the bottom border
+// of the tabs.
+const int FRAME_HEIGHT = BUTTON_HEIGHT;
 const int FRAME_GAP = 8;
-const int PAGE_BOTTOM_PADDING = 8;
+const int PAGE_BOTTOM_PADDING = 6;
 
 // The air between the border of the tabs and the controls of a page, in real
 // pixels: the same on the left and on the right.
 const int PAGE_AIR = 2;
 
-// A header is measured in real pixels and rounded to design ones: a few pixels
-// of reserve keep its last letter from being cut off.
+// A caption is measured in real pixels and rounded to design ones: a few
+// pixels of reserve keep its last letter from being cut off.
 const int HEADER_SLACK = 4;
 
 // A value that the window does not take is put back, and a balloon at its
@@ -84,6 +97,16 @@ const UINT_PTR TIP_TIMER_ID = 1;
 const UINT TIP_DURATION_MS = 6000;
 const int TIP_MAX_WIDTH = 320;
 const UINT WM_APP_CHECK_FIELD = WM_APP + 1;
+
+// The background of the pages is made again after a change of the theme or of
+// the colours of the system, once the tab control has taken it.
+const UINT WM_APP_PAGE_BRUSH = WM_APP + 2;
+
+// The descriptions of the settings that show when the mouse rests on them stay
+// long enough to be read. The tools of the areas of greyed out controls have
+// numbers of their own (see UpdateHintAreas).
+const int HINT_DURATION_MS = 20000;
+const UINT_PTR HINT_AREA_BASE = 0x10000;
 
 // Every control of the window has a number: the values are read back by it, so
 // a control that is not on screen at the moment (another page is open) keeps
@@ -119,7 +142,6 @@ enum class Id : int {
     ReinitDeviceRemoved,
     ReinitResumeFromSleep,
     ReinitSessionUnlock,
-    ReinitEnableWhenDisabled,
     ReinitFailureTimeout,
     ReinitDebounce,
 
@@ -132,12 +154,15 @@ enum class Id : int {
     LogMaxFileSize,
     LogMaxFiles,
 
-    // The frame of the window: the tab control and the buttons belong to no
-    // page, they stay on screen all the time.
-    Tabs,
+    // The settings file: its path and the buttons that open it and read it
+    // again (the last group of the page "Other").
     SettingsPath,
     OpenFile,
     Reload,
+
+    // The frame of the window: the tab control and the buttons belong to no
+    // page, they stay on screen all the time.
+    Tabs,
     Cancel,
     Save,
 };
@@ -185,8 +210,8 @@ struct Context {
     // over the border of the tabs.
     int pageRight = WINDOW_WIDTH - MARGIN;
 
-    // The top of the two rows of buttons in design pixels: right under the
-    // tabs, whose height follows the tallest page.
+    // The top of the row of buttons in design pixels: right under the tabs,
+    // whose height follows the tallest page.
     int frameTop = WINDOW_HEIGHT - MARGIN - FRAME_HEIGHT;
 
     // The width of the client area in design pixels: it follows the widest
@@ -196,17 +221,43 @@ struct Context {
     // The right edge of the widest control of the pages in design pixels.
     int contentRight = 0;
 
-    // The column of the labels in front of the lists and the fields, and the
-    // width of a button: both follow the texts of the current language.
-    int labelWidth = 220;
+    // The column of the labels in front of the lists and the fields of the
+    // group being built, and the width of a button: both follow the texts of
+    // the current language.
+    int labelWidth = 0;
     int buttonWidth = 75;
+
+    // The group being built: the top of its frame and its caption (see
+    // BeginGroup). The frames of all groups are stretched to the width of the
+    // pages once the window has got its size (see StretchGroups).
+    int groupTop = 0;
+    Lang::Str groupCaption = Lang::Str::Count;
+    std::vector<HWND> groupBoxes;
 
     bool saved = false;
     bool done = false;
 
     HFONT font = nullptr;
-    HFONT headerFont = nullptr;
+    // The captions of the groups: semibold, of the size of the text.
     HFONT captionFont = nullptr;
+
+    // The background of the controls of the pages: a picture of the empty
+    // display area of the tabs, and the top left corner of that area in the
+    // client coordinates of the tab control (see CreatePageBrush).
+    HBRUSH pageBrush = nullptr;
+    HBITMAP pageBitmap = nullptr;
+    POINT pageOrigin = {};
+
+    // The descriptions of the settings: one tooltip of the system with a tool
+    // for every described control and its label, and an area tool of the
+    // window for the time the control is greyed out (see UpdateHintAreas).
+    struct HintArea {
+        HWND control;
+        Page page;
+    };
+
+    HWND hints = nullptr;
+    std::vector<HintArea> hintAreas;
 
     // The last value of every checked field that the window took: a value it
     // does not take is replaced with it. At first it is the value in use.
@@ -407,31 +458,9 @@ void ExtendContent(Context& context, int right) {
     context.contentRight = (std::max)(context.contentRight, right);
 }
 
-// The labels in front of the lists and the fields. The column is as wide as
-// the longest of them in the language of the window, plus a gap: a label
-// added to a page has to be added here as well.
-const Lang::Str FIELD_LABELS[] = {
-    Lang::Str::SettingsCloseAction,
-    Lang::Str::SettingsDataFlow,
-    Lang::Str::SettingsBuffer,
-    Lang::Str::SettingsFixedBufferFrames,
-    Lang::Str::SettingsReinitFailureTimeout,
-    Lang::Str::SettingsReinitDebounce,
-    Lang::Str::SettingsProcessPriority,
-    Lang::Str::SettingsLogLevel,
-    Lang::Str::SettingsLogFilePath,
-    Lang::Str::SettingsLogMaxFileSize,
-    Lang::Str::SettingsLogMaxFiles,
-};
-
-int LabelColumnWidth(Context& context) {
-    int widest = 0;
-
-    for (const Lang::Str label : FIELD_LABELS) {
-        widest = (std::max)(widest, DesignTextWidth(context, context.font, Lang::Wide(label)));
-    }
-
-    return widest > 0 ? widest + LABEL_GAP : 220;
+// The label of a list or a field ends with a colon: the value follows it.
+std::wstring LabelText(Lang::Str label) {
+    return Lang::Wide(label) + L":";
 }
 
 // A control is never wider than its own text: a click far to the right of a
@@ -480,33 +509,161 @@ HWND CreateControl(
     return control;
 }
 
-// A header is as wide as its own text: a label up to the edge of the window
-// painted its background over the right border of the tabs.
-int AddHeader(Context& context, Lang::Str text, int y) {
-    const std::wstring caption = Lang::Wide(text);
-    const int available = context.pageRight - MARGIN;
-    const int textWidth = DesignTextWidth(
-        context, context.headerFont != nullptr ? context.headerFont : context.font, caption);
-    const int width = textWidth > 0 ? (std::min)(textWidth + HEADER_SLACK, available) : available;
+HWND Get(Context& context, Id id);
 
-    const HWND label = CreateControl(
-        context, L"STATIC", caption, SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
-        MARGIN, y, width, ROW_HEIGHT);
+// ------------------------------------------------------------ groups ------
 
-    if (label != nullptr && context.headerFont != nullptr) {
-        ::SendMessageW(label, WM_SETFONT, reinterpret_cast<WPARAM>(context.headerFont), TRUE);
+// A group starts at y: its rows begin at ROW_X under the caption of the frame,
+// and its lists and fields stand in a column of their own, right after the
+// longest of its labels.
+int BeginGroup(Context& context, Lang::Str caption, int y, std::initializer_list<Lang::Str> labels = {}) {
+    context.groupTop = y;
+    context.groupCaption = caption;
+
+    int widest = 0;
+    for (const Lang::Str label : labels) {
+        widest = (std::max)(widest, DesignTextWidth(context, context.font, LabelText(label)));
     }
 
-    BindToPage(context, label);
-    ExtendContent(context, MARGIN + width);
-    return y + HEADER_STEP;
+    context.labelWidth = widest > 0 ? widest + LABEL_GAP : 0;
+
+    return y + GROUP_TOP;
 }
 
-// A check box at the left edge of the page. WS_GROUP in extraStyle starts a
-// new group of controls (see AddChoiceRow).
-int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y, DWORD extraStyle = 0) {
+// The frame of the group around its rows, with the caption on its top line.
+// It is created after the rows, so it lies under them and never paints over
+// them (WS_CLIPSIBLINGS). Its width is set when the window has got its size
+// (see StretchGroups). Returns the bottom of the frame.
+int EndGroup(Context& context, int y) {
+    const int left = MARGIN + GROUP_INSET;
+    const int bottom = y + GROUP_BOTTOM;
+    const HFONT font = context.captionFont != nullptr ? context.captionFont : context.font;
+    const std::wstring caption = Lang::Wide(context.groupCaption);
+
+    const HWND frame = CreateControl(
+        context, L"BUTTON", caption, BS_GROUPBOX | WS_CLIPSIBLINGS, static_cast<Id>(0),
+        left, context.groupTop, context.pageRight - GROUP_INSET - left, bottom - context.groupTop);
+
+    if (frame != nullptr) {
+        ::SendMessageW(frame, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+        context.groupBoxes.push_back(frame);
+    }
+
+    BindToPage(context, frame);
+
+    // The caption has to fit into the frame as well.
+    ExtendContent(context, ROW_X + DesignTextWidth(context, font, caption) + HEADER_SLACK);
+
+    return bottom;
+}
+
+// ------------------------------------------------------- descriptions -----
+
+// The description of a setting shows when the mouse rests on the control or on
+// its label (a static control lets the mouse through to the window unless it
+// has SS_NOTIFY, see AddLabel). A greyed out control takes no mouse at all:
+// for that time an area tool of the window covers it (see UpdateHintAreas).
+void AddHint(Context& context, HWND control, HWND label, Lang::Str text) {
+    if (context.hints == nullptr || control == nullptr || text == Lang::Str::Count) {
+        return;
+    }
+
+    std::wstring body = Lang::Wide(text);
+
+    for (const HWND tool : { control, label }) {
+        if (tool == nullptr) {
+            continue;
+        }
+
+        TTTOOLINFOW info = {};
+        info.cbSize = TTTOOLINFOW_V2_SIZE;
+        info.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        info.hwnd = context.window;
+        info.uId = reinterpret_cast<UINT_PTR>(tool);
+        info.lpszText = body.data();
+        ::SendMessageW(context.hints, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&info));
+    }
+
+    // The area starts empty: UpdateHintAreas sets it while the control is
+    // greyed out on the open page.
+    TTTOOLINFOW area = {};
+    area.cbSize = TTTOOLINFOW_V2_SIZE;
+    area.uFlags = TTF_SUBCLASS;
+    area.hwnd = context.window;
+    area.uId = HINT_AREA_BASE + context.hintAreas.size();
+    area.lpszText = body.data();
+    ::SendMessageW(context.hints, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&area));
+
+    context.hintAreas.push_back({ control, context.page });
+}
+
+// The area tools follow their controls: a greyed out control of the open page
+// is covered, anything else is not (the controls of a hidden page take no
+// mouse either, and their areas would answer for the open one).
+void UpdateHintAreas(Context& context) {
+    if (context.hints == nullptr || context.window == nullptr) {
+        return;
+    }
+
+    for (size_t i = 0; i < context.hintAreas.size(); ++i) {
+        const Context::HintArea& entry = context.hintAreas[i];
+        RECT area = {};
+
+        if (entry.page == context.page && ::IsWindowEnabled(entry.control) == FALSE) {
+            ::GetWindowRect(entry.control, &area);
+            ::MapWindowPoints(HWND_DESKTOP, context.window, reinterpret_cast<POINT*>(&area), 2);
+        }
+
+        TTTOOLINFOW info = {};
+        info.cbSize = TTTOOLINFOW_V2_SIZE;
+        info.hwnd = context.window;
+        info.uId = HINT_AREA_BASE + i;
+        info.rect = area;
+        ::SendMessageW(context.hints, TTM_NEWTOOLRECTW, 0, reinterpret_cast<LPARAM>(&info));
+    }
+}
+
+// The tooltip of the descriptions: made with the controls, in the font of the
+// window (it follows the DPI of the monitor), and wrapped to a few lines.
+void CreateHints(Context& context) {
+    context.hints = ::CreateWindowExW(
+        WS_EX_TOPMOST,
+        TOOLTIPS_CLASSW,
+        nullptr,
+        WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+        context.window,
+        nullptr,
+        context.instance,
+        nullptr);
+
+    if (context.hints == nullptr) {
+        return;
+    }
+
+    if (context.font != nullptr) {
+        ::SendMessageW(context.hints, WM_SETFONT, reinterpret_cast<WPARAM>(context.font), FALSE);
+    }
+
+    ::SendMessageW(context.hints, TTM_SETMAXTIPWIDTH, 0, context.Scale(TIP_MAX_WIDTH));
+    ::SendMessageW(context.hints, TTM_SETDELAYTIME, TTDT_AUTOPOP, MAKELPARAM(HINT_DURATION_MS, 0));
+}
+
+void DestroyHints(Context& context) {
+    if (context.hints != nullptr) {
+        ::DestroyWindow(context.hints);
+        context.hints = nullptr;
+    }
+
+    context.hintAreas.clear();
+}
+
+// ------------------------------------------------------------- rows -------
+
+// A check box at the given left edge: ROW_X, or the second column of a group.
+// WS_GROUP in extraStyle starts a new group of controls (see AddChoiceRow).
+HWND AddCheckAt(Context& context, Id id, Lang::Str text, bool value, int x, int y, DWORD extraStyle = 0) {
     const std::wstring caption = Lang::Wide(text);
-    const int x = MARGIN;
     const int width = CheckWidth(context, caption, x);
 
     const HWND check = CreateControl(
@@ -519,32 +676,30 @@ int AddCheck(Context& context, Id id, Lang::Str text, bool value, int y, DWORD e
 
     BindToPage(context, check);
     ExtendContent(context, x + width);
+    return check;
+}
+
+int AddCheck(
+    Context& context, Id id, Lang::Str text, bool value, int y,
+    Lang::Str hint = Lang::Str::Count, DWORD extraStyle = 0) {
+    AddHint(context, AddCheckAt(context, id, text, value, ROW_X, y, extraStyle), nullptr, hint);
     return y + ROW_STEP;
 }
 
-// The caption of a group of controls inside a section ("Icon menu items:"):
-// as bold as a header, but of the size of the rows and with their step.
+// The caption of a part of a group ("Icon menu items:"): plain text of a row.
 int AddCaption(Context& context, Id id, Lang::Str text, int y) {
     const std::wstring caption = Lang::Wide(text);
-    const HFONT font = context.captionFont != nullptr ? context.captionFont : context.font;
-    const int available = context.pageRight - MARGIN;
-    const int textWidth = DesignTextWidth(context, font, caption);
+    const int available = context.pageRight - ROW_X;
+    const int textWidth = DesignTextWidth(context, context.font, caption);
     const int width = textWidth > 0 ? (std::min)(textWidth + HEADER_SLACK, available) : available;
 
-    const HWND label = CreateControl(
+    BindToPage(context, CreateControl(
         context, L"STATIC", caption, SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX, id,
-        MARGIN, y, width, ROW_HEIGHT);
+        ROW_X, y, width, ROW_HEIGHT));
 
-    if (label != nullptr && context.captionFont != nullptr) {
-        ::SendMessageW(label, WM_SETFONT, reinterpret_cast<WPARAM>(context.captionFont), TRUE);
-    }
-
-    BindToPage(context, label);
-    ExtendContent(context, MARGIN + width);
+    ExtendContent(context, ROW_X + width);
     return y + ROW_STEP;
 }
-
-HWND Get(Context& context, Id id);
 
 // Tab enters a group of choices at its selected button, as in every dialog
 // box of the system: only that button is a tab stop.
@@ -570,7 +725,7 @@ void UpdateChoiceTabStop(Context& context, Id firstId, size_t count) {
 }
 
 // A row of choices right after its caption, outside the column of the labels:
-// "Language:  (o) As in Windows  ( ) English  ( ) Russian". The buttons have
+// "Language:  (o) As in Windows  ( ) English  ( ) Русский". The buttons have
 // consecutive identifiers from firstId and are one group: the arrows move
 // between them, and the control after the row starts the next group.
 int AddChoiceRow(
@@ -580,9 +735,9 @@ int AddChoiceRow(
 
     BindToPage(context, CreateControl(
         context, L"STATIC", caption, SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
-        MARGIN, y, captionWidth, ROW_HEIGHT));
+        ROW_X, y, captionWidth, ROW_HEIGHT));
 
-    int x = MARGIN + captionWidth + CHOICE_CAPTION_GAP;
+    int x = ROW_X + captionWidth + CHOICE_CAPTION_GAP;
 
     for (size_t i = 0; i < texts.size(); ++i) {
         const std::wstring text = Lang::Wide(texts[i]);
@@ -617,22 +772,33 @@ int ComboWidth(Context& context, const std::vector<Lang::Str>& texts) {
         }
     }
 
-    return widest > 0 ? widest + COMBO_CHROME : FIELD_WIDTH;
+    return widest > 0 ? widest + COMBO_CHROME : 160;
 }
 
-int AddCombo(Context& context, Id id, Lang::Str label, const std::vector<Lang::Str>& texts, int selected, int y) {
-    BindToPage(context, CreateControl(
-        context, L"STATIC", Lang::Wide(label), SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
-        MARGIN, y, context.labelWidth, ROW_HEIGHT));
+// The label of a list or a field, with its colon, in the column of the group.
+// A described label takes the mouse, so that its description shows.
+HWND AddLabel(Context& context, Lang::Str label, int y, bool described) {
+    const HWND control = CreateControl(
+        context, L"STATIC", LabelText(label), SS_LEFT | SS_CENTERIMAGE | (described ? SS_NOTIFY : 0),
+        static_cast<Id>(0), ROW_X, y, context.labelWidth, ROW_HEIGHT);
 
+    BindToPage(context, control);
+    return control;
+}
+
+int AddCombo(
+    Context& context, Id id, Lang::Str label, const std::vector<Lang::Str>& texts, int selected, int y,
+    Lang::Str hint = Lang::Str::Count) {
+    const HWND caption = AddLabel(context, label, y, hint != Lang::Str::Count);
+    const int x = ROW_X + context.labelWidth;
     const int width = ComboWidth(context, texts);
 
     const HWND combo = CreateControl(
         context, L"COMBOBOX", L"",
         WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, id,
-        MARGIN + context.labelWidth, y, width, ROW_HEIGHT * 8);
+        x, y, width, ROW_HEIGHT * 8);
 
-    ExtendContent(context, MARGIN + context.labelWidth + width);
+    ExtendContent(context, x + width);
 
     // A list belongs to its page like every other control: without this the
     // lists of all three pages would be drawn in the same place at once.
@@ -648,6 +814,7 @@ int AddCombo(Context& context, Id id, Lang::Str label, const std::vector<Lang::S
         }
     }
 
+    AddHint(context, combo, caption, hint);
     return y + ROW_STEP;
 }
 
@@ -678,14 +845,13 @@ std::wstring LastValid(const Context& context, Id id) {
 // its largest value has.
 int AddEdit(
     Context& context, Id id, Lang::Str label, const std::wstring& value, int width, int y,
-    int maxLength, bool digitsOnly = false) {
-    BindToPage(context, CreateControl(
-        context, L"STATIC", Lang::Wide(label), SS_LEFT | SS_CENTERIMAGE, static_cast<Id>(0),
-        MARGIN, y, context.labelWidth, ROW_HEIGHT));
+    int maxLength, bool digitsOnly = false, Lang::Str hint = Lang::Str::Count) {
+    const HWND caption = AddLabel(context, label, y, hint != Lang::Str::Count);
+    const int x = ROW_X + context.labelWidth;
 
     const HWND edit = CreateControl(
         context, L"EDIT", value, WS_TABSTOP | ES_AUTOHSCROLL | (digitsOnly ? ES_NUMBER : 0), id,
-        MARGIN + context.labelWidth, y, width, ROW_HEIGHT, WS_EX_CLIENTEDGE);
+        x, y, width, ROW_HEIGHT, WS_EX_CLIENTEDGE);
 
     if (edit != nullptr && maxLength > 0) {
         ::SendMessageW(edit, EM_LIMITTEXT, static_cast<WPARAM>(maxLength), 0);
@@ -693,8 +859,9 @@ int AddEdit(
 
     BindToPage(context, edit);
     RememberValid(context, id, value);
+    AddHint(context, edit, caption, hint);
 
-    ExtendContent(context, MARGIN + context.labelWidth + width);
+    ExtendContent(context, x + width);
     return y + ROW_STEP;
 }
 
@@ -709,9 +876,17 @@ int DigitCount(int value) {
     return digits;
 }
 
+// A field of a number is as wide as its largest value, unless its group gives
+// it a width (the fields of the log follow the list of the level).
 int AddNumber(
-    Context& context, Id id, Lang::Str label, const std::wstring& value, const Config::NumberLimits& limits, int y) {
-    return AddEdit(context, id, label, value, FIELD_WIDTH, y, DigitCount(limits.maximum), true);
+    Context& context, Id id, Lang::Str label, const std::wstring& value, const Config::NumberLimits& limits, int y,
+    Lang::Str hint = Lang::Str::Count, int width = 0) {
+    if (width <= 0) {
+        const int textWidth = DesignTextWidth(context, context.font, std::to_wstring(limits.maximum));
+        width = (textWidth > 0 ? textWidth : 7 * DigitCount(limits.maximum)) + EDIT_CHROME;
+    }
+
+    return AddEdit(context, id, label, value, width, y, DigitCount(limits.maximum), true, hint);
 }
 
 HWND Get(Context& context, Id id) {
@@ -908,42 +1083,57 @@ int BuildWindowPage(Context& context) {
 
     const Config::Settings& settings = *context.settings;
 
-    int y = PAGE_TOP;
+    // The frames keep the same distance from the top of the tabs as from their
+    // sides.
+    int y = PAGE_TOP + GROUP_INSET;
 
-    y = AddHeader(context, Lang::Str::SettingsHeaderApplication, y);
+    y = BeginGroup(context, Lang::Str::SettingsHeaderApplication, y, { Lang::Str::SettingsCloseAction });
 
-    // The language as a row of buttons right after its caption: in the column
-    // of the labels a list stood far away from the word "Language".
+    // The language as a row of buttons right after its caption.
     y = AddChoiceRow(context, Id::LanguageAuto, Lang::Str::SettingsLanguage, Texts(LANGUAGES),
         LanguageIndex(settings.application.language), y);
 
     // WS_GROUP: the buttons of the language end here, the arrows stay in them.
     y = AddCheck(context, Id::StartWithWindows, Lang::Str::SettingsStartWithWindows,
-        settings.application.startWithWindows, y, WS_GROUP);
+        settings.application.startWithWindows, y, Lang::Str::SettingsHintStartWithWindows, WS_GROUP);
     y = AddCheck(context, Id::StartMinimizedToTray, Lang::Str::SettingsStartMinimized,
-        settings.application.startMinimizedToTray, y);
+        settings.application.startMinimizedToTray, y, Lang::Str::SettingsHintStartMinimized);
     y = AddCheck(context, Id::MinimizeToTray, Lang::Str::SettingsMinimizeToTray,
-        settings.application.minimizeToTray, y);
+        settings.application.minimizeToTray, y, Lang::Str::SettingsHintMinimizeToTray);
     y = AddCombo(context, Id::CloseButtonAction, Lang::Str::SettingsCloseAction, Texts(CLOSE_ACTIONS),
-        IndexOf(CLOSE_ACTIONS, settings.application.closeButtonAction), y);
+        IndexOf(CLOSE_ACTIONS, settings.application.closeButtonAction), y, Lang::Str::SettingsHintCloseAction);
 
-    // The icon and the items of its menu that can be hidden. The items have a
-    // caption of their own and are greyed out with it while the icon is off.
-    // The status line, "Settings" and "Exit" are always in the menu, so they
-    // have no switch here.
-    y += GROUP_GAP;
-    y = AddHeader(context, Lang::Str::SettingsHeaderTray, y);
+    y = EndGroup(context, y) + GROUP_GAP;
+
+    // The icon and the items of its menu that can be hidden, under a caption of
+    // their own and greyed out with it while the icon is off. The items stand
+    // in two columns, as the groups of the menu itself: the state and the
+    // restart, the log and the diagnostics. The status line, "Settings" and
+    // "Exit" are always in the menu, so they have no switch here.
+    y = BeginGroup(context, Lang::Str::SettingsHeaderTray, y);
     y = AddCheck(context, Id::TrayEnabled, Lang::Str::SettingsTrayEnabled, settings.tray.enabled, y);
     y = AddCaption(context, Id::TrayMenuCaption, Lang::Str::SettingsTrayMenuCaption, y);
-    y = AddCheck(context, Id::TrayMenuToggle, Lang::Str::TrayToggleEnabled, settings.tray.menu.toggleEnabled, y);
-    y = AddCheck(context, Id::TrayMenuReinit, Lang::Str::TrayReinitialize, settings.tray.menu.reinitialize, y);
-    y = AddCheck(context, Id::TrayMenuLog, Lang::Str::TrayLog, settings.tray.menu.openLog, y);
-    y = AddCheck(context, Id::TrayMenuDiagnostics, Lang::Str::TrayDiagnostics, settings.tray.menu.diagnostics, y);
+    {
+        const int secondColumn = ROW_X + COLUMN_GAP + (std::max)(
+            CheckWidth(context, Lang::Wide(Lang::Str::TrayToggleEnabled), ROW_X),
+            CheckWidth(context, Lang::Wide(Lang::Str::TrayReinitialize), ROW_X));
+
+        AddCheckAt(context, Id::TrayMenuToggle, Lang::Str::TrayToggleEnabled,
+            settings.tray.menu.toggleEnabled, ROW_X, y);
+        AddCheckAt(context, Id::TrayMenuReinit, Lang::Str::TrayReinitialize,
+            settings.tray.menu.reinitialize, ROW_X, y + ROW_STEP);
+        AddCheckAt(context, Id::TrayMenuLog, Lang::Str::TrayLog,
+            settings.tray.menu.openLog, secondColumn, y);
+        AddCheckAt(context, Id::TrayMenuDiagnostics, Lang::Str::TrayDiagnostics,
+            settings.tray.menu.diagnostics, secondColumn, y + ROW_STEP);
+
+        y += 2 * ROW_STEP;
+    }
+    y = EndGroup(context, y) + GROUP_GAP;
 
     // The balloons are shown by the tray icon: without it they are greyed out
     // as well.
-    y += GROUP_GAP;
-    y = AddHeader(context, Lang::Str::SettingsHeaderNotifications, y);
+    y = BeginGroup(context, Lang::Str::SettingsHeaderNotifications, y);
     y = AddCheck(context, Id::NotificationError, Lang::Str::SettingsNotifyError,
         settings.tray.notifications.onError, y);
     y = AddCheck(context, Id::NotificationDeviceChange, Lang::Str::SettingsNotifyDeviceChange,
@@ -951,7 +1141,7 @@ int BuildWindowPage(Context& context) {
     y = AddCheck(context, Id::NotificationStateChange, Lang::Str::SettingsNotifyStateChange,
         settings.tray.notifications.onStateChange, y);
 
-    return y;
+    return EndGroup(context, y);
 }
 
 int BuildAudioPage(Context& context) {
@@ -959,15 +1149,19 @@ int BuildAudioPage(Context& context) {
 
     const Config::Settings& settings = *context.settings;
 
-    int y = PAGE_TOP;
+    // The frames keep the same distance from the top of the tabs as from their
+    // sides.
+    int y = PAGE_TOP + GROUP_INSET;
 
-    y = AddHeader(context, Lang::Str::SettingsHeaderAudio, y);
+    y = BeginGroup(context, Lang::Str::SettingsHeaderAudio, y,
+        { Lang::Str::SettingsDataFlow, Lang::Str::SettingsBuffer, Lang::Str::SettingsFixedBufferFrames });
     y = AddCombo(context, Id::AudioDataFlow, Lang::Str::SettingsDataFlow, Texts(DATA_FLOWS),
-        IndexOf(DATA_FLOWS, settings.audio.dataFlow), y);
+        IndexOf(DATA_FLOWS, settings.audio.dataFlow), y, Lang::Str::SettingsHintDataFlow);
     y = AddCombo(context, Id::AudioBufferMode, Lang::Str::SettingsBuffer, Texts(BUFFER_MODES),
-        IndexOf(BUFFER_MODES, settings.audio.buffer), y);
+        IndexOf(BUFFER_MODES, settings.audio.buffer), y, Lang::Str::SettingsHintBuffer);
     y = AddNumber(context, Id::AudioFixedBufferFrames, Lang::Str::SettingsFixedBufferFrames,
-        FixedBufferText(settings.audio.fixedBufferFrames), Config::FIXED_BUFFER_FRAMES_LIMITS, y);
+        FixedBufferText(settings.audio.fixedBufferFrames), Config::FIXED_BUFFER_FRAMES_LIMITS, y,
+        Lang::Str::SettingsHintFixedBuffer);
 
     // The range of the device under the name of the field: the values the
     // fixed buffer takes, so that nobody has to look them up in the report of
@@ -976,21 +1170,22 @@ int BuildAudioPage(Context& context) {
     // buffer (see UpdateHintVisibility).
     {
         const std::wstring hint = BufferHintText(context);
+        const int available = context.pageRight - GROUP_INSET - GROUP_PADDING - ROW_X;
         const int textWidth = hint.empty() ? 0 : DesignTextWidth(context, context.font, hint);
-        const int width = textWidth > 0
-            ? (std::min)(textWidth + HEADER_SLACK, context.pageRight - MARGIN)
-            : context.labelWidth;
+        const int width = textWidth > 0 ? (std::min)(textWidth + HEADER_SLACK, available) : context.labelWidth;
 
         BindToPage(context, CreateControl(
             context, L"STATIC", hint, SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX, Id::AudioBufferHint,
-            MARGIN, y, width, ROW_HEIGHT));
+            ROW_X, y, width, ROW_HEIGHT));
 
-        ExtendContent(context, MARGIN + width);
+        ExtendContent(context, ROW_X + width);
         y += ROW_STEP;
     }
 
-    y += GROUP_GAP;
-    y = AddHeader(context, Lang::Str::SettingsHeaderReinit, y);
+    y = EndGroup(context, y) + GROUP_GAP;
+
+    y = BeginGroup(context, Lang::Str::SettingsHeaderReinit, y,
+        { Lang::Str::SettingsReinitFailureTimeout, Lang::Str::SettingsReinitDebounce });
     y = AddCheck(context, Id::ReinitDefaultDevice, Lang::Str::SettingsReinitDeviceChanged,
         settings.audio.reinit.defaultDeviceChanged, y);
     y = AddCheck(context, Id::ReinitDeviceState, Lang::Str::SettingsReinitDeviceState,
@@ -1003,14 +1198,12 @@ int BuildAudioPage(Context& context) {
         settings.audio.reinit.resumeFromSleep, y);
     y = AddCheck(context, Id::ReinitSessionUnlock, Lang::Str::SettingsReinitUnlock,
         settings.audio.reinit.sessionUnlock, y);
-    y = AddCheck(context, Id::ReinitEnableWhenDisabled, Lang::Str::SettingsReinitEnableWhenDisabled,
-        settings.audio.reinit.enableWhenDisabled, y);
     y = AddNumber(context, Id::ReinitFailureTimeout, Lang::Str::SettingsReinitFailureTimeout,
         std::to_wstring(settings.audio.reinit.failureTimeoutMs), Config::FAILURE_TIMEOUT_MS_LIMITS, y);
     y = AddNumber(context, Id::ReinitDebounce, Lang::Str::SettingsReinitDebounce,
         std::to_wstring(settings.audio.reinit.debounceMs), Config::DEBOUNCE_MS_LIMITS, y);
 
-    return y;
+    return EndGroup(context, y);
 }
 
 int BuildOtherPage(Context& context) {
@@ -1018,29 +1211,69 @@ int BuildOtherPage(Context& context) {
 
     const Config::Settings& settings = *context.settings;
 
-    int y = PAGE_TOP;
+    // The frames keep the same distance from the top of the tabs as from their
+    // sides.
+    int y = PAGE_TOP + GROUP_INSET;
 
-    y = AddHeader(context, Lang::Str::SettingsHeaderPerformance, y);
+    y = BeginGroup(context, Lang::Str::SettingsHeaderPerformance, y, { Lang::Str::SettingsProcessPriority });
     y = AddCombo(context, Id::ProcessPriority, Lang::Str::SettingsProcessPriority, Texts(PRIORITIES),
-        IndexOf(PRIORITIES, settings.performance.processPriority), y);
+        IndexOf(PRIORITIES, settings.performance.processPriority), y, Lang::Str::SettingsHintProcessPriority);
+    y = EndGroup(context, y) + GROUP_GAP;
 
-    y += GROUP_GAP;
-    y = AddHeader(context, Lang::Str::SettingsHeaderUpdates, y);
+    y = BeginGroup(context, Lang::Str::SettingsHeaderUpdates, y);
     y = AddCheck(context, Id::UpdateCheckOnStartup, Lang::Str::SettingsCheckOnStartup,
         settings.updates.checkOnStartup, y);
+    y = EndGroup(context, y) + GROUP_GAP;
 
-    y += GROUP_GAP;
-    y = AddHeader(context, Lang::Str::SettingsHeaderLog, y);
-    y = AddCombo(context, Id::LogLevel, Lang::Str::SettingsLogLevel, Texts(LOG_LEVELS),
-        LogLevelIndex(settings.logging.level), y);
-    y = AddEdit(context, Id::LogFilePath, Lang::Str::SettingsLogFilePath,
-        Text::ToWide(settings.logging.filePath), FIELD_WIDTH, y, MAX_PATH_LENGTH);
-    y = AddNumber(context, Id::LogMaxFileSize, Lang::Str::SettingsLogMaxFileSize,
-        std::to_wstring(settings.logging.maxFileSizeMb), Config::LOG_FILE_SIZE_MB_LIMITS, y);
-    y = AddNumber(context, Id::LogMaxFiles, Lang::Str::SettingsLogMaxFiles,
-        std::to_wstring(settings.logging.maxFiles), Config::LOG_FILES_LIMITS, y);
+    // The fields of the log are as wide as the list of the level: the group
+    // reads as one column.
+    y = BeginGroup(context, Lang::Str::SettingsHeaderLog, y,
+        { Lang::Str::SettingsLogLevel, Lang::Str::SettingsLogFilePath,
+          Lang::Str::SettingsLogMaxFileSize, Lang::Str::SettingsLogMaxFiles });
+    {
+        const int width = ComboWidth(context, Texts(LOG_LEVELS));
 
-    return y;
+        y = AddCombo(context, Id::LogLevel, Lang::Str::SettingsLogLevel, Texts(LOG_LEVELS),
+            LogLevelIndex(settings.logging.level), y);
+        y = AddEdit(context, Id::LogFilePath, Lang::Str::SettingsLogFilePath,
+            Text::ToWide(settings.logging.filePath), width, y, MAX_PATH_LENGTH, false,
+            Lang::Str::SettingsHintLogFilePath);
+        y = AddNumber(context, Id::LogMaxFileSize, Lang::Str::SettingsLogMaxFileSize,
+            std::to_wstring(settings.logging.maxFileSizeMb), Config::LOG_FILE_SIZE_MB_LIMITS, y,
+            Lang::Str::SettingsHintLogMaxFileSize, width);
+        y = AddNumber(context, Id::LogMaxFiles, Lang::Str::SettingsLogMaxFiles,
+            std::to_wstring(settings.logging.maxFiles), Config::LOG_FILES_LIMITS, y,
+            Lang::Str::SettingsHintLogMaxFiles, width);
+    }
+    y = EndGroup(context, y) + GROUP_GAP;
+
+    // The settings file: its path (a long one loses its middle, not the name of
+    // the file; the frame gives it its width, see StretchGroups), the editor of
+    // the system for a manual edit and Reload, which reads the file into the
+    // window again - "Save" is still what writes and applies it.
+    y = BeginGroup(context, Lang::Str::SettingsHeaderSettingsFile, y);
+    BindToPage(context, CreateControl(
+        context, L"STATIC", context.settingsPath, SS_LEFT | SS_CENTERIMAGE | SS_PATHELLIPSIS | SS_NOPREFIX,
+        Id::SettingsPath, ROW_X, y, context.pageRight - GROUP_INSET - GROUP_PADDING - ROW_X, ROW_HEIGHT));
+    y += ROW_STEP;
+    {
+        const int buttonWidth = context.buttonWidth;
+
+        BindToPage(context, CreateControl(
+            context, L"BUTTON", Lang::Wide(Lang::Str::SettingsOpenFile),
+            BS_PUSHBUTTON | WS_TABSTOP, Id::OpenFile,
+            ROW_X, y, buttonWidth, BUTTON_HEIGHT));
+
+        BindToPage(context, CreateControl(
+            context, L"BUTTON", Lang::Wide(Lang::Str::SettingsReload),
+            BS_PUSHBUTTON | WS_TABSTOP, Id::Reload,
+            ROW_X + buttonWidth + BUTTON_GAP, y, buttonWidth, BUTTON_HEIGHT));
+
+        ExtendContent(context, ROW_X + 2 * buttonWidth + BUTTON_GAP);
+        y += ROW_STEP;
+    }
+
+    return EndGroup(context, y);
 }
 
 // The tab control of the system: it draws the tabs itself, so they can never
@@ -1061,9 +1294,12 @@ void CreateTabs(Context& context) {
     // are built and their height is known.
     const int bottom = WINDOW_HEIGHT - MARGIN - FRAME_HEIGHT - FRAME_GAP;
 
+    // WS_CLIPSIBLINGS: the tabs never paint over the controls of the pages that
+    // lie on them; WS_GROUP: the arrows on the tabs switch the pages and never
+    // walk into the controls.
     context.tabs = CreateControl(
         context, WC_TABCONTROLW, L"",
-        WS_TABSTOP | TCS_TABS, Id::Tabs,
+        WS_TABSTOP | WS_GROUP | WS_CLIPSIBLINGS | TCS_TABS, Id::Tabs,
         MARGIN, top, WINDOW_WIDTH - 2 * MARGIN, bottom - top);
 
     if (context.tabs == nullptr) {
@@ -1139,9 +1375,9 @@ void ResetPageOffset(Context& context) {
 }
 
 // The window is as high as its tallest page and as wide as its widest row: the
-// tabs end a little below and to the right of the controls of the pages, the
-// two rows of buttons follow right under them. Everything is counted in real
-// pixels of the current DPI, so the window fits again on another monitor.
+// tabs end a little below and to the right of the frames of the pages, the row
+// of buttons follows right under them. Everything is counted in real pixels of
+// the current DPI, so the window fits again on another monitor.
 void FitWindowToContent(Context& context, int contentBottom) {
     if (context.window == nullptr || context.tabs == nullptr) {
         return;
@@ -1174,8 +1410,8 @@ void FitWindowToContent(Context& context, int contentBottom) {
         width = (std::max)(width, static_cast<int>(lastTab.right) + context.Scale(4));
     }
 
-    // ...and so do the two buttons of the first row and a part of the path.
-    width = (std::max)(width, context.Scale(2 * context.buttonWidth + 2 * BUTTON_GAP + MINIMUM_PATH_WIDTH));
+    // ...and so do the two buttons under the tabs.
+    width = (std::max)(width, context.Scale(2 * context.buttonWidth + BUTTON_GAP));
 
     const int tabsBottom =
         context.Scale(contentBottom + PAGE_BOTTOM_PADDING) + context.offsetY + borderBelow;
@@ -1198,70 +1434,208 @@ void FitWindowToContent(Context& context, int contentBottom) {
         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-// The frame of the window: the buttons under the tabs.
+// Every frame reaches the right border of the tabs, whatever the width of its
+// own rows: the frames of a page line up, and so do the pages. The path of the
+// settings file takes the width of its frame.
+void StretchGroups(Context& context) {
+    if (context.window == nullptr || context.tabs == nullptr) {
+        return;
+    }
+
+    RECT tabs = {};
+    ::GetWindowRect(context.tabs, &tabs);
+    ::MapWindowPoints(HWND_DESKTOP, context.window, reinterpret_cast<POINT*>(&tabs), 2);
+
+    RECT display = { 0, 0, tabs.right - tabs.left, tabs.bottom - tabs.top };
+    ::SendMessageW(context.tabs, TCM_ADJUSTRECT, FALSE, reinterpret_cast<LPARAM>(&display));
+
+    const int frameRight = tabs.left + display.right - PAGE_AIR - context.Scale(GROUP_INSET);
+
+    const auto widen = [&context](HWND control, int right) {
+        RECT rect = {};
+        ::GetWindowRect(control, &rect);
+        ::MapWindowPoints(HWND_DESKTOP, context.window, reinterpret_cast<POINT*>(&rect), 2);
+
+        ::SetWindowPos(
+            control, nullptr, 0, 0, (std::max)(0, right - static_cast<int>(rect.left)), rect.bottom - rect.top,
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    };
+
+    for (const HWND frame : context.groupBoxes) {
+        widen(frame, frameRight);
+    }
+
+    if (const HWND path = Get(context, Id::SettingsPath)) {
+        widen(path, frameRight - context.Scale(GROUP_PADDING));
+    }
+}
+
+// The background of the controls of the pages. With visual styles the tab
+// control draws its display area in the colour (or the texture) of the theme,
+// and a label, a check box or a frame that painted the usual grey of a window
+// would stand out as a grey box. The brush is a picture of the empty display
+// area, made by the tab control itself, and it is laid from the top left
+// corner of that area wherever it is used (see AlignPageBrush): the controls
+// blend in with any theme, and with the classic look as well.
+void DeletePageBrush(Context& context) {
+    if (context.pageBrush != nullptr) {
+        ::DeleteObject(context.pageBrush);
+        context.pageBrush = nullptr;
+    }
+
+    if (context.pageBitmap != nullptr) {
+        ::DeleteObject(context.pageBitmap);
+        context.pageBitmap = nullptr;
+    }
+}
+
+void CreatePageBrush(Context& context) {
+    DeletePageBrush(context);
+
+    if (context.window == nullptr || context.tabs == nullptr) {
+        return;
+    }
+
+    RECT display = {};
+    ::GetClientRect(context.tabs, &display);
+    ::SendMessageW(context.tabs, TCM_ADJUSTRECT, FALSE, reinterpret_cast<LPARAM>(&display));
+
+    const int width = display.right - display.left;
+    const int height = display.bottom - display.top;
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    const HDC screen = ::GetDC(context.window);
+    if (screen == nullptr) {
+        return;
+    }
+
+    const HDC memory = ::CreateCompatibleDC(screen);
+    const HBITMAP bitmap = ::CreateCompatibleBitmap(screen, width, height);
+    ::ReleaseDC(context.window, screen);
+
+    if (memory == nullptr || bitmap == nullptr) {
+        if (memory != nullptr) {
+            ::DeleteDC(memory);
+        }
+
+        if (bitmap != nullptr) {
+            ::DeleteObject(bitmap);
+        }
+
+        return;
+    }
+
+    // The tab control paints itself so that its display area falls on the
+    // bitmap; the tabs and the borders fall outside it.
+    const HGDIOBJ previous = ::SelectObject(memory, bitmap);
+    ::SetViewportOrgEx(memory, -display.left, -display.top, nullptr);
+    ::SendMessageW(context.tabs, WM_PRINTCLIENT, reinterpret_cast<WPARAM>(memory), PRF_CLIENT | PRF_ERASEBKGND);
+    ::SelectObject(memory, previous);
+    ::DeleteDC(memory);
+
+    context.pageBrush = ::CreatePatternBrush(bitmap);
+    context.pageBitmap = bitmap;
+    context.pageOrigin = { display.left, display.top };
+}
+
+// Lays the brush of the pages from the top left corner of the display area in
+// a DC of the control (or of the window) that paints with it.
+void AlignPageBrush(const Context& context, HDC dc, HWND painter) {
+    POINT origin = context.pageOrigin;
+    ::MapWindowPoints(context.tabs, painter, &origin, 1);
+    ::LPtoDP(dc, &origin, 1);
+    ::SetBrushOrgEx(dc, origin.x, origin.y, nullptr);
+}
+
+bool IsPageControl(const Context& context, HWND control) {
+    for (const auto& entry : context.pageControls) {
+        if (entry.first == control) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// The window under the tabs: the grey of a window, and the display area of the
+// tabs in the colours of the pages. The frames of the groups do not paint their
+// inside, and a themed control that draws the background of its parent behind
+// its rounded corners gets the page there.
+void EraseBackground(const Context& context, HDC dc) {
+    RECT client = {};
+    ::GetClientRect(context.window, &client);
+    ::FillRect(dc, &client, ::GetSysColorBrush(COLOR_BTNFACE));
+
+    if (context.pageBrush == nullptr || context.tabs == nullptr) {
+        return;
+    }
+
+    RECT display = {};
+    ::GetClientRect(context.tabs, &display);
+    ::SendMessageW(context.tabs, TCM_ADJUSTRECT, FALSE, reinterpret_cast<LPARAM>(&display));
+    ::MapWindowPoints(context.tabs, context.window, reinterpret_cast<POINT*>(&display), 2);
+
+    AlignPageBrush(context, dc, context.window);
+    ::FillRect(dc, &display, context.pageBrush);
+}
+
+// The frame of the window: the buttons that end it, under the tabs.
 void BuildFrame(Context& context) {
-    // Two rows: the file, the button that reads it again and the path of the
-    // file on the first one, the buttons that end the window on the second one.
-    // In one row the path was overlapped by the buttons next to it. Every
-    // button has the same size.
-    const int firstRowY = context.frameTop;
-    const int secondRowY = firstRowY + BUTTON_HEIGHT + BUTTON_GAP;
+    // Every button has the same size; created from left to right, so that Tab
+    // walks the row in reading order.
+    const int rowY = context.frameTop;
     const int buttonWidth = context.buttonWidth;
     const int right = context.windowWidth - MARGIN;
 
     CreateControl(
-        context, L"BUTTON", Lang::Wide(Lang::Str::SettingsOpenFile),
-        BS_PUSHBUTTON | WS_TABSTOP, Id::OpenFile,
-        MARGIN, firstRowY, buttonWidth, BUTTON_HEIGHT);
-
-    // Re-reads the file without closing the window: a value edited in a text
-    // editor gets in, and "Save" is still what writes and applies it.
-    CreateControl(
-        context, L"BUTTON", Lang::Wide(Lang::Str::SettingsReload),
-        BS_PUSHBUTTON | WS_TABSTOP, Id::Reload,
-        MARGIN + buttonWidth + BUTTON_GAP, firstRowY, buttonWidth, BUTTON_HEIGHT);
-
-    // The path starts right after "Reload" and takes the rest of the row.
-    const int pathX = MARGIN + 2 * (buttonWidth + BUTTON_GAP);
-
-    // A long path loses its middle, not its end: the name of the file stays
-    // visible.
-    CreateControl(
-        context, L"STATIC", context.settingsPath, SS_LEFT | SS_CENTERIMAGE | SS_PATHELLIPSIS,
-        Id::SettingsPath, pathX, firstRowY, (std::max)(0, right - pathX), BUTTON_HEIGHT);
-
-    // Created from left to right, so that Tab walks the row in reading order.
-    CreateControl(
         context, L"BUTTON", Lang::Wide(Lang::Str::SettingsCancel),
         BS_PUSHBUTTON | WS_TABSTOP, Id::Cancel,
-        right - 2 * buttonWidth - BUTTON_GAP, secondRowY, buttonWidth, BUTTON_HEIGHT);
+        right - 2 * buttonWidth - BUTTON_GAP, rowY, buttonWidth, BUTTON_HEIGHT);
 
     CreateControl(
         context, L"BUTTON", Lang::Wide(Lang::Str::SettingsSave),
         BS_DEFPUSHBUTTON | WS_TABSTOP, Id::Save,
-        right - buttonWidth, secondRowY, buttonWidth, BUTTON_HEIGHT);
+        right - buttonWidth, rowY, buttonWidth, BUTTON_HEIGHT);
 }
 
 // Every control of the window for the current DPI. The order of creation is
-// the order of Tab: the tabs, the fields of the page, the buttons of the frame
-// last. The frame is built after the pages because it is placed under the
-// tabs, whose height follows the tallest page.
+// the order of Tab: the fields of the pages, the buttons of the frame, and the
+// tabs, which are put under everything else at the end (see below). The frame
+// is built after the pages because it is placed under the tabs, whose height
+// follows the tallest page.
 void BuildContent(Context& context) {
     // The sizes that follow the texts of the current language and font.
-    context.labelWidth = LabelColumnWidth(context);
     context.buttonWidth = StandardButtonWidth(context.font, context.dpi);
     context.contentRight = 0;
+    context.groupBoxes.clear();
 
     CreateTabs(context);
+    CreateHints(context);
 
     const int windowBottom = BuildWindowPage(context);
     const int audioBottom = BuildAudioPage(context);
     const int otherBottom = BuildOtherPage(context);
 
+    // The frames end GROUP_PADDING after the widest row, and the tabs a little
+    // after the frames.
+    ExtendContent(context, context.contentRight + GROUP_PADDING + GROUP_INSET);
+
     FitWindowToContent(context, (std::max)({ windowBottom, audioBottom, otherBottom }));
+    StretchGroups(context);
+    CreatePageBrush(context);
 
     ResetPageOffset(context);
     BuildFrame(context);
+
+    // The tabs lie under the controls of the pages and never paint over them
+    // (WS_CLIPSIBLINGS). Tab still walks the same circle: from the tabs to the
+    // first field of the open page, through the page to the buttons and back
+    // to the tabs.
+    if (context.tabs != nullptr) {
+        ::SetWindowPos(context.tabs, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
 }
 
 // Builds the content again for another DPI. The design coordinates never
@@ -1276,8 +1650,10 @@ void Rebuild(Context& context, UINT dpi) {
     ReadControls(context, edited);
     *context.settings = edited;
 
-    // The balloon points at a field that is about to be destroyed.
+    // The balloon and the descriptions point at controls that are about to be
+    // destroyed.
     HideFieldTip(context);
+    DestroyHints(context);
 
     // The pages are built one after another and the last one would stay open:
     // the page the user was on is remembered.
@@ -1291,14 +1667,12 @@ void Rebuild(Context& context, UINT dpi) {
 
     context.allControls.clear();
     context.pageControls.clear();
+    context.groupBoxes.clear();
     context.tabs = nullptr;
+    DeletePageBrush(context);
 
     if (context.font != nullptr) {
         ::DeleteObject(context.font);
-    }
-
-    if (context.headerFont != nullptr) {
-        ::DeleteObject(context.headerFont);
     }
 
     if (context.captionFont != nullptr) {
@@ -1307,7 +1681,6 @@ void Rebuild(Context& context, UINT dpi) {
 
     context.dpi = dpi != 0 ? dpi : Dpi::ForSystem();
     context.font = Dpi::CreateUiFont(context.dpi);
-    context.headerFont = Dpi::CreateHeaderFont(context.dpi);
     context.captionFont = Dpi::CreateCaptionFont(context.dpi);
 
     BuildContent(context);
@@ -1320,6 +1693,8 @@ void Rebuild(Context& context, UINT dpi) {
     if (context.tabs != nullptr) {
         ::SetFocus(context.tabs);
     }
+
+    ::RedrawWindow(context.window, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
 
 Page PageOfIndex(int index) {
@@ -1349,10 +1724,12 @@ void ShowPage(Context& context, Page page) {
         }
     }
 
-    // A hidden field keeps no balloon, and the range of the device is shown
-    // only when it means something.
+    // A hidden field keeps no balloon, the range of the device is shown only
+    // when it means something, and the descriptions of greyed out controls
+    // follow the open page.
     HideFieldTip(context);
     UpdateHintVisibility(context);
+    UpdateHintAreas(context);
 }
 
 // A list whose drop-down part is open keeps its keys: Ctrl+PgDn there is
@@ -1486,7 +1863,6 @@ void ReadControls(Context& context, Config::Settings& updated) {
     updated.audio.reinit.deviceRemoved = IsChecked(context, Id::ReinitDeviceRemoved);
     updated.audio.reinit.resumeFromSleep = IsChecked(context, Id::ReinitResumeFromSleep);
     updated.audio.reinit.sessionUnlock = IsChecked(context, Id::ReinitSessionUnlock);
-    updated.audio.reinit.enableWhenDisabled = IsChecked(context, Id::ReinitEnableWhenDisabled);
     updated.audio.reinit.failureTimeoutMs = ReadNumber(
         context, Id::ReinitFailureTimeout, Config::FAILURE_TIMEOUT_MS_LIMITS, current.audio.reinit.failureTimeoutMs);
     updated.audio.reinit.debounceMs = ReadNumber(
@@ -1540,7 +1916,6 @@ void ApplyToControls(Context& context, const Config::Settings& settings) {
     SetChecked(context, Id::ReinitDeviceRemoved, settings.audio.reinit.deviceRemoved);
     SetChecked(context, Id::ReinitResumeFromSleep, settings.audio.reinit.resumeFromSleep);
     SetChecked(context, Id::ReinitSessionUnlock, settings.audio.reinit.sessionUnlock);
-    SetChecked(context, Id::ReinitEnableWhenDisabled, settings.audio.reinit.enableWhenDisabled);
     SetFieldText(context, Id::ReinitFailureTimeout, std::to_wstring(settings.audio.reinit.failureTimeoutMs));
     SetFieldText(context, Id::ReinitDebounce, std::to_wstring(settings.audio.reinit.debounceMs));
 
@@ -1598,8 +1973,9 @@ void UpdateEnabledStates(Context& context) {
     }
 
     // The range of the device is not greyed out but hidden with the minimum
-    // buffer.
+    // buffer, and a greyed out control keeps its description.
     UpdateHintVisibility(context);
+    UpdateHintAreas(context);
 }
 
 // A fixed buffer starts from the buffer the device runs with: an empty field
@@ -1905,19 +2281,52 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
             break;
         }
 
-        case WM_CTLCOLORSTATIC: {
-            // The range under the fixed buffer is a note, not a value: it is
-            // written in the grey of the system.
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN: {
+            // The controls of the pages paint their background with the brush
+            // of the pages (see CreatePageBrush); a field that is greyed out or
+            // read-only keeps the background of a field, and the buttons under
+            // the tabs keep the grey of the window.
+            const HDC dc = reinterpret_cast<HDC>(wParam);
             const HWND control = reinterpret_cast<HWND>(lParam);
 
-            if (control != nullptr && control == Get(*context, Id::AudioBufferHint)) {
-                const LRESULT brush = ::DefWindowProcW(window, message, wParam, lParam);
-                ::SetTextColor(reinterpret_cast<HDC>(wParam), ::GetSysColor(COLOR_GRAYTEXT));
-                return brush;
+            if (control == nullptr || !IsPageControl(*context, control) ||
+                FindCheckedField(static_cast<UINT>(::GetDlgCtrlID(control))) != nullptr) {
+                break;
             }
 
-            break;
+            const LRESULT standard = ::DefWindowProcW(window, message, wParam, lParam);
+
+            // The range under the fixed buffer is a note, not a value: it is
+            // written in the grey of the system.
+            if (control == Get(*context, Id::AudioBufferHint)) {
+                ::SetTextColor(dc, ::GetSysColor(COLOR_GRAYTEXT));
+            }
+
+            if (context->pageBrush == nullptr) {
+                return standard;
+            }
+
+            ::SetBkMode(dc, TRANSPARENT);
+            AlignPageBrush(*context, dc, control);
+            return reinterpret_cast<LRESULT>(context->pageBrush);
         }
+
+        case WM_ERASEBKGND:
+            EraseBackground(*context, reinterpret_cast<HDC>(wParam));
+            return 1;
+
+        case WM_THEMECHANGED:
+        case WM_SYSCOLORCHANGE:
+            // The tab control takes the change as well: the picture of its
+            // display area is made again once it has.
+            ::PostMessageW(window, WM_APP_PAGE_BRUSH, 0, 0);
+            break;
+
+        case WM_APP_PAGE_BRUSH:
+            CreatePageBrush(*context);
+            ::RedrawWindow(window, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+            return 0;
 
         case WM_APP_CHECK_FIELD: {
             const CheckedField* field = FindCheckedField(static_cast<UINT>(wParam));
@@ -1980,8 +2389,11 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
             return 0;
 
         case WM_DESTROY:
-            // The balloon is owned by the window and goes with it.
+            // The balloon and the descriptions are owned by the window and go
+            // with it.
             context->tip.Forget();
+            context->hints = nullptr;
+            context->hintAreas.clear();
             context->window = nullptr;
             context->done = true;
             return 0;
@@ -2083,7 +2495,6 @@ bool miniant::Windows::ShowSettingsWindow(
     context.dpi = Dpi::ForWindow(window);
 
     context.font = Dpi::CreateUiFont(context.dpi);
-    context.headerFont = Dpi::CreateHeaderFont(context.dpi);
     context.captionFont = Dpi::CreateCaptionFont(context.dpi);
 
     InitCommonControlsOnce();
@@ -2172,13 +2583,11 @@ bool miniant::Windows::ShowSettingsWindow(
         ::DeleteObject(context.font);
     }
 
-    if (context.headerFont != nullptr) {
-        ::DeleteObject(context.headerFont);
-    }
-
     if (context.captionFont != nullptr) {
         ::DeleteObject(context.captionFont);
     }
+
+    DeletePageBrush(context);
 
     ::UnregisterClassW(SETTINGS_CLASS_NAME, instance);
 
