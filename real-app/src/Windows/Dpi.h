@@ -23,9 +23,6 @@ void AdjustWindowRect(RECT& rect, DWORD style, UINT dpi, bool hasMenu = false);
 // (so that the user's font size and face are respected) and a monospaced font
 // for the log.
 HFONT CreateUiFont(UINT dpi);
-// The caption of a group of settings (the frames of the settings window):
-// semibold, of the size of the text.
-HFONT CreateCaptionFont(UINT dpi);
 HFONT CreateMonoFont(UINT dpi);
 
 // A name in the About window: the message font, bold and twice as high.

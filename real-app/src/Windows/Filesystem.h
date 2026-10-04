@@ -11,6 +11,10 @@ std::wstring GetTempDirectory();
 
 std::wstring JoinPath(const std::wstring& directory, const std::wstring& name);
 std::wstring GetFileName(const std::wstring& path);
+// The folder of a file as a full path: a relative path is resolved the way the
+// file itself is opened, against the current folder. A file in the root of a
+// drive gives the root ("G:\"), not the bare drive.
+std::wstring GetDirectory(const std::wstring& path);
 std::wstring GetFileExtension(const std::wstring& path);
 
 bool IsFile(const std::wstring& path);

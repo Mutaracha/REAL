@@ -2,6 +2,7 @@
 
 #include "BalloonTip.h"
 #include "Dpi.h"
+#include "Filesystem.h"
 #include "SettingsChecks.h"
 
 #include "../../res/resource.h"
@@ -16,6 +17,7 @@
 #include <spdlog/fmt/fmt.h>
 
 #include <algorithm>
+#include <cstring>
 #include <cwchar>
 #include <string>
 #include <utility>
@@ -96,6 +98,9 @@ const int HEADER_SLACK = 4;
 const UINT_PTR TIP_TIMER_ID = 1;
 const UINT TIP_DURATION_MS = 6000;
 const int TIP_MAX_WIDTH = 320;
+// The note that the folder of the settings file has been copied: shorter, it
+// only confirms the click.
+const UINT COPY_TIP_DURATION_MS = 3000;
 const UINT WM_APP_CHECK_FIELD = WM_APP + 1;
 
 // The background of the pages is made again after a change of the theme or of
@@ -238,8 +243,6 @@ struct Context {
     bool done = false;
 
     HFONT font = nullptr;
-    // The captions of the groups: semibold, of the size of the text.
-    HFONT captionFont = nullptr;
 
     // The background of the controls of the pages: a picture of the empty
     // display area of the tabs, and the top left corner of that area in the
@@ -515,8 +518,8 @@ HWND Get(Context& context, Id id);
 
 // A group starts at y: its rows begin at ROW_X under the caption of the frame,
 // and its lists and fields stand in a column of their own, right after the
-// longest of its labels.
-int BeginGroup(Context& context, Lang::Str caption, int y, std::initializer_list<Lang::Str> labels = {}) {
+// longest of the given labels (see RowColumn for a longer one).
+int BeginGroup(Context& context, Lang::Str caption, int y, const std::vector<Lang::Str>& labels = {}) {
     context.groupTop = y;
     context.groupCaption = caption;
 
@@ -537,22 +540,21 @@ int BeginGroup(Context& context, Lang::Str caption, int y, std::initializer_list
 int EndGroup(Context& context, int y) {
     const int left = MARGIN + GROUP_INSET;
     const int bottom = y + GROUP_BOTTOM;
-    const HFONT font = context.captionFont != nullptr ? context.captionFont : context.font;
     const std::wstring caption = Lang::Wide(context.groupCaption);
 
+    // The caption is in the font of the window, as the rest of the text.
     const HWND frame = CreateControl(
         context, L"BUTTON", caption, BS_GROUPBOX | WS_CLIPSIBLINGS, static_cast<Id>(0),
         left, context.groupTop, context.pageRight - GROUP_INSET - left, bottom - context.groupTop);
 
     if (frame != nullptr) {
-        ::SendMessageW(frame, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
         context.groupBoxes.push_back(frame);
     }
 
     BindToPage(context, frame);
 
     // The caption has to fit into the frame as well.
-    ExtendContent(context, ROW_X + DesignTextWidth(context, font, caption) + HEADER_SLACK);
+    ExtendContent(context, ROW_X + DesignTextWidth(context, context.font, caption) + HEADER_SLACK);
 
     return bottom;
 }
@@ -775,12 +777,19 @@ int ComboWidth(Context& context, const std::vector<Lang::Str>& texts) {
     return widest > 0 ? widest + COMBO_CHROME : 160;
 }
 
-// The label of a list or a field, with its colon, in the column of the group.
+// The column of a row: the column of its group, or the end of its own label
+// when that label is longer ("Fixed buffer, frames:" under the lists that
+// follow "Devices:").
+int RowColumn(Context& context, Lang::Str label) {
+    return (std::max)(context.labelWidth, DesignTextWidth(context, context.font, LabelText(label)) + LABEL_GAP);
+}
+
+// The label of a list or a field, with its colon, up to the column of its row.
 // A described label takes the mouse, so that its description shows.
-HWND AddLabel(Context& context, Lang::Str label, int y, bool described) {
+HWND AddLabel(Context& context, Lang::Str label, int y, int column, bool described) {
     const HWND control = CreateControl(
         context, L"STATIC", LabelText(label), SS_LEFT | SS_CENTERIMAGE | (described ? SS_NOTIFY : 0),
-        static_cast<Id>(0), ROW_X, y, context.labelWidth, ROW_HEIGHT);
+        static_cast<Id>(0), ROW_X, y, column, ROW_HEIGHT);
 
     BindToPage(context, control);
     return control;
@@ -789,8 +798,9 @@ HWND AddLabel(Context& context, Lang::Str label, int y, bool described) {
 int AddCombo(
     Context& context, Id id, Lang::Str label, const std::vector<Lang::Str>& texts, int selected, int y,
     Lang::Str hint = Lang::Str::Count) {
-    const HWND caption = AddLabel(context, label, y, hint != Lang::Str::Count);
-    const int x = ROW_X + context.labelWidth;
+    const int column = RowColumn(context, label);
+    const HWND caption = AddLabel(context, label, y, column, hint != Lang::Str::Count);
+    const int x = ROW_X + column;
     const int width = ComboWidth(context, texts);
 
     const HWND combo = CreateControl(
@@ -846,8 +856,9 @@ std::wstring LastValid(const Context& context, Id id) {
 int AddEdit(
     Context& context, Id id, Lang::Str label, const std::wstring& value, int width, int y,
     int maxLength, bool digitsOnly = false, Lang::Str hint = Lang::Str::Count) {
-    const HWND caption = AddLabel(context, label, y, hint != Lang::Str::Count);
-    const int x = ROW_X + context.labelWidth;
+    const int column = RowColumn(context, label);
+    const HWND caption = AddLabel(context, label, y, column, hint != Lang::Str::Count);
+    const int x = ROW_X + column;
 
     const HWND edit = CreateControl(
         context, L"EDIT", value, WS_TABSTOP | ES_AUTOHSCROLL | (digitsOnly ? ES_NUMBER : 0), id,
@@ -1153,8 +1164,10 @@ int BuildAudioPage(Context& context) {
     // sides.
     int y = PAGE_TOP + GROUP_INSET;
 
+    // The lists stand right after "Devices:"; the longer label of the fixed
+    // buffer keeps its field right after itself (see RowColumn).
     y = BeginGroup(context, Lang::Str::SettingsHeaderAudio, y,
-        { Lang::Str::SettingsDataFlow, Lang::Str::SettingsBuffer, Lang::Str::SettingsFixedBufferFrames });
+        { Lang::Str::SettingsDataFlow, Lang::Str::SettingsBuffer });
     y = AddCombo(context, Id::AudioDataFlow, Lang::Str::SettingsDataFlow, Texts(DATA_FLOWS),
         IndexOf(DATA_FLOWS, settings.audio.dataFlow), y, Lang::Str::SettingsHintDataFlow);
     y = AddCombo(context, Id::AudioBufferMode, Lang::Str::SettingsBuffer, Texts(BUFFER_MODES),
@@ -1215,7 +1228,14 @@ int BuildOtherPage(Context& context) {
     // sides.
     int y = PAGE_TOP + GROUP_INSET;
 
-    y = BeginGroup(context, Lang::Str::SettingsHeaderPerformance, y, { Lang::Str::SettingsProcessPriority });
+    // The list of the priority stands in the column of the fields of the log:
+    // the two groups share their labels.
+    const std::vector<Lang::Str> columnLabels = {
+        Lang::Str::SettingsProcessPriority, Lang::Str::SettingsLogLevel, Lang::Str::SettingsLogFilePath,
+        Lang::Str::SettingsLogMaxFileSize, Lang::Str::SettingsLogMaxFiles,
+    };
+
+    y = BeginGroup(context, Lang::Str::SettingsHeaderPerformance, y, columnLabels);
     y = AddCombo(context, Id::ProcessPriority, Lang::Str::SettingsProcessPriority, Texts(PRIORITIES),
         IndexOf(PRIORITIES, settings.performance.processPriority), y, Lang::Str::SettingsHintProcessPriority);
     y = EndGroup(context, y) + GROUP_GAP;
@@ -1227,9 +1247,7 @@ int BuildOtherPage(Context& context) {
 
     // The fields of the log are as wide as the list of the level: the group
     // reads as one column.
-    y = BeginGroup(context, Lang::Str::SettingsHeaderLog, y,
-        { Lang::Str::SettingsLogLevel, Lang::Str::SettingsLogFilePath,
-          Lang::Str::SettingsLogMaxFileSize, Lang::Str::SettingsLogMaxFiles });
+    y = BeginGroup(context, Lang::Str::SettingsHeaderLog, y, columnLabels);
     {
         const int width = ComboWidth(context, Texts(LOG_LEVELS));
 
@@ -1247,15 +1265,23 @@ int BuildOtherPage(Context& context) {
     }
     y = EndGroup(context, y) + GROUP_GAP;
 
-    // The settings file: its path (a long one loses its middle, not the name of
-    // the file; the frame gives it its width, see StretchGroups), the editor of
-    // the system for a manual edit and Reload, which reads the file into the
-    // window again - "Save" is still what writes and applies it.
+    // The settings file: its path, the editor of the system for a manual edit
+    // and Reload, which reads the file into the window again - "Save" is still
+    // what writes and applies it. A click on the path copies the folder of the
+    // file (see CopySettingsFolder); the path is as wide as its text, and a
+    // long one gets the width of the frame and loses its middle, not the name
+    // of the file (see StretchGroups).
     y = BeginGroup(context, Lang::Str::SettingsHeaderSettingsFile, y);
-    BindToPage(context, CreateControl(
-        context, L"STATIC", context.settingsPath, SS_LEFT | SS_CENTERIMAGE | SS_PATHELLIPSIS | SS_NOPREFIX,
-        Id::SettingsPath, ROW_X, y, context.pageRight - GROUP_INSET - GROUP_PADDING - ROW_X, ROW_HEIGHT));
-    y += ROW_STEP;
+    {
+        const HWND path = CreateControl(
+            context, L"STATIC", context.settingsPath,
+            SS_LEFT | SS_CENTERIMAGE | SS_PATHELLIPSIS | SS_NOPREFIX | SS_NOTIFY,
+            Id::SettingsPath, ROW_X, y, context.pageRight - GROUP_INSET - GROUP_PADDING - ROW_X, ROW_HEIGHT);
+
+        BindToPage(context, path);
+        AddHint(context, path, nullptr, Lang::Str::SettingsHintSettingsPath);
+        y += ROW_STEP;
+    }
     {
         const int buttonWidth = context.buttonWidth;
 
@@ -1436,7 +1462,7 @@ void FitWindowToContent(Context& context, int contentBottom) {
 
 // Every frame reaches the right border of the tabs, whatever the width of its
 // own rows: the frames of a page line up, and so do the pages. The path of the
-// settings file takes the width of its frame.
+// settings file is as wide as its text, but not wider than its frame.
 void StretchGroups(Context& context) {
     if (context.window == nullptr || context.tabs == nullptr) {
         return;
@@ -1466,7 +1492,16 @@ void StretchGroups(Context& context) {
     }
 
     if (const HWND path = Get(context, Id::SettingsPath)) {
-        widen(path, frameRight - context.Scale(GROUP_PADDING));
+        RECT rect = {};
+        ::GetWindowRect(path, &rect);
+        ::MapWindowPoints(HWND_DESKTOP, context.window, reinterpret_cast<POINT*>(&rect), 2);
+
+        const int textWidth = MeasureTextWidth(context.font, context.settingsPath);
+        const int right = frameRight - context.Scale(GROUP_PADDING);
+
+        widen(path, textWidth > 0
+            ? (std::min)(right, static_cast<int>(rect.left) + textWidth + context.Scale(HEADER_SLACK))
+            : right);
     }
 }
 
@@ -1675,13 +1710,8 @@ void Rebuild(Context& context, UINT dpi) {
         ::DeleteObject(context.font);
     }
 
-    if (context.captionFont != nullptr) {
-        ::DeleteObject(context.captionFont);
-    }
-
     context.dpi = dpi != 0 ? dpi : Dpi::ForSystem();
     context.font = Dpi::CreateUiFont(context.dpi);
-    context.captionFont = Dpi::CreateCaptionFont(context.dpi);
 
     BuildContent(context);
 
@@ -2173,6 +2203,63 @@ void OnOpenFile(Context& context) {
     }
 }
 
+bool CopyToClipboard(HWND owner, const std::wstring& text) {
+    // Another program may hold the clipboard for a moment.
+    bool open = false;
+
+    for (int attempt = 0; attempt < 5 && !open; ++attempt) {
+        open = ::OpenClipboard(owner) != FALSE;
+
+        if (!open) {
+            ::Sleep(20);
+        }
+    }
+
+    if (!open) {
+        return false;
+    }
+
+    bool copied = false;
+    const size_t bytes = (text.size() + 1) * sizeof(wchar_t);
+
+    if (::EmptyClipboard() != FALSE) {
+        const HGLOBAL memory = ::GlobalAlloc(GMEM_MOVEABLE, bytes);
+
+        if (memory != nullptr) {
+            void* data = ::GlobalLock(memory);
+
+            if (data != nullptr) {
+                std::memcpy(data, text.c_str(), bytes);
+                ::GlobalUnlock(memory);
+
+                // The clipboard owns the memory once it has taken it.
+                copied = ::SetClipboardData(CF_UNICODETEXT, memory) != nullptr;
+            }
+
+            if (!copied) {
+                ::GlobalFree(memory);
+            }
+        }
+    }
+
+    ::CloseClipboard();
+    return copied;
+}
+
+// A click on the path of the settings file: the folder of the file goes to the
+// clipboard, without the name of the file - ready for the address bar of
+// Explorer. A short note under the path confirms it, without a sound.
+void CopySettingsFolder(Context& context) {
+    const HWND path = Get(context, Id::SettingsPath);
+    const std::wstring folder = Filesystem::GetDirectory(context.settingsPath);
+
+    const std::wstring note = !folder.empty() && CopyToClipboard(context.window, folder)
+        ? Text::ToWide(fmt::format(Lang::Utf8(Lang::Str::SettingsPathCopied), Text::ToUtf8(folder)))
+        : Lang::Wide(Lang::Str::SettingsPathCopyFailed);
+
+    context.tip.Show(context.window, path, L"", note, context.Scale(TIP_MAX_WIDTH), COPY_TIP_DURATION_MS);
+}
+
 void OnCommand(Context& context, UINT id, UINT notification) {
     // IsDialogMessageW reports the default button and Escape as IDOK/IDCANCEL:
     // the window is not a dialog box, so the two are translated here.
@@ -2188,6 +2275,12 @@ void OnCommand(Context& context, UINT id, UINT notification) {
 
     if (id == static_cast<UINT>(ControlId(Id::OpenFile))) {
         OnOpenFile(context);
+        return;
+    }
+
+    // STN_CLICKED of the path is the same number as BN_CLICKED.
+    if (id == static_cast<UINT>(ControlId(Id::SettingsPath))) {
+        CopySettingsFolder(context);
         return;
     }
 
@@ -2315,6 +2408,15 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
         case WM_ERASEBKGND:
             EraseBackground(*context, reinterpret_cast<HDC>(wParam));
             return 1;
+
+        case WM_SETCURSOR:
+            // The hand over the path of the settings file: it takes a click.
+            if (reinterpret_cast<HWND>(wParam) == Get(*context, Id::SettingsPath) && LOWORD(lParam) == HTCLIENT) {
+                ::SetCursor(::LoadCursorW(nullptr, IDC_HAND));
+                return TRUE;
+            }
+
+            break;
 
         case WM_THEMECHANGED:
         case WM_SYSCOLORCHANGE:
@@ -2495,7 +2597,6 @@ bool miniant::Windows::ShowSettingsWindow(
     context.dpi = Dpi::ForWindow(window);
 
     context.font = Dpi::CreateUiFont(context.dpi);
-    context.captionFont = Dpi::CreateCaptionFont(context.dpi);
 
     InitCommonControlsOnce();
 
@@ -2581,10 +2682,6 @@ bool miniant::Windows::ShowSettingsWindow(
 
     if (context.font != nullptr) {
         ::DeleteObject(context.font);
-    }
-
-    if (context.captionFont != nullptr) {
-        ::DeleteObject(context.captionFont);
     }
 
     DeletePageBrush(context);

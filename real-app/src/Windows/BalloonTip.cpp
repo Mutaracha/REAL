@@ -63,7 +63,8 @@ void BalloonTip::Show(
     std::wstring body = text;
     TTTOOLINFOW info = ToolInfo(m_owner, body.data());
     ::SendMessageW(m_tip, TTM_UPDATETIPTEXTW, 0, reinterpret_cast<LPARAM>(&info));
-    ::SendMessageW(m_tip, TTM_SETTITLEW, TTI_WARNING, reinterpret_cast<LPARAM>(title.c_str()));
+    ::SendMessageW(
+        m_tip, TTM_SETTITLEW, title.empty() ? TTI_NONE : TTI_WARNING, reinterpret_cast<LPARAM>(title.c_str()));
 
     // The stem points at the middle of the lower edge of the control.
     RECT rect = {};

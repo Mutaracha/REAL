@@ -71,6 +71,21 @@ std::wstring miniant::Windows::Filesystem::GetFileName(const std::wstring& path)
     return std::filesystem::path(path).filename().wstring();
 }
 
+std::wstring miniant::Windows::Filesystem::GetDirectory(const std::wstring& path) {
+    if (path.empty()) {
+        return {};
+    }
+
+    std::error_code error;
+    std::filesystem::path full = std::filesystem::absolute(std::filesystem::path(path), error);
+
+    if (error) {
+        full = std::filesystem::path(path);
+    }
+
+    return full.make_preferred().parent_path().wstring();
+}
+
 std::wstring miniant::Windows::Filesystem::GetFileExtension(const std::wstring& path) {
     return std::filesystem::path(path).extension().wstring();
 }

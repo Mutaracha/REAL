@@ -6,11 +6,12 @@
 
 namespace miniant::Windows {
 
-// A balloon that points at a control of a window, with a warning icon and a
-// title: a tracking tooltip of the system. It disappears by itself after a
-// while - the owner passes its WM_TIMER to OnTimer() - or when Hide() is
-// called. The tooltip window is owned by the window and is destroyed with it;
-// the owner calls Forget() when that happens.
+// A balloon that points at a control of a window: a tracking tooltip of the
+// system. A warning has a title and the warning icon; a note (an empty title)
+// is the text alone. It disappears by itself after a while - the owner passes
+// its WM_TIMER to OnTimer() - or when Hide() is called. The tooltip window is
+// owned by the window and is destroyed with it; the owner calls Forget() when
+// that happens.
 class BalloonTip {
 public:
     // The identifier of the timer on the owner window.
