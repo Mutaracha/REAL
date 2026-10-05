@@ -44,6 +44,14 @@ jobs:
         run: |
           if (Test-Path ci/build.log) { Get-Content ci/build.log -Tail 200 }
 
+      # The size of the executable and what it is made of (from the map file of
+      # the linker): a notice of the check and a section of the summary.
+      - name: Size report
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: pwsh
+        run: python .github/size-report.py "${{ env.BUILD_DIR }}/Release/REAL.exe" "${{ env.BUILD_DIR }}/REAL.map"
+
       # The documented MSVC-only build path must keep working as well.
       - name: Build without CMake (build.bat)
         if: steps.build.outcome == 'success'
