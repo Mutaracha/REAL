@@ -9,8 +9,6 @@
 #include "../Text.h"
 
 #include <commctrl.h>
-#include <uxtheme.h>
-#include <vssym32.h>
 
 #include <algorithm>
 
@@ -29,23 +27,9 @@ const int MARGIN = 8;
 // oldest half is dropped (see AppendLogLines).
 const size_t MAX_LOG_LENGTH = 200000;
 
-// The restart button sits at the right end of the status bar, before its
-// grip: a circular arrow without a caption, the tooltip names it. It is flat
-// and square, as high as the parts of the bar, and shows the frame of a
-// toolbar button only under the mouse. The part with the text of the status
-// ends a little before it.
-const UINT RESTART_BUTTON_ID = 1;
-const int STATUS_BUTTON_GAP = 2;
-const int RESTART_GLYPH_HEIGHT = 14;
-// The text of the status keeps this far from the end of its part.
+// The text of the status keeps this far from the end of its part and from the
+// grip of the status bar.
 const int STATUS_TEXT_PADDING = 4;
-
-// "Refresh" of the icon font of Windows 10 and 11; a system without that font
-// gets the clockwise open circle arrow of the symbol font.
-const wchar_t ICON_FONT_FACE[] = L"Segoe MDL2 Assets";
-const wchar_t RESTART_GLYPH[] = L"\xE72C";
-const wchar_t FALLBACK_FONT_FACE[] = L"Segoe UI Symbol";
-const wchar_t FALLBACK_RESTART_GLYPH[] = L"\x21BB";
 
 // "REAL": the state of the program, the restart of the audio streams and the
 // exit. The files are in "Diagnostics", the settings in "Options".
@@ -66,55 +50,6 @@ const UINT MENU_DIAGNOSTICS_LOG_ID = 107;
 // plain items next to its popups, and a click on one of them sends the very
 // same command a drop-down entry would.
 const UINT MENU_ABOUT_ID = 108;
-
-int CALLBACK OnFontFamily(const LOGFONTW*, const TEXTMETRICW*, DWORD, LPARAM parameter) {
-    *reinterpret_cast<bool*>(parameter) = true;
-    return 0;
-}
-
-// Whether a font is installed: the icon font exists since Windows 10.
-bool IsFontInstalled(const wchar_t* face) {
-    const HDC screen = ::GetDC(nullptr);
-    if (screen == nullptr) {
-        return false;
-    }
-
-    LOGFONTW font = {};
-    font.lfCharSet = DEFAULT_CHARSET;
-    ::wcsncpy_s(font.lfFaceName, face, _TRUNCATE);
-
-    bool found = false;
-    ::EnumFontFamiliesExW(screen, &font, OnFontFamily, reinterpret_cast<LPARAM>(&found), 0);
-
-    ::ReleaseDC(nullptr, screen);
-    return found;
-}
-
-bool HasIconFont() {
-    static const bool installed = IsFontInstalled(ICON_FONT_FACE);
-    return installed;
-}
-
-// The tooltip of the restart button: the same text as the menu item. The tool
-// is the button itself, the window that contains it is the status bar.
-void SetToolText(HWND tooltip, HWND tool, UINT message) {
-    if (tooltip == nullptr || tool == nullptr) {
-        return;
-    }
-
-    std::wstring text = miniant::Lang::Wide(miniant::Lang::Str::MenuRestart);
-
-    // The size of the second version of the structure: every version of the
-    // common controls takes it, and a plain text needs nothing newer.
-    TTTOOLINFOW info = {};
-    info.cbSize = TTTOOLINFOW_V2_SIZE;
-    info.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
-    info.hwnd = ::GetParent(tool);
-    info.uId = reinterpret_cast<UINT_PTR>(tool);
-    info.lpszText = text.data();
-
-    ::SendMessageW(tooltip, message, 0, reinterpret_cast<LPARAM>(&info));
-}
 
 }
 
@@ -221,10 +156,6 @@ void MainWindow::Hide() {
     }
 
     ::ShowWindow(m_window, SW_HIDE);
-
-    // The mouse is not over a hidden button: the frame must not be back with
-    // the window.
-    m_restartHot = false;
 }
 
 void MainWindow::Toggle() {
@@ -321,8 +252,6 @@ void MainWindow::ApplyLanguage() {
         // items kept the old texts until the mouse passed over each of them.
         ::DrawMenuBar(m_window);
     }
-
-    SetToolText(m_tooltip, m_restartButton, TTM_UPDATETIPTEXTW);
 
     if (!m_statusTextSet) {
         m_statusText = miniant::Lang::Wide(miniant::Lang::Str::StatusStarting);
@@ -468,27 +397,15 @@ void MainWindow::RaiseCommand(miniant::Command command) {
 void MainWindow::CreateFonts() {
     m_uiFont = Dpi::CreateUiFont(m_dpi);
     m_monoFont = Dpi::CreateMonoFont(m_dpi);
-
-    // The glyph of the restart button: the height of the character cell is
-    // given, so the arrow keeps its size whatever the font of the system is.
-    m_iconFont = ::CreateFontW(
-        -S(RESTART_GLYPH_HEIGHT), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
-        HasIconFont() ? ICON_FONT_FACE : FALLBACK_FONT_FACE);
 }
 
 // The fonts of every control are replaced: the controls themselves are not
 // re-created, so the text the user has already seen in them stays.
 void MainWindow::ApplyFonts() {
-    // The font of the status bar sets its height; the text of the status and
-    // the glyph of the restart button are drawn by the window with its own
-    // fonts (see PaintStatusText and PaintRestartButton).
+    // The font of the status bar sets its height; the text of the status is
+    // drawn by the window with the same font (see PaintStatusText).
     if (m_uiFont != nullptr && m_statusBar != nullptr) {
         ::SendMessageW(m_statusBar, WM_SETFONT, reinterpret_cast<WPARAM>(m_uiFont), TRUE);
-    }
-
-    if (m_restartButton != nullptr) {
-        ::InvalidateRect(m_restartButton, nullptr, FALSE);
     }
 
     if (m_monoFont != nullptr && m_log != nullptr) {
@@ -503,7 +420,7 @@ void MainWindow::ApplyDpi(UINT dpi) {
 
     // A control keeps drawing with the font it was given: the old fonts are
     // deleted only when every control has got its new one.
-    const HFONT oldFonts[] = { m_uiFont, m_monoFont, m_iconFont };
+    const HFONT oldFonts[] = { m_uiFont, m_monoFont };
 
     CreateFonts();
     ApplyFonts();
@@ -540,22 +457,22 @@ int MainWindow::S(int value) const {
 }
 
 void MainWindow::CreateControls() {
-    // The status bar and the tooltip of the restart button are common
-    // controls: their classes are registered before the first of them.
+    // The status bar is a common control: its class is registered before it
+    // is created.
     INITCOMMONCONTROLSEX classes = {};
     classes.dwSize = sizeof(classes);
-    classes.dwICC = ICC_BAR_CLASSES | ICC_TAB_CLASSES;
+    classes.dwICC = ICC_BAR_CLASSES;
     ::InitCommonControlsEx(&classes);
 
     // The status bar of Windows along the bottom edge of the window, with the
-    // grip for resizing in its corner. Its first part shows the status, drawn
+    // grip for resizing in its corner. Its only part shows the status, drawn
     // by the window so that the text starts on the line of the text of the
-    // journal (see PaintStatusText); the last part holds the restart button.
+    // journal (see PaintStatusText). The restart is in the menu "REAL".
     m_statusBar = ::CreateWindowExW(
         0,
         STATUSCLASSNAMEW,
         nullptr,
-        WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | SBARS_SIZEGRIP,
+        WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
         0, 0, 0, 0,
         m_window,
         nullptr,
@@ -565,25 +482,29 @@ void MainWindow::CreateControls() {
     m_statusText = miniant::Lang::Wide(miniant::Lang::Str::StatusStarting);
 
     if (m_statusBar != nullptr) {
-        ::SetWindowSubclass(m_statusBar, &MainWindow::StatusBarProcedure, 0, reinterpret_cast<DWORD_PTR>(this));
-
-        // The parts keep their kind when their widths change (see
-        // LayoutStatusBar): the first one is drawn by the window.
-        int parts[] = { 0, -1 };
-        ::SendMessageW(m_statusBar, SB_SETPARTS, 2, reinterpret_cast<LPARAM>(parts));
-        ::SendMessageW(m_statusBar, SB_SETTEXTW, 0 | SBT_OWNERDRAW, 0);
+        // One part across the whole bar, without separators and borders.
+        int parts[] = { -1 };
+        ::SendMessageW(m_statusBar, SB_SETPARTS, 1, reinterpret_cast<LPARAM>(parts));
+        ::SendMessageW(m_statusBar, SB_SETTEXTW, 0 | SBT_OWNERDRAW | SBT_NOBORDERS, 0);
     }
 
+    // The bottom edge of the frame of the log lies under the status bar (see
+    // LayoutControls): the log does not paint over the bar (WS_CLIPSIBLINGS),
+    // which is put above it.
     m_log = ::CreateWindowExW(
         WS_EX_CLIENTEDGE,
         L"EDIT",
         L"",
-        WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
+        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
         0, 0, 0, 0,
         m_window,
         nullptr,
         m_instance,
         nullptr);
+
+    if (m_statusBar != nullptr) {
+        ::SetWindowPos(m_statusBar, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
 
     // An edit control accepts about 32 000 characters by default, and
     // EM_REPLACESEL silently stops appending at that limit: the view would
@@ -592,40 +513,6 @@ void MainWindow::CreateControls() {
     if (m_log != nullptr) {
         ::SendMessageW(m_log, EM_SETLIMITTEXT, 0, 0);
     }
-
-    // The restart button lives in the status bar. The window draws it (a flat
-    // glyph of a circular arrow, see PaintRestartButton); the name is in the
-    // tooltip.
-    if (m_statusBar != nullptr) {
-        m_restartButton = ::CreateWindowExW(
-            0,
-            L"BUTTON",
-            HasIconFont() ? RESTART_GLYPH : FALLBACK_RESTART_GLYPH,
-            WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-            0, 0, 0, 0,
-            m_statusBar,
-            reinterpret_cast<HMENU>(static_cast<INT_PTR>(RESTART_BUTTON_ID)),
-            m_instance,
-            nullptr);
-    }
-
-    if (m_restartButton != nullptr) {
-        ::SetWindowSubclass(
-            m_restartButton, &MainWindow::RestartButtonProcedure, 0, reinterpret_cast<DWORD_PTR>(this));
-    }
-
-    m_tooltip = ::CreateWindowExW(
-        WS_EX_TOPMOST,
-        TOOLTIPS_CLASSW,
-        nullptr,
-        WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
-        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-        m_window,
-        nullptr,
-        m_instance,
-        nullptr);
-
-    SetToolText(m_tooltip, m_restartButton, TTM_ADDTOOLW);
 
     m_menu = ::CreateMenu();
     m_programMenu = ::CreatePopupMenu();
@@ -712,38 +599,38 @@ void MainWindow::LayoutControls() {
         ::MapWindowPoints(HWND_DESKTOP, m_window, reinterpret_cast<POINT*>(&bar), 2);
 
         statusTop = bar.top;
-        LayoutStatusBar(bar.right - bar.left, bar.bottom - bar.top);
     }
 
+    if (m_log == nullptr) {
+        return;
+    }
+
+    // The log reaches under the status bar by the bottom edge of its frame:
+    // the top line of the bar is the only line between the text of the log and
+    // the status. The edge is measured on the log itself (it depends on the
+    // theme and on the DPI); the log is created without a size, so the first
+    // measure may differ and the log is placed once more.
     const int logTop = S(MARGIN);
-    const int logHeight = std::max(S(40), statusTop - S(MARGIN) - logTop);
+    const int logWidth = width - 2 * S(MARGIN);
 
-    ::MoveWindow(m_log, S(MARGIN), logTop, width - 2 * S(MARGIN), logHeight, TRUE);
-}
+    for (int pass = 0; pass < 2; ++pass) {
+        const int logHeight = std::max(S(40), statusTop - logTop + m_logBottomEdge);
+        ::MoveWindow(m_log, S(MARGIN), logTop, logWidth, logHeight, TRUE);
 
-// The restart button closes the bar on the right, before the grip (a square
-// in the corner of the bar); the part with the text of the status ends a
-// little before the button.
-void MainWindow::LayoutStatusBar(int barWidth, int barHeight) {
-    // The top and the bottom of the parts are known once the bar has its size.
-    RECT part = {};
-    ::SendMessageW(m_statusBar, SB_GETRECT, 0, reinterpret_cast<LPARAM>(&part));
+        RECT frame = {};
+        RECT inside = {};
+        ::GetWindowRect(m_log, &frame);
+        ::GetClientRect(m_log, &inside);
 
-    const int buttonSize = std::max(0, static_cast<int>(part.bottom - part.top));
-    const int buttonLeft = std::max(0, barWidth - barHeight - buttonSize);
+        POINT clientBottom = { 0, inside.bottom };
+        ::ClientToScreen(m_log, &clientBottom);
 
-    // The bar repaints itself when its parts are set: only a new width of the
-    // first part is set (a window that only gets higher keeps it).
-    int parts[] = { std::max(0, buttonLeft - S(STATUS_BUTTON_GAP)), -1 };
-    int current[2] = {};
-    const LRESULT count = ::SendMessageW(m_statusBar, SB_GETPARTS, 2, reinterpret_cast<LPARAM>(current));
+        const int edge = std::max(0, static_cast<int>(frame.bottom - clientBottom.y));
+        if (edge == m_logBottomEdge) {
+            break;
+        }
 
-    if (count != 2 || current[0] != parts[0]) {
-        ::SendMessageW(m_statusBar, SB_SETPARTS, 2, reinterpret_cast<LPARAM>(parts));
-    }
-
-    if (m_restartButton != nullptr) {
-        ::MoveWindow(m_restartButton, buttonLeft, part.top, buttonSize, buttonSize, TRUE);
+        m_logBottomEdge = edge;
     }
 }
 
@@ -761,7 +648,11 @@ void MainWindow::PaintStatusText(const DRAWITEMSTRUCT& item) const {
         rect.left = std::max(rect.left, start.x);
     }
 
-    rect.right -= S(STATUS_TEXT_PADDING);
+    // The text ends before the grip in the corner of the bar: a square as
+    // high as the bar.
+    RECT bar = {};
+    ::GetClientRect(item.hwndItem, &bar);
+    rect.right = std::min(rect.right, bar.right - bar.bottom) - S(STATUS_TEXT_PADDING);
 
     const int saved = ::SaveDC(item.hDC);
     ::SelectObject(item.hDC, m_uiFont);
@@ -771,144 +662,6 @@ void MainWindow::PaintStatusText(const DRAWITEMSTRUCT& item) const {
         item.hDC, m_statusText.c_str(), -1, &rect,
         DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
     ::RestoreDC(item.hDC, saved);
-}
-
-void MainWindow::PaintRestartButton(const DRAWITEMSTRUCT& item) const {
-    const int width = item.rcItem.right - item.rcItem.left;
-    const int height = item.rcItem.bottom - item.rcItem.top;
-
-    // The picture is put together off the screen and copied in one go, so the
-    // frame that comes and goes with the mouse does not flicker. Without the
-    // memory for it the button is drawn straight on the screen.
-    const HDC memory = ::CreateCompatibleDC(item.hDC);
-    const HBITMAP bitmap = memory != nullptr ? ::CreateCompatibleBitmap(item.hDC, width, height) : nullptr;
-    const HGDIOBJ previousBitmap = bitmap != nullptr ? ::SelectObject(memory, bitmap) : nullptr;
-    const bool buffered = previousBitmap != nullptr;
-
-    const HDC dc = buffered ? memory : item.hDC;
-    RECT rect = buffered ? RECT{ 0, 0, width, height } : item.rcItem;
-
-    // The button is flat: the bar shows through it. The colour of the face of
-    // the controls stands in for a bar that cannot paint itself here.
-    ::FillRect(dc, &rect, ::GetSysColorBrush(COLOR_BTNFACE));
-    ::DrawThemeParentBackground(item.hwndItem, dc, &rect);
-
-    // The mouse over the button or a press brings the frame of a toolbar
-    // button; without the visual styles, the raised or the sunken edge.
-    const bool pressed = (item.itemState & ODS_SELECTED) != 0;
-
-    if (pressed || m_restartHot) {
-        const HTHEME theme = ::OpenThemeData(item.hwndItem, L"TOOLBAR");
-
-        if (theme != nullptr) {
-            ::DrawThemeBackground(theme, dc, TP_BUTTON, pressed ? TS_PRESSED : TS_HOT, &rect, nullptr);
-            ::CloseThemeData(theme);
-        } else {
-            ::DrawEdge(dc, &rect, pressed ? BDR_SUNKENOUTER : BDR_RAISEDINNER, BF_RECT);
-        }
-    }
-
-    const bool disabled = (item.itemState & ODS_DISABLED) != 0;
-
-    const int saved = ::SaveDC(dc);
-    ::SelectObject(dc, m_iconFont);
-    ::SetBkMode(dc, TRANSPARENT);
-    ::SetTextColor(dc, ::GetSysColor(disabled ? COLOR_GRAYTEXT : COLOR_BTNTEXT));
-    ::DrawTextW(
-        dc, HasIconFont() ? RESTART_GLYPH : FALLBACK_RESTART_GLYPH, -1, &rect,
-        DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-    ::RestoreDC(dc, saved);
-
-    if (buffered) {
-        ::BitBlt(item.hDC, item.rcItem.left, item.rcItem.top, width, height, memory, 0, 0, SRCCOPY);
-        ::SelectObject(memory, previousBitmap);
-    }
-
-    if (bitmap != nullptr) {
-        ::DeleteObject(bitmap);
-    }
-
-    if (memory != nullptr) {
-        ::DeleteDC(memory);
-    }
-}
-
-LRESULT CALLBACK MainWindow::StatusBarProcedure(
-    HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR data) {
-    auto* self = reinterpret_cast<MainWindow*>(data);
-
-    switch (message) {
-        // The restart button is a child of the bar: its click goes to the
-        // window, like the commands of the menu.
-        case WM_COMMAND:
-            if (self != nullptr && lParam != 0 && reinterpret_cast<HWND>(lParam) == self->m_restartButton) {
-                return ::SendMessageW(self->m_window, message, wParam, lParam);
-            }
-
-            break;
-
-        case WM_DRAWITEM: {
-            const auto* item = reinterpret_cast<const DRAWITEMSTRUCT*>(lParam);
-
-            if (self != nullptr && item != nullptr && self->m_restartButton != nullptr
-                && item->hwndItem == self->m_restartButton) {
-                self->PaintRestartButton(*item);
-                return TRUE;
-            }
-
-            break;
-        }
-
-        case WM_NCDESTROY:
-            ::RemoveWindowSubclass(window, &MainWindow::StatusBarProcedure, 0);
-            break;
-
-        default:
-            break;
-    }
-
-    return ::DefSubclassProc(window, message, wParam, lParam);
-}
-
-LRESULT CALLBACK MainWindow::RestartButtonProcedure(
-    HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR data) {
-    auto* self = reinterpret_cast<MainWindow*>(data);
-
-    switch (message) {
-        // The frame follows the mouse: Windows tells the button when the mouse
-        // leaves it once asked to (TrackMouseEvent).
-        case WM_MOUSEMOVE:
-            if (self != nullptr && !self->m_restartHot) {
-                self->m_restartHot = true;
-
-                TRACKMOUSEEVENT track = {};
-                track.cbSize = sizeof(track);
-                track.dwFlags = TME_LEAVE;
-                track.hwndTrack = window;
-                ::TrackMouseEvent(&track);
-
-                ::InvalidateRect(window, nullptr, FALSE);
-            }
-
-            break;
-
-        case WM_MOUSELEAVE:
-            if (self != nullptr && self->m_restartHot) {
-                self->m_restartHot = false;
-                ::InvalidateRect(window, nullptr, FALSE);
-            }
-
-            break;
-
-        case WM_NCDESTROY:
-            ::RemoveWindowSubclass(window, &MainWindow::RestartButtonProcedure, 0);
-            break;
-
-        default:
-            break;
-    }
-
-    return ::DefSubclassProc(window, message, wParam, lParam);
 }
 
 void MainWindow::DestroyResources() {
@@ -928,11 +681,6 @@ void MainWindow::DestroyResources() {
     if (m_monoFont != nullptr) {
         ::DeleteObject(m_monoFont);
         m_monoFont = nullptr;
-    }
-
-    if (m_iconFont != nullptr) {
-        ::DeleteObject(m_iconFont);
-        m_iconFont = nullptr;
     }
 }
 
@@ -1017,12 +765,6 @@ LRESULT MainWindow::WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam) 
         case WM_COMMAND: {
             const UINT id = LOWORD(wParam);
             const UINT notification = HIWORD(wParam);
-
-            // The restart button: a control sends its handle along, a menu does not.
-            if (notification == BN_CLICKED && lParam != 0 && id == RESTART_BUTTON_ID) {
-                RaiseCommand(miniant::Command::Reinitialize);
-                return 0;
-            }
 
             if (notification == 0) {
                 if (id == MENU_OPTIONS_SETTINGS_ID) {

@@ -12,9 +12,7 @@
 #include <algorithm>
 #include <ctime>
 #include <exception>
-#include <filesystem>
 #include <memory>
-#include <system_error>
 
 using namespace miniant;
 using namespace miniant::Log;
@@ -152,8 +150,7 @@ std::wstring ResolveLogPath(const std::string& configuredPath) {
         path = L"REAL.log";
     }
 
-    std::error_code error;
-    if (std::filesystem::path(path).is_absolute()) {
+    if (Windows::Filesystem::IsAbsolutePath(path)) {
         return path;
     }
 

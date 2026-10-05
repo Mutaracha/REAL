@@ -153,6 +153,50 @@ jobs:
               throw "the generated settings file does not load cleanly"
             }
 
+            # A settings file larger than 100 KB is renamed to "<name>.bak" and a
+            # file with the defaults takes its place; a read-only one stays as
+            # it is. The runner speaks English.
+            Add-Log "== settings file larger than 100 KB =="
+            $large = Join-Path $env:RUNNER_TEMP "real-large-settings"
+            if (Test-Path $large) { Remove-Item -Recurse -Force $large }
+            New-Item -ItemType Directory -Force -Path $large | Out-Null
+            Copy-Item $exe (Join-Path $large "REAL.exe")
+            $largeFile = Join-Path $large "real.settings.json"
+            $largeBackup = "$largeFile.bak"
+            $largeLog = Join-Path $large "REAL.log"
+            $largeContent = '{ "padding": "' + ('x' * 153600) + '" }'
+            [System.IO.File]::WriteAllText($largeFile, $largeContent)
+            $largeSize = (Get-Item $largeFile).Length
+
+            $big = Start-Real $large @('--tray', '--log-level', 'info')
+            Start-Sleep -Seconds 6
+            $exitBig = Start-Real $large @('--exit')
+            if (-not $exitBig.WaitForExit(20000)) { throw "the large-settings instance did not exit" }
+            if (-not $big.WaitForExit(20000)) { throw "the large-settings instance did not shut down" }
+            if (Test-Path $largeLog) { Get-Content $largeLog | Out-File -Append -Encoding utf8 $log }
+            if (-not (Test-Path $largeBackup)) { throw "the large settings file was not renamed to .bak" }
+            if ((Get-Item $largeBackup).Length -ne $largeSize) { throw "the .bak file is not the large settings file" }
+            if (-not (Test-Path $largeFile)) { throw "no settings file with the defaults after the rename" }
+            if ((Get-Item $largeFile).Length -ge 102400) { throw "the new settings file is larger than 100 KB" }
+            if (-not (Select-String -Path $largeLog -Pattern "\.bak" -Quiet)) { throw "no .bak in the log" }
+            Add-Log "renamed: .bak $((Get-Item $largeBackup).Length) B, new $((Get-Item $largeFile).Length) B"
+
+            Add-Log "== read-only settings file larger than 100 KB =="
+            Remove-Item -Force $largeFile, $largeBackup, $largeLog
+            [System.IO.File]::WriteAllText($largeFile, $largeContent)
+            Set-ItemProperty -Path $largeFile -Name IsReadOnly -Value $true
+
+            $locked = Start-Real $large @('--tray', '--log-level', 'info')
+            Start-Sleep -Seconds 6
+            $exitLocked = Start-Real $large @('--exit')
+            if (-not $exitLocked.WaitForExit(20000)) { throw "the read-only-settings instance did not exit" }
+            if (-not $locked.WaitForExit(20000)) { throw "the read-only-settings instance did not shut down" }
+            if (Test-Path $largeLog) { Get-Content $largeLog | Out-File -Append -Encoding utf8 $log }
+            if (Test-Path $largeBackup) { throw "a read-only settings file was renamed" }
+            if ((Get-Item $largeFile).Length -ne $largeSize) { throw "a read-only settings file was changed" }
+            if (-not (Select-String -Path $largeLog -Pattern "100 KB" -Quiet)) { throw "no limit in the log" }
+            Set-ItemProperty -Path $largeFile -Name IsReadOnly -Value $false
+
             # --diagnose must produce a report even on a runner without audio.
             Add-Log "== diagnostics report =="
             $diag = Start-Real $work @('--no-config', '--diagnose', '--log-level', 'info')
@@ -212,12 +256,16 @@ jobs:
             Stop-Quietly $main
             Stop-Quietly $first
             Stop-Quietly $strict
+            Stop-Quietly $big
+            Stop-Quietly $locked
             exit 1
           }
 
           Stop-Quietly $main
           Stop-Quietly $first
           Stop-Quietly $strict
+          Stop-Quietly $big
+          Stop-Quietly $locked
 
       - name: Show smoke test output
         if: always()

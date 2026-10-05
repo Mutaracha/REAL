@@ -20,6 +20,12 @@ if(REAL_STATIC_RUNTIME)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
+# Optimised for size: the program waits for events most of the time, and /O1
+# differs from /O2 only by favouring small code over fast code (/Os instead
+# of /Ot) and by leaving out the intrinsic functions (/Oi). The model of the
+# floating point arithmetic and of the exceptions stays the same.
+string(REPLACE "/O2" "/O1" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+
 # No external dependencies are needed anymore:
 #  - the update check uses WinHTTP (part of Windows),
 #  - spdlog, nlohmann/json and tl::expected are header-only and vendored in deps/.
@@ -74,11 +80,9 @@ target_include_directories(real-app PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/deps/spdlog/include")
 
 target_link_libraries(real-app PRIVATE
-    # The tab control of the settings window, the status bar and the tooltip
-    # of the main window live in comctl32; the frame of the restart button
-    # under the mouse is drawn by the visual styles of Windows (uxtheme).
+    # The tab control and the tooltips of the settings window and the status
+    # bar of the main window live in comctl32.
     comctl32
-    uxtheme
     winhttp
     ole32
     uuid

@@ -16,6 +16,10 @@ std::string DescribeLastError();
 // last error (the registry functions do so).
 std::string DescribeError(unsigned long code);
 
+// Only the text Windows has for an error ("Access is denied."), for a message
+// the user reads; the code as above when Windows has no text for it.
+std::string SystemMessage(unsigned long code);
+
 class WindowsError : public ExpectedError {
 public:
     WindowsError();

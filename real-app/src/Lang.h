@@ -15,7 +15,7 @@ enum class Language {
 // Keep this list and the table in Lang.cpp in sync: every identifier must have
 // an English and a Russian text.
 enum class Str {
-    // Main window: the menu bar and the restart button of the status line
+    // Main window: the title, the status line and the menu bar
     WindowTitle,
     StatusStarting,
     MenuProgram,
@@ -72,6 +72,7 @@ enum class Str {
     LogFixedBufferAdjusted,
     LogUnknownArgument,
     LogSettingsUnreadable,
+    LogSettingsTooLargeDefaults,
     LogSettingsBackup,
     LogComFailed,
     LogWindowFailed,
@@ -185,6 +186,10 @@ enum class Str {
     CfgErrParse,
     CfgErrRead,
     CfgErrTooLarge,
+    CfgTooLargeRenamedDefaults,
+    CfgTooLargeRenamed,
+    CfgTooLargeProtected,
+    CfgTooLargeRenameFailed,
     CfgWarnString,
     CfgWarnBool,
     CfgWarnInteger,

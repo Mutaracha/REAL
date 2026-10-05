@@ -45,7 +45,7 @@ rc /nologo /fo build\real-app.res res\real-app.rc
 if errorlevel 1 exit /b 1
 
 echo [build] Compiling sources...
-cl /nologo /O2 /MT /EHsc /std:c++17 /utf-8 /W3 ^
+cl /nologo /O1 /MT /EHsc /std:c++17 /utf-8 /W3 ^
     /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DSPDLOG_WCHAR_FILENAMES ^
     /D_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING %BUILD_DEFS% ^
     /I"deps\expected\include" /I"deps\json" /I"deps\spdlog\include" ^
@@ -54,7 +54,7 @@ cl /nologo /O2 /MT /EHsc /std:c++17 /utf-8 /W3 ^
     /link /SUBSYSTEM:WINDOWS /NOLOGO ^
     /MANIFEST:EMBED /MANIFESTINPUT:res\app.manifest ^
     build\real-app.res ^
-    comctl32.lib uxtheme.lib winhttp.lib ole32.lib uuid.lib shell32.lib wtsapi32.lib advapi32.lib user32.lib gdi32.lib
+    comctl32.lib winhttp.lib ole32.lib uuid.lib shell32.lib wtsapi32.lib advapi32.lib user32.lib gdi32.lib
 
 if errorlevel 1 (
     echo [build] Build failed.

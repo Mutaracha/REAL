@@ -11,13 +11,11 @@ that is still maintained and adds quality-of-life features:
 
 * proper window that can be closed/minimized to the system tray, with a menu bar
   (**REAL**: on/off, restart, exit; **Options**: Settings, Start with Windows;
-  **Diagnostics**; **About**) and a status bar with a small flat restart button at
-  its end
+  **Diagnostics**; **About**) and a status bar with the current state
 * tray menu: the status, **REAL is running** (on/off), **Restart** — the log,
   diagnostics (both hidden by default) — **Settings** — **Exit**
 * restart of the audio streams without restarting the application — automatically
-  on device changes, sleep/resume and session unlock, manually via the menus or the
-  restart button of the window
+  on device changes, sleep/resume and session unlock, manually via the menus
 * no forced updates: one check at startup (can be switched off), nothing is
   downloaded or installed, the application is never closed for it
 * external settings file next to the executable (`real.settings.json`), edited
@@ -135,7 +133,10 @@ writes that very file, so the file stays the source of truth, and the button
 **Reload** reads the file into the window again. Command-line options override the
 file for the current run. A file that cannot be parsed is reported in the log and
 by one notification, the defaults are used, and the text of the file is kept as
-`real.settings.json.bad` before anything is written over it. A step-by-step guide in Russian is available in
+`real.settings.json.bad` before anything is written over it. A file larger than
+100 KB is not a settings file: it is renamed to `real.settings.json.bak` (an older
+`.bak` is replaced) and a file with the defaults takes its place; a read-only file
+is left as it is, and the settings cannot be saved until it is smaller. A step-by-step guide in Russian is available in
 [docs/usage.ru.md](docs/usage.ru.md). See [docs/CONFIG.md](docs/CONFIG.md) for the full reference and
 [docs/real.settings.example.json](docs/real.settings.example.json) for an
 annotated example.
@@ -251,9 +252,8 @@ restart, plus a check every 30 seconds). The limits are configurable in `audio.r
 device does not answer, the retries back off and a single balloon is shown; after
 `reinit.failureTimeoutSec` the latency reduction is switched off and the device is
 not polled until it appears again. To force it manually: tray menu → **Restart**,
-**REAL → Restart** in the menu bar, the round arrow at the end of the status bar
-or `REAL.exe --reinit` — this also switches the latency reduction back on when it
-was off.
+**REAL → Restart** in the menu bar or `REAL.exe --reinit` — this also switches the
+latency reduction back on when it was off.
 
 ### Where are the logs?
 

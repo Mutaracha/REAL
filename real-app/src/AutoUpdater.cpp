@@ -5,12 +5,11 @@
 #include "Http/HttpClient.h"
 #include "Text.h"
 #include "Windows/Filesystem.h"
+#include "Windows/WindowsError.h"
 
 #include <spdlog/fmt/fmt.h>
 
 #include <Windows.h>
-
-#include <filesystem>
 
 using namespace miniant::AutoUpdater;
 
@@ -108,11 +107,14 @@ bool AutoUpdater::CleanupPreviousInstall(std::string* message) {
         return false;
     }
 
-    std::error_code error;
-    const bool removed = std::filesystem::remove(std::filesystem::path(leftover), error);
-    if (!removed && message != nullptr) {
-        *message = fmt::format(Lang::Utf8(Lang::Str::ErrDeleteLeftover), error.message());
+    if (::DeleteFileW(leftover.c_str()) != FALSE) {
+        return true;
     }
 
-    return removed;
+    const DWORD error = ::GetLastError();
+    if (message != nullptr) {
+        *message = fmt::format(Lang::Utf8(Lang::Str::ErrDeleteLeftover), Windows::SystemMessage(error));
+    }
+
+    return false;
 }

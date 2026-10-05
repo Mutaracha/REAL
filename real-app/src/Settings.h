@@ -34,8 +34,10 @@ inline constexpr NumberLimits DEBOUNCE_SEC_LIMITS = { "debounceSec", 1, 60 };
 inline constexpr NumberLimits LOG_FILE_SIZE_MB_LIMITS = { "maxFileSizeMb", 1, 1024 };
 inline constexpr NumberLimits LOG_FILES_LIMITS = { "maxFiles", 1, 100 };
 
-// A settings file is a few kilobytes: anything larger is not read at all.
-inline constexpr size_t MAX_FILE_BYTES = 1024 * 1024;
+// A settings file is a few kilobytes: a file larger than 100 KB is not read at
+// all, and the program renames it to make room for a new one (see
+// App::SetLargeSettingsFileAside). The texts of the messages name the limit.
+inline constexpr size_t MAX_FILE_BYTES = 100 * 1024;
 
 enum class CloseAction {
     Minimize,
@@ -162,6 +164,9 @@ struct LoadResult {
     Settings settings;
     bool fileExists = false;
     bool parseFailed = false;
+    // The file is larger than MAX_FILE_BYTES and has not been read (a failed
+    // parse as well).
+    bool tooLarge = false;
     std::vector<std::string> warnings;
     std::string error;
 };

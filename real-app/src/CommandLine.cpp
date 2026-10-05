@@ -10,8 +10,6 @@
 
 #include <spdlog/fmt/fmt.h>
 
-#include <sstream>
-
 using namespace miniant::CommandLine;
 
 namespace {
@@ -150,8 +148,6 @@ std::wstring miniant::CommandLine::HelpText() {
 }
 
 std::wstring miniant::CommandLine::VersionText() {
-    std::wstringstream stream;
-    stream << AppInfo::NAME << L" " << miniant::Text::ToWide(AppInfo::DisplayVersion()).c_str() << L" ("
-           << AppInfo::DESCRIPTION << L")";
-    return stream.str();
+    return std::wstring(AppInfo::NAME) + L" " + miniant::Text::ToWide(AppInfo::DisplayVersion()) + L" ("
+        + AppInfo::DESCRIPTION + L")";
 }

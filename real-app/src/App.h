@@ -76,7 +76,14 @@ private:
     void SaveSettings();
     // Writes m_fileSettings; a file that could not be parsed at the start is
     // kept next to it first (".bad"), so a typo never costs the whole file.
+    // A file larger than the limit is renamed first, see below.
     bool WriteSettingsFile();
+    // A settings file larger than Config::MAX_FILE_BYTES is no settings file:
+    // it is renamed to "<name>.bak" (an older file of that name is replaced),
+    // so that a new file can be written. A read-only file is not touched. At
+    // the start the lines wait in m_startupMessages, later they go to the log.
+    // True when the file has been renamed.
+    bool SetLargeSettingsFileAside(bool startup);
     // The window edits a copy of the settings; a saved copy is written to the
     // file and applied exactly like a file that was changed by hand.
     void ShowSettingsDialog();
@@ -112,6 +119,9 @@ private:
     // The file exists but could not be parsed: it is backed up before the
     // first write (see WriteSettingsFile).
     bool m_settingsBroken = false;
+    // The file is larger than the limit and could not be renamed at the start:
+    // the defaults are used (see SetLargeSettingsFileAside).
+    bool m_settingsTooLarge = false;
 
     // Text shown while the latency reduction is not applied.
     std::wstring CurrentOffStatusText() const;

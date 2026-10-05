@@ -21,8 +21,6 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <filesystem>
-#include <iostream>
 #include <vector>
 
 using namespace miniant;
@@ -84,8 +82,8 @@ bool WriteToParentConsole(const std::string& text) {
     const bool redirected = ::freopen_s(&stream, "CONOUT$", "w", stdout) == 0 && stream != nullptr;
 
     if (redirected) {
-        std::cout << text;
-        std::cout.flush();
+        std::fwrite(text.data(), 1, text.size(), stream);
+        std::fflush(stream);
     }
 
     ::FreeConsole();
@@ -162,7 +160,7 @@ int App::Run() {
     LogStartupMessages();
 
     if (!settingsLoaded) {
-        Log::Warn(Lang::Utf8(Str::LogSettingsUnreadable));
+        Log::Warn(Lang::Utf8(m_settingsTooLarge ? Str::LogSettingsTooLargeDefaults : Str::LogSettingsUnreadable));
     }
 
     const HRESULT comResult = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -241,48 +239,55 @@ bool App::LoadSettings() {
                 StartupLevel::Warn, fmt::format("{} {}", Lang::Utf8(Str::SettingsPrefix), warning));
         }
 
-        if (result.parseFailed) {
+        // A file larger than the limit makes room for a new file with the
+        // defaults when it can be renamed; otherwise it stays as it is.
+        bool createFile = !result.fileExists;
+
+        if (result.tooLarge) {
+            createFile = SetLargeSettingsFileAside(true);
+            m_settingsTooLarge = !createFile;
+        } else if (result.parseFailed) {
             m_startupMessages.emplace_back(
                 StartupLevel::Error, fmt::format("{} {}", Lang::Utf8(Str::SettingsPrefix), result.error));
         }
 
-        if (!result.parseFailed) {
-            if (!result.fileExists) {
-                m_settings.commentLanguage = commentLanguage;
+        if (createFile) {
+            m_settings.commentLanguage = commentLanguage;
 
-                if (Config::Write(m_settings, m_settingsPath)) {
-                    m_startupMessages.emplace_back(
-                        StartupLevel::Info,
-                        fmt::format(Lang::Utf8(Str::OpSettingsCreated), Text::ToUtf8(m_settingsPath)));
-                } else {
-                    m_startupMessages.emplace_back(
-                        StartupLevel::Error,
-                        fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath)));
-                }
-            } else if (Config::PeekCommentLanguage(m_settingsPath) != commentLanguage ||
-                m_settings.configVersion != Config::CONFIG_VERSION) {
-                // A file of an older layout is upgraded once, with every value
-                // kept; a file of another comment language is rewritten with the
-                // comments in the current one. The very same write does both.
-                const bool languageChanged = Config::PeekCommentLanguage(m_settingsPath) != commentLanguage;
+            if (Config::Write(m_settings, m_settingsPath)) {
+                m_startupMessages.emplace_back(
+                    StartupLevel::Info,
+                    fmt::format(Lang::Utf8(Str::OpSettingsCreated), Text::ToUtf8(m_settingsPath)));
+            } else {
+                m_startupMessages.emplace_back(
+                    StartupLevel::Error,
+                    fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath)));
+            }
+        } else if (!result.parseFailed && (Config::PeekCommentLanguage(m_settingsPath) != commentLanguage ||
+            m_settings.configVersion != Config::CONFIG_VERSION)) {
+            // A file of an older layout is upgraded once, with every value
+            // kept; a file of another comment language is rewritten with the
+            // comments in the current one. The very same write does both.
+            const bool languageChanged = Config::PeekCommentLanguage(m_settingsPath) != commentLanguage;
 
-                m_settings.configVersion = Config::CONFIG_VERSION;
-                m_settings.commentLanguage = commentLanguage;
+            m_settings.configVersion = Config::CONFIG_VERSION;
+            m_settings.commentLanguage = commentLanguage;
 
-                if (Config::Write(m_settings, m_settingsPath)) {
-                    // Logging is not available yet, the line is written below.
-                    m_commentsRewritten = commentLanguage;
-                    m_layoutUpgraded = !languageChanged;
-                } else {
-                    m_startupMessages.emplace_back(
-                        StartupLevel::Error,
-                        fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath)));
-                }
+            if (Config::Write(m_settings, m_settingsPath)) {
+                // Logging is not available yet, the line is written below.
+                m_commentsRewritten = commentLanguage;
+                m_layoutUpgraded = !languageChanged;
+            } else {
+                m_startupMessages.emplace_back(
+                    StartupLevel::Error,
+                    fmt::format(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath)));
             }
         }
 
-        loaded = !result.parseFailed;
-        m_settingsBroken = result.parseFailed && result.fileExists;
+        // A renamed file is replaced by the defaults like a missing one; the
+        // one that stays is not backed up as unreadable (".bad") either.
+        loaded = !result.parseFailed || (result.tooLarge && !m_settingsTooLarge);
+        m_settingsBroken = result.parseFailed && result.fileExists && !result.tooLarge;
     } else {
         Lang::Set(Lang::Detect());
     }
@@ -769,6 +774,19 @@ void App::SaveSettings() {
 }
 
 bool App::WriteSettingsFile() {
+    // A file larger than the limit (one that stayed at the start, or one that
+    // has grown since) is renamed first; one that cannot be renamed is not
+    // written over.
+    unsigned long long size = 0;
+    if (Windows::Filesystem::GetFileInfo(m_settingsPath, &size, nullptr) && size > Config::MAX_FILE_BYTES) {
+        if (!SetLargeSettingsFileAside(false)) {
+            return false;
+        }
+
+        m_settingsTooLarge = false;
+        m_settingsBroken = false;
+    }
+
     if (m_settingsBroken) {
         const std::wstring backup = m_settingsPath + L".bad";
 
@@ -780,6 +798,38 @@ bool App::WriteSettingsFile() {
     }
 
     return Config::Write(m_fileSettings, m_settingsPath);
+}
+
+bool App::SetLargeSettingsFileAside(bool startup) {
+    const std::wstring backup = m_settingsPath + L".bak";
+    const std::string backupName = Text::ToUtf8(backup.substr(backup.find_last_of(L"\\/") + 1));
+
+    // "Read-only" protects the file from the program as well.
+    bool readOnly = false;
+    unsigned long error = 0;
+    bool renamed = false;
+    std::string text;
+
+    if (Windows::Filesystem::GetFileInfo(m_settingsPath, nullptr, &readOnly) && readOnly) {
+        text = Lang::Utf8(Str::CfgTooLargeProtected);
+    } else if (Windows::Filesystem::RenameFile(m_settingsPath, backup, &error)) {
+        renamed = true;
+        text = fmt::format(Lang::Utf8(startup ? Str::CfgTooLargeRenamedDefaults : Str::CfgTooLargeRenamed), backupName);
+    } else {
+        text = fmt::format(Lang::Utf8(Str::CfgTooLargeRenameFailed), Windows::SystemMessage(error));
+    }
+
+    text = fmt::format("{} {}", Lang::Utf8(Str::SettingsPrefix), text);
+
+    if (startup) {
+        m_startupMessages.emplace_back(renamed ? StartupLevel::Warn : StartupLevel::Error, text);
+    } else if (renamed) {
+        Log::Warn("{}", text);
+    } else {
+        Log::Error("{}", text);
+    }
+
+    return renamed;
 }
 
 void App::RefreshCommentsLanguage() {
@@ -897,7 +947,7 @@ void App::OpenLogFile() {
         path = L"REAL.log";
     }
 
-    if (!std::filesystem::path(path).is_absolute()) {
+    if (!Windows::Filesystem::IsAbsolutePath(path)) {
         path = Windows::Filesystem::JoinPath(Windows::Filesystem::GetExecutableDirectory(), path);
     }
 

@@ -416,6 +416,7 @@ LoadResult miniant::Config::Load(const std::wstring& path, const Settings& previ
         result.fileExists = Windows::Filesystem::IsFile(path);
         if (result.fileExists) {
             result.parseFailed = true;
+            result.tooLarge = tooLarge;
             result.error = Lang::Utf8(tooLarge ? Str::CfgErrTooLarge : Str::CfgErrRead, language);
         }
 

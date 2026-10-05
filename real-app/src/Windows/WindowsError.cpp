@@ -4,7 +4,7 @@
 
 #include <Windows.h>
 
-#include <sstream>
+#include <spdlog/fmt/fmt.h>
 
 using namespace miniant;
 using namespace miniant::Windows;
@@ -47,9 +47,7 @@ const HResultName KNOWN_HRESULTS[] = {
 };
 
 std::string ToHex(long value) {
-    std::ostringstream stream;
-    stream << "0x" << std::uppercase << std::hex << static_cast<unsigned long>(value);
-    return stream.str();
+    return fmt::format("0x{:X}", static_cast<unsigned long>(value));
 }
 
 std::string FormatSystemMessage(long code) {
@@ -114,6 +112,11 @@ std::string miniant::Windows::DescribeLastError() {
 
 std::string miniant::Windows::DescribeError(unsigned long code) {
     return Describe(static_cast<long>(code), nullptr);
+}
+
+std::string miniant::Windows::SystemMessage(unsigned long code) {
+    const std::string message = FormatSystemMessage(static_cast<long>(code));
+    return message.empty() ? Describe(static_cast<long>(code), nullptr) : message;
 }
 
 WindowsError::WindowsError():

@@ -25,7 +25,7 @@ struct Entry {
 // Every string of the application. English first, Russian second; both texts
 // must be present, the count is validated at run time in Initialize().
 const Entry TABLE[] = {
-    // Main window: the menu bar and the restart button of the status line
+    // Main window: the title, the status line and the menu bar
     { Str::WindowTitle, "REAL - REduce Audio Latency", "REAL - REduce Audio Latency" },
     { Str::StatusStarting, "Starting...", "Запуск..." },
     { Str::MenuProgram, "REAL", "REAL" },
@@ -119,6 +119,10 @@ const Entry TABLE[] = {
     { Str::LogSettingsUnreadable,
       "Built-in default settings are used; the settings file is left as it is.",
       "Используются встроенные значения настроек; файл настроек не изменён." },
+    // A settings file larger than 100 KB that could not be renamed.
+    { Str::LogSettingsTooLargeDefaults,
+      "Built-in default settings are used; the settings cannot be saved while the file is larger than 100 KB.",
+      "Используются встроенные значения настроек; сохранить настройки не получится, пока файл больше 100 КБ." },
     { Str::LogSettingsBackup,
       "The settings file that could not be read is kept as {0}.",
       "Файл настроек, который не удалось прочитать, сохранён как {0}." },
@@ -457,8 +461,22 @@ const Entry TABLE[] = {
       "the file exists but could not be read (it may be locked by another program)",
       "файл есть, но прочитать его не удалось (возможно, он занят другой программой)" },
     { Str::CfgErrTooLarge,
-      "the file is larger than 1 MB, it is not a settings file",
-      "файл больше 1 МБ — это не файл настроек" },
+      "the file is larger than 100 KB, it is not a settings file",
+      "файл больше 100 КБ — это не файл настроек" },
+    // A settings file larger than 100 KB: {0} is the new name of the file, a
+    // message of Windows ends with its own full stop.
+    { Str::CfgTooLargeRenamedDefaults,
+      "the file is larger than 100 KB and has been renamed to {0}; the default values are used.",
+      "файл больше 100 КБ переименован в {0}, работают значения по умолчанию." },
+    { Str::CfgTooLargeRenamed,
+      "the file is larger than 100 KB and has been renamed to {0}.",
+      "файл больше 100 КБ переименован в {0}." },
+    { Str::CfgTooLargeProtected,
+      "the file is larger than 100 KB and is write-protected.",
+      "файл больше 100 КБ и защищён от записи." },
+    { Str::CfgTooLargeRenameFailed,
+      "the file is larger than 100 KB and could not be renamed: {0}",
+      "файл больше 100 КБ, переименовать его не удалось: {0}" },
     // A value of the file that cannot be used: {0} is the key, the last
     // placeholder the value used instead (the one in use when the file is
     // read again, the default at startup).
