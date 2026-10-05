@@ -181,7 +181,7 @@ private:
     unsigned int m_retryDelayMs = 0;
     // Tick count when the current outage started (0 = everything is fine).
     ULONGLONG m_failureSince = 0;
-    // Set when the application gave up after audio.reinit.failureTimeoutMs and
+    // Set when the application gave up after audio.reinit.failureTimeoutSec and
     // stopped polling until a device event arrives.
     bool m_audioSuspended = false;
     // The next apply is caused by a device change (affects the notification).

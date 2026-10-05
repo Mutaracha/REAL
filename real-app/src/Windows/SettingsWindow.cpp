@@ -1160,8 +1160,8 @@ struct NumberField {
 };
 
 const NumberField NUMBER_FIELDS[] = {
-    { Id::ReinitFailureTimeout, Config::FAILURE_TIMEOUT_MS_LIMITS },
-    { Id::ReinitDebounce, Config::DEBOUNCE_MS_LIMITS },
+    { Id::ReinitFailureTimeout, Config::FAILURE_TIMEOUT_SEC_LIMITS },
+    { Id::ReinitDebounce, Config::DEBOUNCE_SEC_LIMITS },
     { Id::LogMaxFileSize, Config::LOG_FILE_SIZE_MB_LIMITS },
     { Id::LogMaxFiles, Config::LOG_FILES_LIMITS },
 };
@@ -1355,9 +1355,9 @@ int BuildAudioPage(Context& context) {
     y = AddCheck(context, Id::ReinitSessionUnlock, Lang::Str::SettingsReinitUnlock,
         settings.audio.reinit.sessionUnlock, y);
     y = AddNumber(context, Id::ReinitFailureTimeout, Lang::Str::SettingsReinitFailureTimeout,
-        std::to_wstring(settings.audio.reinit.failureTimeoutMs), Config::FAILURE_TIMEOUT_MS_LIMITS, y);
+        std::to_wstring(settings.audio.reinit.failureTimeoutSec), Config::FAILURE_TIMEOUT_SEC_LIMITS, y);
     y = AddNumber(context, Id::ReinitDebounce, Lang::Str::SettingsReinitDebounce,
-        std::to_wstring(settings.audio.reinit.debounceMs), Config::DEBOUNCE_MS_LIMITS, y);
+        std::to_wstring(settings.audio.reinit.debounceSec), Config::DEBOUNCE_SEC_LIMITS, y);
 
     return EndGroup(context, y);
 }
@@ -2165,10 +2165,10 @@ void ReadControls(Context& context, Config::Settings& updated) {
     updated.audio.reinit.defaultDeviceChanged = IsChecked(context, Id::ReinitDefaultDevice);
     updated.audio.reinit.resumeFromSleep = IsChecked(context, Id::ReinitResumeFromSleep);
     updated.audio.reinit.sessionUnlock = IsChecked(context, Id::ReinitSessionUnlock);
-    updated.audio.reinit.failureTimeoutMs = ReadNumber(
-        context, Id::ReinitFailureTimeout, Config::FAILURE_TIMEOUT_MS_LIMITS, current.audio.reinit.failureTimeoutMs);
-    updated.audio.reinit.debounceMs = ReadNumber(
-        context, Id::ReinitDebounce, Config::DEBOUNCE_MS_LIMITS, current.audio.reinit.debounceMs);
+    updated.audio.reinit.failureTimeoutSec = ReadNumber(
+        context, Id::ReinitFailureTimeout, Config::FAILURE_TIMEOUT_SEC_LIMITS, current.audio.reinit.failureTimeoutSec);
+    updated.audio.reinit.debounceSec = ReadNumber(
+        context, Id::ReinitDebounce, Config::DEBOUNCE_SEC_LIMITS, current.audio.reinit.debounceSec);
 
     updated.performance.processPriority = ValueAt(PRIORITIES, SelectedIndex(context, Id::ProcessPriority));
 
@@ -2216,8 +2216,8 @@ void ApplyToControls(Context& context, const Config::Settings& settings) {
     SetChecked(context, Id::ReinitDefaultDevice, settings.audio.reinit.defaultDeviceChanged);
     SetChecked(context, Id::ReinitResumeFromSleep, settings.audio.reinit.resumeFromSleep);
     SetChecked(context, Id::ReinitSessionUnlock, settings.audio.reinit.sessionUnlock);
-    SetFieldText(context, Id::ReinitFailureTimeout, std::to_wstring(settings.audio.reinit.failureTimeoutMs));
-    SetFieldText(context, Id::ReinitDebounce, std::to_wstring(settings.audio.reinit.debounceMs));
+    SetFieldText(context, Id::ReinitFailureTimeout, std::to_wstring(settings.audio.reinit.failureTimeoutSec));
+    SetFieldText(context, Id::ReinitDebounce, std::to_wstring(settings.audio.reinit.debounceSec));
 
     SetSelected(context, Id::ProcessPriority, IndexOf(PRIORITIES, settings.performance.processPriority));
 

@@ -74,9 +74,11 @@ target_include_directories(real-app PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/deps/spdlog/include")
 
 target_link_libraries(real-app PRIVATE
-    # The tab control of the settings window and the tooltip of the main
-    # window live in comctl32.
+    # The tab control of the settings window, the status bar and the tooltip
+    # of the main window live in comctl32; the frame of the restart button
+    # under the mouse is drawn by the visual styles of Windows (uxtheme).
     comctl32
+    uxtheme
     winhttp
     ole32
     uuid

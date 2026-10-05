@@ -34,9 +34,23 @@ namespace {
 // becomes available again as soon as the device has been switched on.
 constexpr unsigned int INITIAL_AUDIO_RETRY_MS = 2000;
 constexpr unsigned int MAXIMUM_AUDIO_RETRY_MS = 30000;
-// Default of audio.reinit.failureTimeoutMs: after a minute of silence the mode
-// is switched off and the application stops polling the device.
-constexpr unsigned int FAILURE_TIMEOUT_MS = 60000;
+
+// audio.reinit.failureTimeoutSec in milliseconds: after this long without an
+// answer the mode is switched off and the application stops polling the
+// device. A value that is not set falls back to the default of the file.
+unsigned int FailureTimeoutMs(const Config::ReinitSettings& reinit) {
+    const int seconds = reinit.failureTimeoutSec > 0
+        ? reinit.failureTimeoutSec
+        : Config::ReinitSettings().failureTimeoutSec;
+    return static_cast<unsigned int>(seconds) * 1000u;
+}
+
+// audio.reinit.debounceSec in milliseconds.
+unsigned int DebounceMs(const Config::ReinitSettings& reinit) {
+    const int seconds = reinit.debounceSec > 0 ? reinit.debounceSec : Config::ReinitSettings().debounceSec;
+    return static_cast<unsigned int>(seconds) * 1000u;
+}
+
 constexpr const wchar_t* DIAGNOSTICS_FILE_NAME = L"REAL-diagnostics.txt";
 
 const wchar_t INSTANCE_MUTEX_NAME[] = L"Local\\REAL.SingleInstance";
@@ -893,6 +907,11 @@ void App::OpenLogFile() {
     }
 
     Log::Operation(Lang::Utf8(Str::OpLogOpened), Text::ToUtf8(path));
+
+    // The sink of the file keeps the latest lines in its buffer: the file that
+    // opens now has to show them (some lines, like the result of the update
+    // check, are written to the file alone).
+    Log::Flush();
     ::ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
@@ -920,14 +939,17 @@ void App::ShowAboutDialog() {
         m_settingsPath);
 }
 
+// The check reports to the log file only: a check that found nothing new, or
+// could not check at all, is not worth a line in the window. A new version is
+// shown in the window and by a balloon (see FinishUpdateCheck).
 void App::StartUpdateCheck() {
     if (!m_settings.updates.checkOnStartup) {
-        Log::Info(Lang::Utf8(Str::LogUpdatesDisabled));
+        Log::FileOnly(Lang::Utf8(Str::LogUpdatesDisabled));
         return;
     }
 
     if (m_updateThread.joinable()) {
-        Log::Info(Lang::Utf8(Str::LogUpdateRunning));
+        Log::FileOnly(Lang::Utf8(Str::LogUpdateRunning));
         return;
     }
 
@@ -937,7 +959,7 @@ void App::StartUpdateCheck() {
         m_updateUrl.clear();
     }
 
-    Log::Operation(Lang::Utf8(Str::OpUpdateChecking));
+    Log::FileOnly(Lang::Utf8(Str::OpUpdateChecking));
 
     const std::string repository = AppInfo::GITHUB_REPOSITORY;
     const HWND windowHandle = m_window != nullptr ? m_window->GetHWindow() : nullptr;
@@ -953,8 +975,8 @@ void App::StartUpdateCheck() {
         std::string details;
         std::string url;
 
-        // A project without releases is a normal answer: the journal says so,
-        // without a balloon (only a failure or a newer version gets one).
+        // A project without releases is a normal answer: the log file says so,
+        // like it does for the latest version and for a failure.
         if (!release) {
             message = std::string(Lang::Utf8(Str::NotifyUpdateFailed));
             details = release.error();
@@ -1010,18 +1032,18 @@ void App::FinishUpdateCheck() {
         return;
     }
 
+    // Only a new version is worth a line in the window and a balloon. A check
+    // that failed stays in the log file: the program often starts with Windows
+    // before the network is up, and the next start checks again.
     const bool hasUpdate = !url.empty();
     if (hasUpdate) {
         Log::Info("{} ({})", message, url);
     } else if (!details.empty()) {
-        Log::Info("{}: {}", message, details);
+        Log::FileOnly("{}: {}", message, details);
     } else {
-        Log::Info("{}", message);
+        Log::FileOnly("{}", message);
     }
 
-    // Only a new version is worth a balloon. A check that failed stays in the
-    // journal: the program often starts with Windows before the network is up,
-    // and the next start checks again.
     if (m_window != nullptr && hasUpdate) {
         m_window->Notify(
             Lang::Wide(Str::NotifyTitle), Text::ToWide(message + "\n" + Lang::Utf8(Str::NotifyUpdateClick)), false);
@@ -1271,7 +1293,7 @@ void App::ScheduleDeviceRestart() {
 
     ::SetTimer(
         m_window->GetHWindow(), static_cast<UINT_PTR>(TimerId::DeviceEvent),
-        static_cast<UINT>(m_settings.audio.reinit.debounceMs), nullptr);
+        DebounceMs(m_settings.audio.reinit), nullptr);
 }
 
 void App::ScheduleAudioRetry() {
@@ -1284,9 +1306,7 @@ void App::ScheduleAudioRetry() {
         m_failureSince = now;
     }
 
-    const unsigned int limit = m_settings.audio.reinit.failureTimeoutMs > 0
-        ? static_cast<unsigned int>(m_settings.audio.reinit.failureTimeoutMs)
-        : FAILURE_TIMEOUT_MS;
+    const unsigned int limit = FailureTimeoutMs(m_settings.audio.reinit);
 
     const ULONGLONG elapsed = now - m_failureSince;
     if (elapsed >= limit) {
@@ -1311,9 +1331,7 @@ void App::ScheduleAudioRetry() {
 }
 
 void App::GiveUpOnDevice() {
-    const unsigned int limit = m_settings.audio.reinit.failureTimeoutMs > 0
-        ? static_cast<unsigned int>(m_settings.audio.reinit.failureTimeoutMs)
-        : FAILURE_TIMEOUT_MS;
+    const unsigned int limit = FailureTimeoutMs(m_settings.audio.reinit);
 
     // Without any default device the program waits for one quietly (see
     // ApplyAudio): the balloon is for a device that is there and does not

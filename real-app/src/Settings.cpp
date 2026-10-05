@@ -524,11 +524,11 @@ LoadResult miniant::Config::Load(const std::wstring& path, const Settings& previ
             ReadBool(*reinit, "defaultDeviceChanged", now.defaultDeviceChanged, was.defaultDeviceChanged, warnings, name);
             ReadBool(*reinit, "resumeFromSleep", now.resumeFromSleep, was.resumeFromSleep, warnings, name);
             ReadBool(*reinit, "sessionUnlock", now.sessionUnlock, was.sessionUnlock, warnings, name);
-            ReadInt(*reinit, FAILURE_TIMEOUT_MS_LIMITS, now.failureTimeoutMs, was.failureTimeoutMs, warnings, name);
-            ReadInt(*reinit, DEBOUNCE_MS_LIMITS, now.debounceMs, was.debounceMs, warnings, name);
+            ReadInt(*reinit, FAILURE_TIMEOUT_SEC_LIMITS, now.failureTimeoutSec, was.failureTimeoutSec, warnings, name);
+            ReadInt(*reinit, DEBOUNCE_SEC_LIMITS, now.debounceSec, was.debounceSec, warnings, name);
             WarnUnknownKeys(*reinit, name,
-                { "defaultDeviceChanged", "resumeFromSleep", "sessionUnlock", FAILURE_TIMEOUT_MS_LIMITS.key,
-                  DEBOUNCE_MS_LIMITS.key },
+                { "defaultDeviceChanged", "resumeFromSleep", "sessionUnlock", FAILURE_TIMEOUT_SEC_LIMITS.key,
+                  DEBOUNCE_SEC_LIMITS.key },
                 warnings);
         }
 
@@ -662,8 +662,8 @@ std::string miniant::Config::ToJsonString(const Settings& settings) {
     reinit["defaultDeviceChanged"] = settings.audio.reinit.defaultDeviceChanged;
     reinit["resumeFromSleep"] = settings.audio.reinit.resumeFromSleep;
     reinit["sessionUnlock"] = settings.audio.reinit.sessionUnlock;
-    reinit[FAILURE_TIMEOUT_MS_LIMITS.key] = settings.audio.reinit.failureTimeoutMs;
-    reinit[DEBOUNCE_MS_LIMITS.key] = settings.audio.reinit.debounceMs;
+    reinit[FAILURE_TIMEOUT_SEC_LIMITS.key] = settings.audio.reinit.failureTimeoutSec;
+    reinit[DEBOUNCE_SEC_LIMITS.key] = settings.audio.reinit.debounceSec;
 
     json& performance = root["performance"];
     performance["processPriority"] = ToString(settings.performance.processPriority);
@@ -725,11 +725,13 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     document.Key(6, "defaultDeviceChanged", settings.audio.reinit.defaultDeviceChanged, text(Str::CfgReinitDeviceChanged), true);
     document.Key(6, "resumeFromSleep", settings.audio.reinit.resumeFromSleep, text(Str::CfgReinitResume), true);
     document.Key(6, "sessionUnlock", settings.audio.reinit.sessionUnlock, text(Str::CfgReinitUnlock), true);
-    document.Key(6, FAILURE_TIMEOUT_MS_LIMITS.key, settings.audio.reinit.failureTimeoutMs,
-        fmt::format(Lang::Utf8(Str::CfgReinitFailureTimeout), FAILURE_TIMEOUT_MS_LIMITS.minimum, FAILURE_TIMEOUT_MS_LIMITS.maximum),
+    document.Key(6, FAILURE_TIMEOUT_SEC_LIMITS.key, settings.audio.reinit.failureTimeoutSec,
+        fmt::format(
+            Lang::Utf8(Str::CfgReinitFailureTimeout),
+            FAILURE_TIMEOUT_SEC_LIMITS.minimum, FAILURE_TIMEOUT_SEC_LIMITS.maximum),
         true);
-    document.Key(6, DEBOUNCE_MS_LIMITS.key, settings.audio.reinit.debounceMs,
-        fmt::format(Lang::Utf8(Str::CfgReinitDebounce), DEBOUNCE_MS_LIMITS.minimum, DEBOUNCE_MS_LIMITS.maximum),
+    document.Key(6, DEBOUNCE_SEC_LIMITS.key, settings.audio.reinit.debounceSec,
+        fmt::format(Lang::Utf8(Str::CfgReinitDebounce), DEBOUNCE_SEC_LIMITS.minimum, DEBOUNCE_SEC_LIMITS.maximum),
         false);
     document.SectionClose(4, false);
     document.SectionClose(2, true);

@@ -329,6 +329,26 @@ void miniant::Log::WriteHint(const std::string& message) {
     Buffer().Append(fmt::format("[{}] [info] {}\n", timestamp, message));
 }
 
+void miniant::Log::WriteFileOnly(const std::string& message) {
+    if (!g_logger || g_fileSink == nullptr || !g_fileSink->should_log(spdlog::level::info)) {
+        return;
+    }
+
+    // The repetitions counted so far come first: the lines of the file keep
+    // their order.
+    FlushRepeatedMessages();
+
+    // The line goes past the logger, straight to the sink of the file; the
+    // logger itself would hand it to the window as well.
+    try {
+        spdlog::details::log_msg line(&g_logger->name(), spdlog::level::info);
+        fmt::format_to(line.raw, "{}", message);
+        g_fileSink->log(line);
+    } catch (const std::exception&) {
+        // A file that cannot be written loses the line, as the logger does.
+    }
+}
+
 void miniant::Log::Write(Level level, const std::string& message) {
     if (!g_logger) {
         return;

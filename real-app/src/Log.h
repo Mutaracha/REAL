@@ -66,6 +66,11 @@ void WriteOperation(const std::string& message);
 // what the program did.
 void WriteHint(const std::string& message);
 
+// A line for the log file alone, at the info level: what the program did that
+// the window does not need to show (an update check that found nothing new or
+// could not check at all). Nothing is written while the file is off.
+void WriteFileOnly(const std::string& message);
+
 // Writes everything that is still buffered to the sinks. A log line that is
 // followed by a crash is otherwise lost (the file sinks cache the output).
 void Flush();
@@ -80,6 +85,11 @@ void Operation(const char* format, const Args&... args) {
 template <typename... Args>
 void Hint(const char* format, const Args&... args) {
     WriteHint(fmt::format(format, args...));
+}
+
+template <typename... Args>
+void FileOnly(const char* format, const Args&... args) {
+    WriteFileOnly(fmt::format(format, args...));
 }
 
 template <typename... Args>

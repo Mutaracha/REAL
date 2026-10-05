@@ -20,10 +20,10 @@ namespace miniant::Windows {
 // running copy by it (see SignalRunningInstance).
 inline constexpr wchar_t MAIN_WINDOW_CLASS_NAME[] = L"REAL.MainWindow";
 
-// Main application window: shows the log and the current status (with the
-// restart button at the end of the status line), and hosts the tray icon.
-// Hiding the window keeps the application (and the audio stream) running in
-// the tray.
+// Main application window: shows the log and, in the status bar along its
+// bottom edge, the current status with the restart button at the end; it also
+// hosts the tray icon. Hiding the window keeps the application (and the audio
+// stream) running in the tray.
 class MainWindow {
 public:
     using CommandHandler = std::function<void(miniant::Command)>;
@@ -76,8 +76,21 @@ private:
     static LRESULT CALLBACK WindowProcedureThunk(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
     LRESULT WindowProcedure(UINT message, WPARAM wParam, LPARAM lParam);
 
+    // The status bar hands the click and the drawing of the restart button
+    // (its child) over to the window; the button itself follows the mouse for
+    // its frame.
+    static LRESULT CALLBACK StatusBarProcedure(
+        HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data);
+    static LRESULT CALLBACK RestartButtonProcedure(
+        HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data);
+
     void CreateControls();
     void LayoutControls();
+    void LayoutStatusBar(int barWidth, int barHeight);
+    // Repaints the part of the status bar with the text of the status.
+    void InvalidateStatusText();
+    void PaintStatusText(const DRAWITEMSTRUCT& item) const;
+    void PaintRestartButton(const DRAWITEMSTRUCT& item) const;
     // Creates the fonts for the current DPI; the fonts they replace are
     // deleted by the caller once the controls have the new ones.
     void CreateFonts();
@@ -98,10 +111,15 @@ private:
     bool m_latencyEnabled = true;
     bool m_startWithWindows = false;
 
-    HWND m_status = nullptr;
+    HWND m_statusBar = nullptr;
+    // The status bar does not keep the text of the status: the window draws
+    // it (see PaintStatusText).
+    std::wstring m_statusText;
     HWND m_log = nullptr;
     UINT m_dpi = 96;
     HWND m_restartButton = nullptr;
+    // The mouse is over the restart button: the button shows its frame.
+    bool m_restartHot = false;
     HWND m_tooltip = nullptr;
     bool m_statusTextSet = false;
 

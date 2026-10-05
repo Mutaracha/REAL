@@ -11,9 +11,10 @@ that is still maintained and adds quality-of-life features:
 
 * proper window that can be closed/minimized to the system tray, with a menu bar
   (**REAL**: on/off, restart, exit; **Options**: Settings, Start with Windows;
-  **Diagnostics**; **About**) and a small restart button at the end of the status line
+  **Diagnostics**; **About**) and a status bar with a small flat restart button at
+  its end
 * tray menu: the status, **REAL is running** (on/off), **Restart** — the log,
-  diagnostics — **Settings** — **Exit**
+  diagnostics (both hidden by default) — **Settings** — **Exit**
 * restart of the audio streams without restarting the application — automatically
   on device changes, sleep/resume and session unlock, manually via the menus or the
   restart button of the window
@@ -42,7 +43,9 @@ that is still maintained and adds quality-of-life features:
 * Optional autostart with Windows
 * Update check at startup only (on by default, `updates.checkOnStartup`): one
   request to the page of the latest release on github.com, nothing is installed
-  silently, no requests while running; the repository is fixed in the build
+  silently, no requests while running; the repository is fixed in the build. Only
+  a new version reaches the window (and a notification); a check that finds
+  nothing new or fails is written to the log file alone
 * Interface and log in English or Russian, picked from the Windows UI language
   on the first run (`application.language`: `auto`, `en`, `ru`)
 * Settings in a plain JSON file that documents every option with comments
@@ -51,7 +54,7 @@ that is still maintained and adds quality-of-life features:
   after a manual edit — and keeps every value)
 * Notifications only while the window is hidden or minimized, one per device
   outage instead of one per retry; if the device stays silent for
-  `audio.reinit.failureTimeoutMs` (60 s), the latency reduction is switched off
+  `audio.reinit.failureTimeoutSec` (60 s), the latency reduction is switched off
   and the device is not polled anymore
 * Always a single instance: a second start (`REAL.exe --reinit` and the like)
   passes its command straight to the window of the running one and exits; a start
@@ -86,7 +89,7 @@ that is still maintained and adds quality-of-life features:
 3. Launch `REAL.exe`. The latency reduction is active as long as the application
    is running — the window may be closed to the tray.
 
-The status line of the window and the tray tooltip show the buffer size currently
+The status bar of the window and the tray tooltip show the buffer size currently
 used by the audio engine, for example `2.67 ms - Speakers (Realtek Audio)`.
 
 ## Command-Line Options
@@ -246,9 +249,9 @@ REAL applies the latency reduction again automatically (default device changes, 
 device switched on or off, resume from sleep, session unlock, audio service
 restart, plus a check every 30 seconds). The limits are configurable in `audio.reinit`. If the
 device does not answer, the retries back off and a single balloon is shown; after
-`reinit.failureTimeoutMs` the latency reduction is switched off and the device is
+`reinit.failureTimeoutSec` the latency reduction is switched off and the device is
 not polled until it appears again. To force it manually: tray menu → **Restart**,
-**REAL → Restart** in the menu bar, the round arrow at the end of the status line
+**REAL → Restart** in the menu bar, the round arrow at the end of the status bar
 or `REAL.exe --reinit` — this also switches the latency reduction back on when it
 was off.
 
@@ -257,8 +260,8 @@ was off.
 The log file is off by default (`logging.level = "off"`). Any other level
 writes `REAL.log` next to the executable (path and rotation in `logging`); the
 window of the program always shows the operations at the `info` level, whatever
-the settings say about the file. Use **Log file** in the tray menu, or
-*Diagnostics → Open the log* in the window.
+the settings say about the file. Use *Diagnostics → Open the log* in the window,
+or **Log file** in the tray menu once the item is switched on in the settings.
 HRESULT failures are reported with their symbolic name, e.g.
 `AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890008)`.
 

@@ -25,10 +25,12 @@ struct NumberLimits {
 
 // 0 - no size is set (see AudioSettings::fixedBufferFrames).
 inline constexpr NumberLimits FIXED_BUFFER_FRAMES_LIMITS = { "fixedBufferFrames", 0, 100000 };
-inline constexpr NumberLimits FAILURE_TIMEOUT_MS_LIMITS = { "failureTimeoutMs", 5000, 3600000 };
+// The times of the restart are whole seconds: a finer step means nothing to a
+// device that takes a second or more to come back.
+inline constexpr NumberLimits FAILURE_TIMEOUT_SEC_LIMITS = { "failureTimeoutSec", 5, 300 };
 // With a shorter pause a faulty device that connects and disconnects several
 // times a second would restart the streams on every event.
-inline constexpr NumberLimits DEBOUNCE_MS_LIMITS = { "debounceMs", 500, 60000 };
+inline constexpr NumberLimits DEBOUNCE_SEC_LIMITS = { "debounceSec", 1, 60 };
 inline constexpr NumberLimits LOG_FILE_SIZE_MB_LIMITS = { "maxFileSizeMb", 1, 1024 };
 inline constexpr NumberLimits LOG_FILES_LIMITS = { "maxFiles", 1, 100 };
 
@@ -68,11 +70,11 @@ struct ReinitSettings {
     bool resumeFromSleep = true;
     bool sessionUnlock = true;
     // How long the application keeps trying before it gives up (and stops
-    // polling) when the device does not answer at all.
-    int failureTimeoutMs = 60000;
-    // The pause between a device event and the restart: Windows sends a burst
-    // of events, and the restart waits for the last one.
-    int debounceMs = 1000;
+    // polling) when the device does not answer at all, in seconds.
+    int failureTimeoutSec = 60;
+    // The pause between a device event and the restart, in seconds: Windows
+    // sends a burst of events, and the restart waits for the last one.
+    int debounceSec = 1;
 };
 
 struct ApplicationSettings {
@@ -95,8 +97,10 @@ struct NotificationSettings {
 struct TrayMenuSettings {
     bool toggleEnabled = true;
     bool reinitialize = true;
-    bool openLog = true;
-    bool diagnostics = true;
+    // The items of the log and of the diagnostics are for the rare occasion:
+    // they are in the menu of the window anyway.
+    bool openLog = false;
+    bool diagnostics = false;
 };
 
 struct TraySettings {
@@ -115,7 +119,9 @@ struct AudioSettings {
 };
 
 struct PerformanceSettings {
-    ProcessPriority processPriority = ProcessPriority::Normal;
+    // The program only holds the audio streams open and waits: the lowest
+    // priority takes nothing from the other programs and is enough for it.
+    ProcessPriority processPriority = ProcessPriority::Idle;
 };
 
 struct UpdateSettings {
