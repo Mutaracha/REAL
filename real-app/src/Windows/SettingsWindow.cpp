@@ -262,6 +262,10 @@ struct Context {
 
     HFONT font = nullptr;
 
+    // The height Windows gives a list in this font, in real pixels: the fields
+    // take it too (see MeasureFieldHeight).
+    int fieldHeight = 0;
+
     // The background of the controls of the pages: a picture of the empty
     // display area of the tabs, and the top left corner of that area in the
     // client coordinates of the tab control (see CreatePageBrush).
@@ -569,19 +573,26 @@ HWND ReuseControl(Context& context, const std::wstring* text, Id id, int x, int 
     return control;
 }
 
-HWND CreateControl(
+// A place given in design pixels of the page being built, in real pixels of
+// the client area.
+RECT PlaceOnPage(const Context& context, int x, int y, int width, int height) {
+    const int left = context.Scale(x) + context.offsetX;
+    const int top = context.Scale(y) + context.offsetY;
+
+    return { left, top, left + context.Scale(width), top + context.Scale(height) };
+}
+
+// A control at a place in real pixels of the client area.
+HWND CreateControlAt(
     Context& context,
     const wchar_t* className,
     const std::wstring& text,
     DWORD style,
     Id id,
-    int x,
-    int y,
-    int width,
-    int height,
+    const RECT& place,
     DWORD extendedStyle = 0) {
-    const int left = context.Scale(x) + context.offsetX;
-    const int top = context.Scale(y) + context.offsetY;
+    const int width = place.right - place.left;
+    const int height = place.bottom - place.top;
 
     // Laid out again, the window keeps its controls. A field keeps what is
     // typed in it; a list and the tabs have no text of their own.
@@ -589,8 +600,7 @@ HWND CreateControl(
         const bool valueText = ::lstrcmpiW(className, L"EDIT") == 0 || ::lstrcmpiW(className, L"COMBOBOX") == 0 ||
             ::lstrcmpiW(className, WC_TABCONTROLW) == 0;
 
-        return ReuseControl(
-            context, valueText ? nullptr : &text, id, left, top, context.Scale(width), context.Scale(height));
+        return ReuseControl(context, valueText ? nullptr : &text, id, place.left, place.top, width, height);
     }
 
     const HWND control = ::CreateWindowExW(
@@ -598,10 +608,10 @@ HWND CreateControl(
         className,
         text.c_str(),
         style | WS_CHILD | WS_VISIBLE,
-        left,
-        top,
-        context.Scale(width),
-        context.Scale(height),
+        place.left,
+        place.top,
+        width,
+        height,
         context.window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(ControlId(id))),
         context.instance,
@@ -616,6 +626,22 @@ HWND CreateControl(
     }
 
     return control;
+}
+
+// A control at a place in design pixels of the page being built.
+HWND CreateControl(
+    Context& context,
+    const wchar_t* className,
+    const std::wstring& text,
+    DWORD style,
+    Id id,
+    int x,
+    int y,
+    int width,
+    int height,
+    DWORD extendedStyle = 0) {
+    return CreateControlAt(
+        context, className, text, style, id, PlaceOnPage(context, x, y, width, height), extendedStyle);
 }
 
 HWND Get(Context& context, Id id);
@@ -834,6 +860,35 @@ int ComboWidth(Context& context, const std::vector<Lang::Str>& texts) {
     return widest > 0 ? widest + COMBO_CHROME : 160;
 }
 
+// The height Windows gives a list in the font of the window, measured on a list
+// that is never shown. A field takes the same height: a field as high as its
+// row would touch the field of the next row, and the fields and the lists of a
+// page are of one height. Never as high as the row, so that two fields one
+// under the other always keep a gap.
+int MeasureFieldHeight(const Context& context) {
+    const int row = context.Scale(ROW_HEIGHT);
+    int height = 0;
+
+    const HWND probe = ::CreateWindowExW(
+        WS_EX_NOPARENTNOTIFY, L"COMBOBOX", L"", WS_CHILD | CBS_DROPDOWNLIST, 0, 0, context.Scale(100), row * 8,
+        context.window, nullptr, context.instance, nullptr);
+
+    if (probe != nullptr) {
+        if (context.font != nullptr) {
+            ::SendMessageW(probe, WM_SETFONT, reinterpret_cast<WPARAM>(context.font), FALSE);
+        }
+
+        RECT rect = {};
+        if (::GetWindowRect(probe, &rect) != FALSE) {
+            height = rect.bottom - rect.top;
+        }
+
+        ::DestroyWindow(probe);
+    }
+
+    return height > 0 ? (std::min)(height, row - 1) : context.Scale(BUTTON_HEIGHT);
+}
+
 // The room of the column of a row in the language that needs more of it: the
 // width of the window follows it (see RowColumn).
 int RowRoom(Context& context, Lang::Str label) {
@@ -937,9 +992,16 @@ int AddEdit(
     const HWND caption = AddLabel(context, label, y, column, hint != Lang::Str::Count);
     const int x = ROW_X + column;
 
-    const HWND edit = CreateControl(
+    // A field stands at the top of its row like a list and is as high as one
+    // (see MeasureFieldHeight).
+    RECT place = PlaceOnPage(context, x, y, width, ROW_HEIGHT);
+    if (context.fieldHeight > 0) {
+        place.bottom = place.top + context.fieldHeight;
+    }
+
+    const HWND edit = CreateControlAt(
         context, L"EDIT", value, WS_TABSTOP | ES_AUTOHSCROLL | (digitsOnly ? ES_NUMBER : 0), id,
-        x, y, width, ROW_HEIGHT, WS_EX_CLIENTEDGE);
+        place, WS_EX_CLIENTEDGE);
 
     if (edit != nullptr && maxLength > 0) {
         ::SendMessageW(edit, EM_LIMITTEXT, static_cast<WPARAM>(maxLength), 0);
@@ -1222,11 +1284,11 @@ int BuildWindowPage(Context& context) {
     // as well.
     y = BeginGroup(context, Lang::Str::SettingsHeaderNotifications, y);
     y = AddCheck(context, Id::NotificationError, Lang::Str::SettingsNotifyError,
-        settings.tray.notifications.onError, y);
+        settings.tray.notifications.onError, y, Lang::Str::SettingsHintNotifyError);
     y = AddCheck(context, Id::NotificationDeviceChange, Lang::Str::SettingsNotifyDeviceChange,
-        settings.tray.notifications.onDeviceChange, y);
+        settings.tray.notifications.onDeviceChange, y, Lang::Str::SettingsHintNotifyDeviceChange);
     y = AddCheck(context, Id::NotificationStateChange, Lang::Str::SettingsNotifyStateChange,
-        settings.tray.notifications.onStateChange, y);
+        settings.tray.notifications.onStateChange, y, Lang::Str::SettingsHintNotifyStateChange);
 
     return EndGroup(context, y);
 }
@@ -1756,10 +1818,15 @@ void BuildFrame(Context& context) {
 // pages because it is placed under the tabs, whose height follows the tallest
 // page.
 void BuildContent(Context& context) {
-    // The sizes that follow the texts of both languages and the font.
+    // The sizes that follow the texts of both languages and the font. Laid out
+    // again, the window keeps its font and with it the height of the fields.
     context.buttonWidth = StandardButtonWidth(context.font, context.dpi);
     context.contentRight = 0;
     context.groupBoxes.clear();
+
+    if (!context.relayout.active) {
+        context.fieldHeight = MeasureFieldHeight(context);
+    }
 
     CreateTabs(context);
 

@@ -641,19 +641,21 @@ void App::ApplyAudio() {
 
             // The retries themselves stay quiet (see ScheduleAudioRetry). A
             // missing default device is no fault of the program but what keeps
-            // it from working: a warning; everything else is an error.
-            if (m_audio.HasNoDefaultDevice()) {
+            // it from working: a warning and no balloon - the only device has
+            // been unplugged, or the sound of Windows is not ready yet after a
+            // start, and the program goes on by itself once a device is there.
+            // A device that is there and does not answer is an error.
+            const bool noDevice = m_audio.HasNoDefaultDevice();
+
+            if (noDevice) {
                 Log::Warn("{}", result.error().GetMessage());
             } else {
                 Log::Error("{}", result.error().GetMessage());
             }
 
-            if (m_settings.tray.notifications.onError) {
-                m_window->Notify(
-                    Lang::Wide(Str::NotifyAudioTitle),
-                    Lang::Wide(Str::NotifyDeviceNotReady),
-                    true);
-            }
+            // The end of the outage gets a balloon only after this one.
+            m_failureNotified = !noDevice && m_settings.tray.notifications.onError &&
+                m_window->Notify(Lang::Wide(Str::NotifyAudioTitle), Lang::Wide(Str::NotifyDeviceNotReady), true);
         } else {
             Log::Debug("{}", result.error().GetMessage());
         }
@@ -692,10 +694,11 @@ void App::ApplyAudio() {
     }
 
     // One balloon per action, and only about what the settings allow: a device
-    // change, a recovery from an outage, or a switch on/off.
+    // change, a switch on/off, or the end of an outage whose start had a
+    // balloon of its own (a missing device has none, see above).
     const bool deviceChange = m_deviceChangePending && m_settings.tray.notifications.onDeviceChange;
-    const bool recovery = recovered &&
-        (m_settings.tray.notifications.onError || m_settings.tray.notifications.onDeviceChange);
+    const bool recovery = recovered && m_failureNotified && m_settings.tray.notifications.onError;
+    m_failureNotified = false;
 
     if (deviceChange || recovery || stateChange) {
         const std::wstring title = Lang::Wide(deviceChange ? Str::NotifyDeviceTitle : Str::NotifyTitle);
@@ -1016,14 +1019,12 @@ void App::FinishUpdateCheck() {
         Log::Info("{}", message);
     }
 
-    const bool isFailure = !details.empty();
-
-    if (m_window != nullptr && (hasUpdate || (isFailure && m_settings.tray.notifications.onError))) {
-        const std::string balloonText = hasUpdate
-            ? message + "\n" + Lang::Utf8(Str::NotifyUpdateClick)
-            : message;
-
-        m_window->Notify(Lang::Wide(Str::NotifyTitle), Text::ToWide(balloonText), isFailure);
+    // Only a new version is worth a balloon. A check that failed stays in the
+    // journal: the program often starts with Windows before the network is up,
+    // and the next start checks again.
+    if (m_window != nullptr && hasUpdate) {
+        m_window->Notify(
+            Lang::Wide(Str::NotifyTitle), Text::ToWide(message + "\n" + Lang::Utf8(Str::NotifyUpdateClick)), false);
     }
 }
 
@@ -1314,6 +1315,11 @@ void App::GiveUpOnDevice() {
         ? static_cast<unsigned int>(m_settings.audio.reinit.failureTimeoutMs)
         : FAILURE_TIMEOUT_MS;
 
+    // Without any default device the program waits for one quietly (see
+    // ApplyAudio): the balloon is for a device that is there and does not
+    // answer.
+    const bool noDevice = m_audio.HasNoDefaultDevice();
+
     m_retryDelayMs = 0;
     m_failureSince = 0;
     m_audioSuspended = true;
@@ -1325,11 +1331,8 @@ void App::GiveUpOnDevice() {
     Log::Operation(Lang::Utf8(Str::OpGaveUp), (limit + 999) / 1000);
     Log::Operation(Lang::Utf8(Str::OpDiagHint));
 
-    if (m_settings.tray.notifications.onError) {
-        m_window->Notify(
-            Lang::Wide(Str::NotifyAudioTitle),
-            Lang::Wide(Str::NotifyDisabledNoDevice),
-            true);
+    if (m_settings.tray.notifications.onError && !noDevice) {
+        m_window->Notify(Lang::Wide(Str::NotifyAudioTitle), Lang::Wide(Str::NotifyDisabledNoAnswer), true);
     }
 
     UpdateStatus();

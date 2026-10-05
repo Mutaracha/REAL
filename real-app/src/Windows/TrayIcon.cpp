@@ -108,18 +108,19 @@ void TrayIcon::SetCommandHandler(CommandHandler handler) {
     m_handler = std::move(handler);
 }
 
-void TrayIcon::Notify(const std::wstring& title, const std::wstring& text, bool error) {
+bool TrayIcon::Notify(const std::wstring& title, const std::wstring& text, bool error) {
     if (!m_visible) {
-        return;
+        return false;
     }
 
+    // A notification is only a message: Windows plays no sound for it.
     NOTIFYICONDATAW data = m_data;
     data.uFlags = NIF_INFO;
-    data.dwInfoFlags = error ? NIIF_ERROR : NIIF_INFO;
+    data.dwInfoFlags = (error ? NIIF_ERROR : NIIF_INFO) | NIIF_NOSOUND;
     wcscpy_s(data.szInfoTitle, Truncate(title, NOTIFICATION_TITLE_MAX_LENGTH).c_str());
     wcscpy_s(data.szInfo, Truncate(text, NOTIFICATION_TEXT_MAX_LENGTH).c_str());
 
-    ::Shell_NotifyIconW(NIM_MODIFY, &data);
+    return ::Shell_NotifyIconW(NIM_MODIFY, &data) != FALSE;
 }
 
 void TrayIcon::Recreate() {

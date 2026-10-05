@@ -386,14 +386,12 @@ void MainWindow::AppendLogLines(const std::vector<std::string>& lines) {
     ::SendMessageW(m_log, WM_VSCROLL, SB_BOTTOM, 0);
 }
 
-void MainWindow::Notify(const std::wstring& title, const std::wstring& text, bool error) {
+bool MainWindow::Notify(const std::wstring& title, const std::wstring& text, bool error) {
     // A balloon is for the user who does not see the window: while it is open
     // (shown and not minimized) its journal already says the same.
     const bool windowOpen = IsVisible() && ::IsIconic(m_window) == FALSE;
 
-    if (m_tray && !windowOpen) {
-        m_tray->Notify(title, text, error);
-    }
+    return m_tray && !windowOpen && m_tray->Notify(title, text, error);
 }
 
 void MainWindow::SetTrayTooltip(const std::wstring& text) {

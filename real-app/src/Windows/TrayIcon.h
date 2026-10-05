@@ -44,7 +44,9 @@ public:
     void SetMenuState(const TrayMenuState& state);
     void SetCommandHandler(CommandHandler handler);
 
-    void Notify(const std::wstring& title, const std::wstring& text, bool error);
+    // A notification without a sound; false when the icon is not shown or the
+    // shell did not take it.
+    bool Notify(const std::wstring& title, const std::wstring& text, bool error);
 
     // Called from the window procedure for the tray callback message.
     void HandleMessage(WPARAM wParam, LPARAM lParam);

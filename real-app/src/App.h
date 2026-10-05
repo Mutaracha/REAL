@@ -186,6 +186,9 @@ private:
     bool m_audioSuspended = false;
     // The next apply is caused by a device change (affects the notification).
     bool m_deviceChangePending = false;
+    // The start of the current outage was shown by a balloon: its end gets one
+    // as well (see ApplyAudio).
+    bool m_failureNotified = false;
     // The timer of the device events was started by a device event, not only
     // by the end of a sleep or a lock (see OnTimer).
     bool m_deviceEventPending = false;
