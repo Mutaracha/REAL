@@ -407,7 +407,8 @@ std::vector<EndpointInfo> miniant::Windows::Diagnostics::EnumerateEndpoints(
 
 std::string miniant::Windows::Diagnostics::BuildReport(
     const Config::Settings& settings,
-    const std::wstring& settingsPath) {
+    const std::wstring& settingsPath,
+    const std::string& currentState) {
     std::string text;
 
     const std::time_t now = std::time(nullptr);
@@ -433,6 +434,9 @@ std::string miniant::Windows::Diagnostics::BuildReport(
         miniant::Lang::Utf8(miniant::Lang::Str::DiagConfig),
         Config::DescribeFlow(settings),
         Config::DescribeBuffer(settings));
+    text += fmt::format(
+        miniant::Lang::Utf8(miniant::Lang::Str::DiagCurrentState),
+        currentState);
     text += "\n";
 
     Log::Debug(miniant::Lang::Utf8(miniant::Lang::Str::LogDiagCollected));

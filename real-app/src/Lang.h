@@ -153,6 +153,8 @@ enum class Str {
     DiagExecutable,
     DiagSettings,
     DiagConfig,
+    DiagCurrentState,
+    DiagCurrentStateUnavailable,
     DiagEnumeratorError,
     DiagAudiosrvHint,
     DiagDevicesRender,

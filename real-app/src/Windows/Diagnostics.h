@@ -69,10 +69,14 @@ struct DeviceReport {
 
 std::string GetWindowsVersion();
 
-// Text report (UTF-8) about the system, the audio endpoints and the current
-// settings. Written to a file so that a user can send one file instead of
-// screenshots.
-std::string BuildReport(const Config::Settings& settings, const std::wstring& settingsPath);
+// Text report (UTF-8) about the system, the audio endpoints, the current state
+// of the running application and the settings. Written to a file so that a user
+// can send one file instead of screenshots. A standalone --diagnose run passes
+// an explicit "state unavailable" text because it does not start audio streams.
+std::string BuildReport(
+    const Config::Settings& settings,
+    const std::wstring& settingsPath,
+    const std::string& currentState);
 
 // All active endpoints of the given flow, with the periods they support.
 std::vector<EndpointInfo> EnumerateEndpoints(EDataFlow dataFlow, ::IMMDeviceEnumerator& enumerator);

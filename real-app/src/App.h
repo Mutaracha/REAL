@@ -71,6 +71,7 @@ private:
     // Switches the mode on or off the same way for every caller: the menus and
     // the command of a second copy of the program.
     void SetAudioEnabled(bool enabled);
+    std::wstring CurrentAudioStatusText() const;
     void UpdateStatus();
     void UpdateTrayMenuState();
     void SaveSettings();

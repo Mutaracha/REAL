@@ -314,6 +314,9 @@ jobs:
             }
             $report = Join-Path $work "REAL-diagnostics.txt"
             if (-not (Test-Path $report)) { throw "REAL-diagnostics.txt was not written" }
+            $stateLine = Select-String -Path $report -Pattern '^(Current state|Текущее состояние):' | Select-Object -First 1
+            if (-not $stateLine) { throw "the diagnostics report has no current-state line" }
+            Add-Log $stateLine.Line
             Get-Content $report | Out-File -Append -Encoding utf8 $log
 
             Add-Log "smoke test passed"
@@ -348,9 +351,13 @@ jobs:
 
       # Compiler or runtime diagnostics are published both as check annotations
       # and as files in the repository, so that the reason of a failure is
-      # visible even when the job log cannot be downloaded.
+      # visible even when the job log cannot be downloaded. Keep explicit
+      # outcome checks for steps marked continue-on-error.
       - name: Publish diagnostics
-        if: steps.build.outcome == 'failure' || steps.smoke.outcome == 'failure'
+        if: >-
+          failure() ||
+          steps.build.outcome == 'failure' ||
+          steps.smoke.outcome == 'failure'
         shell: pwsh
         run: |
           $errors = @()
@@ -372,10 +379,11 @@ jobs:
       # Only for a working branch: never on master and never for a tag.
       - name: Commit diagnostics
         if: >-
-          (steps.build.outcome == 'failure' || steps.smoke.outcome == 'failure') &&
+          (failure() || steps.build.outcome == 'failure' || steps.smoke.outcome == 'failure') &&
           github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name != 'master'
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force -Path ci | Out-Null
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           Get-ChildItem ci -Filter *.log | ForEach-Object { git add -f $_.FullName }

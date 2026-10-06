@@ -734,12 +734,16 @@ std::wstring App::CurrentOffStatusText() const {
     return Lang::Wide(m_audioSuspended ? Str::StatusSuspended : Str::StatusDisabled);
 }
 
+std::wstring App::CurrentAudioStatusText() const {
+    return m_audioEnabled ? m_audio.GetStatusText() : CurrentOffStatusText();
+}
+
 void App::UpdateStatus() {
     if (!m_window) {
         return;
     }
 
-    const std::wstring status = m_audioEnabled ? m_audio.GetStatusText() : CurrentOffStatusText();
+    const std::wstring status = CurrentAudioStatusText();
     m_window->SetStatusText(status);
     m_window->SetTrayTooltip(std::wstring(AppInfo::NAME) + L" - " + status);
     UpdateTrayMenuState();
@@ -752,7 +756,7 @@ void App::UpdateTrayMenuState() {
 
     Windows::TrayMenuState state;
     state.enabled = m_audioEnabled;
-    state.statusText = m_audioEnabled ? m_audio.GetStatusText() : CurrentOffStatusText();
+    state.statusText = CurrentAudioStatusText();
     state.toggleEnabled = m_settings.tray.menu.toggleEnabled;
     state.reinitialize = m_settings.tray.menu.reinitialize;
     state.openLog = m_settings.tray.menu.openLog;
@@ -1450,7 +1454,10 @@ int App::RunDiagnostics() {
 
     // One line about the diagnostics: the steps of the report stay at the
     // debug level, otherwise a single key press fills the log with four lines.
-    const std::string report = Windows::Diagnostics::BuildReport(m_settings, m_settingsPath);
+    const std::string report = Windows::Diagnostics::BuildReport(
+        m_settings,
+        m_settingsPath,
+        Lang::Utf8(Str::DiagCurrentStateUnavailable));
 
     const std::wstring path = WriteDiagnosticsReport(report);
     if (!path.empty()) {
@@ -1483,8 +1490,11 @@ int App::RunDiagnostics() {
 }
 
 void App::ShowDiagnostics() {
-    const std::wstring path = WriteDiagnosticsReport(
-        Windows::Diagnostics::BuildReport(m_settings, m_settingsPath));
+    const std::string report = Windows::Diagnostics::BuildReport(
+        m_settings,
+        m_settingsPath,
+        Text::ToUtf8(CurrentAudioStatusText()));
+    const std::wstring path = WriteDiagnosticsReport(report);
     if (path.empty()) {
         Log::Error(Lang::Utf8(Str::OpDiagnosticsFailed));
         if (m_window != nullptr) {

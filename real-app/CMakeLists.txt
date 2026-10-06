@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(miniant-real VERSION 1.0.0 LANGUAGES CXX)
+project(miniant-real VERSION 1.0.1 LANGUAGES CXX)
 
 # Release by default: the v0.2.0 project forced a Debug build (debug CRT, not
 # redistributable) which is not what we want to ship.

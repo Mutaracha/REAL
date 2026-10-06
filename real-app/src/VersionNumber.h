@@ -8,7 +8,7 @@
 // compiler reads this file as well.
 #define REAL_VERSION_MAJOR 1
 #define REAL_VERSION_MINOR 0
-#define REAL_VERSION_PATCH 0
-#define REAL_VERSION_TEXT "1.0.0"
+#define REAL_VERSION_PATCH 1
+#define REAL_VERSION_TEXT "1.0.1"
 
 #endif
