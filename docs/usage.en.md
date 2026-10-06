@@ -143,10 +143,10 @@ with three tabs:
 * **Other** — the priority of the process, the update check, the log file, the settings file.
 
 **Save** writes the settings file and applies the values at once, nothing has to be restarted.
-**Cancel** (or Esc) closes the window without changes. Hover over a setting to see a short
-description. The values are checked when you click **Save**: a value that does not fit is
-put back, the window opens the tab of the field and a tip next to it names the values it
-accepts.
+**Cancel** (or Esc) closes the window without changes. Many settings show a short description
+when you hover over them. The values are checked when you click **Save**: a value that does
+not fit is put back, the window opens the tab of the field and a tip next to it names the
+values it accepts.
 
 The settings live in `real.settings.json` next to `REAL.exe`. The window and the file are the
 same thing: what the window saves is in the file, with a comment next to every value.
