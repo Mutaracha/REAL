@@ -38,6 +38,30 @@ inline constexpr const char* UPSTREAM_URL = "https://github.com/miniant-git/REAL
 // version: a test build has no tag of its own.
 inline constexpr const char* DOCS_URL = "https://github.com/Mutaracha/REAL/blob/master/";
 
+// The number of the CI run of a test build ("72"); empty for a release and for
+// a build made outside the CI.
+inline std::string BuildNumber() {
+#ifdef REAL_RELEASE
+    return {};
+#else
+    const std::string build = REAL_STRINGIFY(REAL_BUILD_NUMBER);
+    return build == "0" ? std::string() : build;
+#endif
+}
+
+// A test build of the CI ("v1.0.0 RC 72") comes before the release of its
+// version: the release v1.0.0 is newer than v1.0.0 RC 72.
+inline bool IsReleaseCandidate() {
+    return !BuildNumber().empty();
+}
+
+// Whether a published release is newer than this build: a higher version, or
+// the same version when this is a test build. A release and a local build are
+// not offered the release of their own version.
+inline bool IsOlderThan(const AutoUpdater::Version& release) {
+    return release > VERSION || (release == VERSION && IsReleaseCandidate());
+}
+
 // The version for the user. A release: "v1.0.0". Any other build of the CI:
 // "v1.0.0 RC <run> (<commit>)", with the number of the CI run and the commit the
 // executable was built from. A local build of a checkout shows the commit only,
@@ -45,12 +69,12 @@ inline constexpr const char* DOCS_URL = "https://github.com/Mutaracha/REAL/blob/
 inline std::string DisplayVersion() {
     std::string text = VERSION.ToString();
 
-#ifndef REAL_RELEASE
-    const std::string build = REAL_STRINGIFY(REAL_BUILD_NUMBER);
-    if (!build.empty() && build != "0") {
+    const std::string build = BuildNumber();
+    if (!build.empty()) {
         text += " RC " + build;
     }
 
+#ifndef REAL_RELEASE
     const std::string commit = REAL_STRINGIFY(REAL_COMMIT);
     if (!commit.empty()) {
         text += " (" + commit.substr(0, 7) + ")";

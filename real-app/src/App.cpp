@@ -1032,7 +1032,9 @@ void App::StartUpdateCheck() {
             details = release.error();
         } else if (!release->published) {
             message = std::string(Lang::Utf8(Str::LogNoReleases));
-        } else if (release->version > AppInfo::VERSION) {
+        } else if (AppInfo::IsOlderThan(release->version)) {
+            // A higher version, or the release of the version of this test
+            // build: v1.0.0 is newer than v1.0.0 RC 72.
             message = fmt::format(Lang::Utf8(Str::NotifyUpdateAvailable), release->version.ToString());
             url = release->releaseUrl;
         } else {
