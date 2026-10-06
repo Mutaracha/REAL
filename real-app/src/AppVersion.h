@@ -1,12 +1,14 @@
 #pragma once
 
 #include "Version.h"
+#include "VersionNumber.h"
 
 #include <string>
 
 // The identification of the build. The CI passes the number of the run and the
 // commit it builds (see .github/workflows/build.yml, CMakeLists.txt and
-// build.bat); a build without them shows the version alone.
+// build.bat); a build without them shows the version alone. A release build
+// (REAL_RELEASE) shows the version alone as well.
 #ifndef REAL_BUILD_NUMBER
 #define REAL_BUILD_NUMBER 0
 #endif
@@ -20,7 +22,7 @@
 
 namespace miniant::AppInfo {
 
-inline constexpr AutoUpdater::Version VERSION(0, 3, 0);
+inline constexpr AutoUpdater::Version VERSION(REAL_VERSION_MAJOR, REAL_VERSION_MINOR, REAL_VERSION_PATCH);
 
 inline constexpr const wchar_t* NAME = L"REAL";
 inline constexpr const wchar_t* DESCRIPTION = L"REduce Audio Latency";
@@ -30,13 +32,20 @@ inline constexpr const wchar_t* DESCRIPTION = L"REduce Audio Latency";
 inline constexpr const char* GITHUB_REPOSITORY = "Mutaracha/REAL";
 inline constexpr const char* PROJECT_URL = "https://github.com/Mutaracha/REAL";
 inline constexpr const char* UPSTREAM_URL = "https://github.com/miniant-git/REAL";
+// The documentation in the master branch of the repository: the About window and
+// the header of the settings file append the path of a file in the language of
+// the interface ("docs/usage.en.md"). The master branch, not the tag of the
+// version: a test build has no tag of its own.
+inline constexpr const char* DOCS_URL = "https://github.com/Mutaracha/REAL/blob/master/";
 
-// "v0.3.0 RC <run> (<commit>)": the version for the user, with the number of the CI
-// run and the commit the executable was built from. A local build of a checkout
-// shows the commit only, a build outside a repository - just the version.
+// The version for the user. A release: "v1.0.0". Any other build of the CI:
+// "v1.0.0 RC <run> (<commit>)", with the number of the CI run and the commit the
+// executable was built from. A local build of a checkout shows the commit only,
+// a build outside a repository - just the version.
 inline std::string DisplayVersion() {
     std::string text = VERSION.ToString();
 
+#ifndef REAL_RELEASE
     const std::string build = REAL_STRINGIFY(REAL_BUILD_NUMBER);
     if (!build.empty() && build != "0") {
         text += " RC " + build;
@@ -46,6 +55,7 @@ inline std::string DisplayVersion() {
     if (!commit.empty()) {
         text += " (" + commit.substr(0, 7) + ")";
     }
+#endif
 
     return text;
 }

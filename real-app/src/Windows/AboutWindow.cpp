@@ -49,28 +49,32 @@ const int LINK_LABEL_FIRST_ID = 2010;
 const int LINK_FIRST_ID = 2020;
 const int LINK_COUNT = 3;
 
-// The project first, then the documentation: the same files and the same
-// repository the rest of the program points at.
-const char* const LINK_URLS[LINK_COUNT] = {
-    "https://github.com/Mutaracha/REAL",
-    "https://github.com/Mutaracha/REAL/blob/master/docs/usage.ru.md",
-    "https://github.com/Mutaracha/REAL/blob/master/docs/CONFIG.md",
-};
-
+// The project first, then the documentation in the language of the interface:
+// the instructions and the description of the settings.
 const Lang::Str LINK_LABELS[LINK_COUNT] = {
     Lang::Str::AboutProject,
     Lang::Str::AboutUsage,
     Lang::Str::AboutConfig,
 };
 
-// The text of a link: the address is cut down to the file name (or to the name
-// of the repository) so that the line stays short, the click still opens the
-// whole address.
+// The text of a link: the address is cut down to the path of the file in the
+// repository (or to the name of the repository) so that the line stays short,
+// the click still opens the whole address.
 std::wstring LinkText(int index) {
     switch (index) {
-        case 1: return L"docs/usage.ru.md";
-        case 2: return L"docs/CONFIG.md";
+        case 1: return Lang::Wide(Lang::Str::DocsUsagePath);
+        case 2: return Lang::Wide(Lang::Str::DocsSettingsPath);
         default: return L"github.com/Mutaracha/REAL";
+    }
+}
+
+// The address behind a link: the files of the documentation are read from the
+// master branch of the repository (see AppInfo::DOCS_URL).
+std::string LinkUrl(int index) {
+    switch (index) {
+        case 1: return AppInfo::DOCS_URL + std::string(Lang::Utf8(Lang::Str::DocsUsagePath));
+        case 2: return AppInfo::DOCS_URL + std::string(Lang::Utf8(Lang::Str::DocsSettingsPath));
+        default: return AppInfo::PROJECT_URL;
     }
 }
 
@@ -282,7 +286,7 @@ void DestroyContent(Context& context) {
     }
 }
 
-void OpenUrl(HWND window, const char* url) {
+void OpenUrl(HWND window, const std::string& url) {
     ::ShellExecuteW(window, L"open", Text::ToWide(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
@@ -363,7 +367,7 @@ LRESULT WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
             const int id = LOWORD(wParam);
 
             if (HIWORD(wParam) == STN_CLICKED && IsLinkId(id)) {
-                OpenUrl(window, LINK_URLS[id - LINK_FIRST_ID]);
+                OpenUrl(window, LinkUrl(id - LINK_FIRST_ID));
                 return 0;
             }
 

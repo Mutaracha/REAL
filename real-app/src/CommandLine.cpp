@@ -137,12 +137,14 @@ Options miniant::CommandLine::Parse() {
 
 std::wstring miniant::CommandLine::HelpText() {
     // The whole help is one translated block: the layout of the option table
-    // differs between languages, so it cannot be assembled from parts.
+    // differs between languages, so it cannot be assembled from parts. The last
+    // line names the description of the settings in the same language.
     const std::string text = fmt::format(
         miniant::Lang::Utf8(miniant::Lang::Str::HelpText),
         miniant::Text::ToUtf8(AppInfo::NAME),
         miniant::Text::ToUtf8(AppInfo::DESCRIPTION),
-        AppInfo::DisplayVersion());
+        AppInfo::DisplayVersion(),
+        miniant::Lang::Utf8(miniant::Lang::Str::DocsSettingsPath));
 
     return miniant::Text::ToWide(text);
 }

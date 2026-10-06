@@ -210,6 +210,11 @@ enum class Str {
     AboutSettings,
     DiagnosticsWriteFailed,
 
+    // The documentation in the language of the interface: a path in the
+    // repository, AppInfo::DOCS_URL is the address of the repository
+    DocsUsagePath,
+    DocsSettingsPath,
+
     // Window and log: operations
     OpStarted,
     OpSettingsFile,
@@ -327,6 +332,7 @@ enum class Str {
 
     // Settings file comments
     CfgFileHeader,
+    CfgFileDocs,
     CfgApplicationSection,
     CfgStartMinimizedToTray,
     CfgMinimizeToTray,

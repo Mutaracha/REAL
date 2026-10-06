@@ -528,7 +528,7 @@ const Entry TABLE[] = {
       "  --version             Show the version\n"
       "\n"
       "Settings: \"Options - Settings\" in the menu bar, \"Settings\" in the tray menu, or real.settings.json next to REAL.exe.\n"
-      "Every parameter is explained by a comment inside that file, see also docs/CONFIG.md.\n",
+      "Every parameter is explained by a comment inside that file, see also {3}.\n",
       "{0} - {1} {2}\n"
       "\n"
       "Использование: REAL.exe [ключи]\n"
@@ -553,7 +553,7 @@ const Entry TABLE[] = {
       "  --version             показать версию\n"
       "\n"
       "Настройки: «Опции → Настройки» в строке меню, «Настройки» в меню значка или файл real.settings.json рядом с REAL.exe.\n"
-      "У каждого параметра есть комментарий прямо в файле, подробнее - docs/CONFIG.md.\n" },
+      "У каждого параметра есть комментарий прямо в файле, подробнее - {3}.\n" },
 
     // Dialogs
     { Str::AboutTitle, "About REAL", "О программе REAL" },
@@ -571,6 +571,12 @@ const Entry TABLE[] = {
 
     { Str::DiagnosticsWriteFailed, "The diagnostics report could not be written to a file.",
                                    "Не удалось записать отчёт диагностики в файл." },
+
+    // The documentation in the language of the interface: the About window
+    // shows the paths as links, the help and the header of the settings file
+    // name the description of the settings.
+    { Str::DocsUsagePath, "docs/usage.en.md", "docs/usage.ru.md" },
+    { Str::DocsSettingsPath, "docs/settings.en.md", "docs/settings.ru.md" },
 
     // Window and log: operations
     { Str::OpStarted, "REAL {} started", "REAL {} запущен" },
@@ -760,6 +766,9 @@ const Entry TABLE[] = {
     { Str::CfgFileHeader,
       "Settings of REAL. The file is created automatically and is read when the program starts or when the settings are reloaded. Comments can be removed.",
       "Настройки REAL. Файл создаётся автоматически и читается при запуске и перезагрузке настроек. Комментарии можно удалять." },
+    // The second line of the header: "{0}" is the address of the description
+    // of the settings in the language of the file.
+    { Str::CfgFileDocs, "Description of every setting: {0}", "Описание всех настроек: {0}" },
     { Str::CfgApplicationSection, "Window, start and autostart.", "Окно, запуск и автозапуск приложения." },
     { Str::CfgStartMinimizedToTray, "true - start minimized in the tray (same as the --tray key); needs the tray icon.",
                                     "true - стартовать сразу свёрнутым в трей (то же, что ключ запуска --tray); нужен значок в трее." },
@@ -796,7 +805,7 @@ const Entry TABLE[] = {
                         "Какие устройства обрабатывать: \"render\" (воспроизведение), \"capture\" (запись), \"both\" (воспроизведение и запись)." },
     { Str::CfgBuffer, "Buffer: \"min\" - the smallest one the device driver supports; \"fixed\" - a fixed one, its size is in fixedBufferFrames.",
                       "Буфер: \"min\" - минимальный, который поддерживает драйвер устройства; \"fixed\" - фиксированный, размер в fixedBufferFrames." },
-    { Str::CfgFixedBufferFrames, "Size of the fixed buffer in frames, for \"fixed\" only: from the minimum to the maximum buffer of the device in its base step (see the diagnostics report); a value that does not fit is adjusted, and the journal says so. 0 - not set.",
+    { Str::CfgFixedBufferFrames, "Size of the fixed buffer in frames, for \"fixed\" only: from the minimum to the maximum buffer of the device in its base step (see the diagnostics report); a value that does not fit is adjusted, and the log says so. 0 - not set.",
                                  "Размер фиксированного буфера во фреймах, только для \"fixed\": от минимального до максимального буфера устройства с его базовым шагом (см. отчёт диагностики); неподходящее значение подгоняется, о чём пишется в журнал. 0 - не задан." },
     { Str::CfgReinitSection, "When to restart automatically (the audio streams are created again).",
                              "Когда перезапускать автоматически (аудиопотоки создаются заново)." },

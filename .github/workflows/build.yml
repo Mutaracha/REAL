@@ -6,14 +6,23 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Release to attach REAL.exe to, e.g. v1.2.3 (empty for a test build)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
 
 env:
   BUILD_DIR: build
-  # The number of the run ends up in the version of the build: "RC 39".
+  # The number of the run ends up in the version of a test build: "RC 39".
   REAL_BUILD_NUMBER: ${{ github.run_number }}
+  # A release: the tag "v1.2.3" that is pushed, or the version given to a
+  # manual run of the workflow. The program shows its version alone then,
+  # without "RC" and the commit.
+  REAL_RELEASE: ${{ inputs.release || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '' }}
 
 jobs:
   windows:
@@ -23,6 +32,48 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      # The version is written in three files and they must agree; a release
+      # must be built from the sources of that very version.
+      - name: Check the version
+        shell: pwsh
+        run: |
+          function Read-Match([string] $path, [string] $pattern) {
+            $line = Select-String -Path $path -Pattern $pattern | Select-Object -First 1
+            if (-not $line) { throw "no line of $path matches $pattern" }
+            return $line.Matches[0].Groups[1].Value
+          }
+          $header = 'real-app/src/VersionNumber.h'
+          $parts = foreach ($name in 'MAJOR', 'MINOR', 'PATCH') { Read-Match $header "#define REAL_VERSION_$name (\d+)" }
+          $version = $parts -join '.'
+          $text = Read-Match $header '#define REAL_VERSION_TEXT "([^"]*)"'
+          $cmake = Read-Match real-app/CMakeLists.txt 'project\(miniant-real VERSION ([0-9.]+)'
+          $manifest = Read-Match real-app/res/app.manifest 'name="Mutaracha\.REAL" version="([0-9.]+)"'
+          $found = [ordered]@{
+            "REAL_VERSION_TEXT in $header" = $text
+            'the project VERSION in real-app/CMakeLists.txt' = $cmake
+            'the version in real-app/res/app.manifest' = $manifest
+          }
+          $expected = [ordered]@{}
+          foreach ($key in $found.Keys) { $expected[$key] = $version }
+          $expected['the version in real-app/res/app.manifest'] = "$version.0"
+          if ($env:REAL_RELEASE) {
+            if (-not ($env:REAL_RELEASE -match '^v(\d+)\.(\d+)\.(\d+)$')) {
+              throw "a release is named like v1.2.3, not '$env:REAL_RELEASE'"
+            }
+            $found['the name of the release'] = $env:REAL_RELEASE
+            $expected['the name of the release'] = "v$version"
+          }
+          $wrong = @($found.Keys | Where-Object { $found[$_] -ne $expected[$_] })
+          foreach ($key in $wrong) {
+            Write-Host "::error::$key is '$($found[$key])' instead of '$($expected[$key])' (REAL_VERSION_* in $header)"
+          }
+          if ($wrong.Count -gt 0) { exit 1 }
+          if ($env:REAL_RELEASE) {
+            "Release $env:REAL_RELEASE"
+          } else {
+            "Test build of $version, RC $env:REAL_BUILD_NUMBER"
+          }
 
       - name: Configure
         run: cmake -S real-app -B ${{ env.BUILD_DIR }} -A x64
@@ -74,6 +125,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path ci | Out-Null
           $log = "ci/smoke.log"
           $exe = (Resolve-Path "${{ env.BUILD_DIR }}/Release/REAL.exe").Path
+          $versionHeader = (Resolve-Path "real-app/src/VersionNumber.h").Path
           Set-Content -Path $log -Value "REAL smoke test"
           function Add-Log([string] $text) { $text | Out-File -Append -Encoding utf8 $log }
 
@@ -90,7 +142,22 @@ jobs:
 
           try {
             Add-Log "== first instance =="
-            (Get-Item $exe).VersionInfo | Out-String | Out-File -Append -Encoding utf8 $log
+            $info = (Get-Item $exe).VersionInfo
+            $info | Format-List * | Out-String | Out-File -Append -Encoding utf8 $log
+
+            # The version resource: the numbers of VersionNumber.h, and the run
+            # as the fourth number of a test build (0 for a release).
+            $line = Select-String -Path $versionHeader -Pattern '#define REAL_VERSION_TEXT "([^"]*)"' |
+              Select-Object -First 1
+            if (-not $line) { throw "no REAL_VERSION_TEXT in VersionNumber.h" }
+            $version = $line.Matches[0].Groups[1].Value
+            $run = if ($env:REAL_RELEASE) { 0 } else { [int] $env:REAL_BUILD_NUMBER }
+            if ($info.ProductVersion -ne $version) {
+              throw "the version resource says $($info.ProductVersion) instead of $version"
+            }
+            if ($info.FilePrivatePart -ne $run) {
+              throw "the fourth number of the file version is $($info.FilePrivatePart) instead of $run"
+            }
 
             # The log file is off by default: the runs that are checked through
             # REAL.log switch it on for themselves (a launch key holds for one run).
@@ -302,8 +369,11 @@ jobs:
             '```' | Out-File -Append $env:GITHUB_STEP_SUMMARY
           }
 
+      # Only for a working branch: never on master and never for a tag.
       - name: Commit diagnostics
-        if: (steps.build.outcome == 'failure' || steps.smoke.outcome == 'failure') && github.event_name == 'push'
+        if: >-
+          (steps.build.outcome == 'failure' || steps.smoke.outcome == 'failure') &&
+          github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name != 'master'
         shell: pwsh
         run: |
           git config user.name "github-actions[bot]"
@@ -330,30 +400,58 @@ jobs:
           Write-Host "Build or smoke test failed, see ci/*.log"
           exit 1
 
+  # The release gets the very REAL.exe that has passed the smoke test above, and
+  # the file is attached before the release is published. A draft made by hand
+  # keeps its description and stays a draft until it is published by hand; a
+  # tag pushed without a release gets one with generated notes, published once
+  # the file is there. A published release that already has REAL.exe is not
+  # touched: its file is never replaced.
   release:
     name: Attach the executable to the release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: inputs.release || startsWith(github.ref, 'refs/tags/v')
     needs: windows
-    runs-on: windows-2022
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - name: Download the tested executable
+        uses: actions/download-artifact@v8
+        with:
+          name: REAL-x64
+          path: artifact
 
-      - name: Configure
-        run: cmake -S real-app -B ${{ env.BUILD_DIR }} -A x64
-
-      - name: Build
-        run: cmake --build ${{ env.BUILD_DIR }} --config Release --parallel
-
-      - name: Create release
-        shell: pwsh
+      - name: Attach REAL.exe
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_PUSHED: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          gh release view $tag 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title "REAL $tag" --generate-notes
-          }
-          gh release upload $tag "${{ env.BUILD_DIR }}/Release/REAL.exe#REAL.exe" --clobber
+          tag="$REAL_RELEASE"
+          exe=$(find artifact -type f -name REAL.exe | head -n 1)
+          if [ -z "$exe" ]; then echo "::error::REAL.exe is not in the artifact"; exit 1; fi
+
+          created=false
+          if ! state=$(gh release view "$tag" --json isDraft,assets,targetCommitish \
+              --jq '"\(.isDraft) \(any(.assets[]; .name == "REAL.exe")) \(.targetCommitish)"'); then
+            gh release create "$tag" --draft --title "REAL $tag" --generate-notes --target "$GITHUB_SHA"
+            state="true false $GITHUB_SHA"
+            created=true
+          fi
+          read -r draft attached target <<< "$state"
+
+          if [ "$draft" = false ] && [ "$attached" = true ]; then
+            echo "::notice::$tag is published and has REAL.exe already; the file is not replaced"
+            exit 0
+          fi
+          if [ "$target" != "$GITHUB_SHA" ] && [ "$target" != "$GITHUB_REF_NAME" ]; then
+            echo "::warning::$tag points at $target, REAL.exe is built from $GITHUB_SHA"
+          fi
+
+          gh release upload "$tag" "$exe" --clobber
+          if [ "$created" = true ] && [ "$TAG_PUSHED" = true ]; then
+            gh release edit "$tag" --draft=false --latest
+            echo "::notice::$tag is published with REAL.exe"
+          elif [ "$draft" = true ]; then
+            echo "::notice::REAL.exe is attached to the draft $tag; publish it on GitHub"
+          else
+            echo "::notice::REAL.exe is attached to $tag"
+          fi

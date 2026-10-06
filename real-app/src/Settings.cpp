@@ -1,5 +1,6 @@
 #include "Settings.h"
 
+#include "AppVersion.h"
 #include "Lang.h"
 #include "Text.h"
 #include "Windows/Filesystem.h"
@@ -687,8 +688,12 @@ std::string miniant::Config::ToDocumentedJsonString(const Settings& settings) {
     auto text = [](Str id) { return std::string(Lang::Utf8(id)); };
 
     document.Comment(0, text(Str::CfgFileHeader));
+    // The address of the description of every setting, in the language of the
+    // comments.
+    document.Comment(0, fmt::format(text(Str::CfgFileDocs), AppInfo::DOCS_URL + text(Str::DocsSettingsPath)));
     document.Line(0, "{");
-    // Service fields: documented in CONFIG.md, not next to the value.
+    // Service fields: documented in docs/settings.en.md and docs/settings.ru.md,
+    // not next to the value.
     document.PlainKey(2, "configVersion", settings.configVersion, true);
     document.PlainKey(2, "commentLanguage", settings.commentLanguage, true);
     document.Blank();

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(miniant-real VERSION 0.3.0 LANGUAGES CXX)
+project(miniant-real VERSION 1.0.0 LANGUAGES CXX)
 
 # Release by default: the v0.2.0 project forced a Debug build (debug CRT, not
 # redistributable) which is not what we want to ship.
@@ -51,8 +51,12 @@ target_compile_options(real-app PRIVATE /utf-8 /W3)
 
 # Identification of the build. The CI exports the number of the run; the commit
 # is read from the checkout, so a local build shows it as well. The values are
-# visible in the About window, in the log and in the diagnostics report.
+# visible in the About window, in the log and in the diagnostics report. A
+# release (the CI exports its tag, "v1.0.0") shows the version alone. The
+# definitions reach the resource compiler too: the fourth number of the file
+# version is the run of a test build (res/real-app.rc).
 set(REAL_BUILD_NUMBER "$ENV{REAL_BUILD_NUMBER}" CACHE STRING "CI build number (empty for a local build)")
+set(REAL_RELEASE "$ENV{REAL_RELEASE}" CACHE STRING "Tag of a release build (empty for a test build)")
 
 if(NOT REAL_COMMIT)
     find_package(Git QUIET)
@@ -72,6 +76,10 @@ endif()
 
 if(REAL_COMMIT)
     target_compile_definitions(real-app PRIVATE REAL_COMMIT=${REAL_COMMIT})
+endif()
+
+if(REAL_RELEASE)
+    target_compile_definitions(real-app PRIVATE REAL_RELEASE=1)
 endif()
 
 target_include_directories(real-app PRIVATE

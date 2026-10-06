@@ -32,16 +32,19 @@ if not exist build mkdir build
 
 REM The identification of the build: the CI exports the number of the run, the
 REM commit is read from the checkout. Both are part of the version the program
-REM shows, so a build from a zip without a repository has neither.
+REM shows, so a build from a zip without a repository has neither. A release
+REM (the CI exports its tag in REAL_RELEASE) shows the version alone. The
+REM resource compiler gets the same definitions for the version resource.
 set "BUILD_DEFS="
 if defined REAL_BUILD_NUMBER set "BUILD_DEFS=%BUILD_DEFS% /DREAL_BUILD_NUMBER=%REAL_BUILD_NUMBER%"
 if not defined REAL_COMMIT (
     for /f "usebackq tokens=*" %%i in (`git rev-parse --short HEAD 2^>nul`) do set "REAL_COMMIT=%%i"
 )
 if defined REAL_COMMIT set "BUILD_DEFS=%BUILD_DEFS% /DREAL_COMMIT=%REAL_COMMIT%"
+if defined REAL_RELEASE set "BUILD_DEFS=%BUILD_DEFS% /DREAL_RELEASE=1"
 
 echo [build] Compiling resources...
-rc /nologo /fo build\real-app.res res\real-app.rc
+rc /nologo %BUILD_DEFS% /fo build\real-app.res res\real-app.rc
 if errorlevel 1 exit /b 1
 
 echo [build] Compiling sources...
