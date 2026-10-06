@@ -1,40 +1,40 @@
 #pragma once
 
-#include "ExpectedError.h"
+#include "Http/HttpClient.h"
 #include "Version.h"
 
-#include <optional>
+#include <tl/expected.hpp>
+
+#include <string>
 
 namespace miniant::AutoUpdater {
 
 struct UpdateInfo {
+    // false - the project has not published a release yet: a normal answer,
+    // not a failure, and the other fields are empty.
+    bool published = true;
     Version version;
-    std::string downloadUrl;
-    std::optional<std::string> releaseNotes;
+    std::string tag;
+    std::string releaseUrl;
 };
 
-class AutoUpdaterError : public ExpectedError {
-public:
-    explicit AutoUpdaterError(std::string message) noexcept:
-        ExpectedError(std::move(message)) {}
-
-    explicit AutoUpdaterError(const char* message):
-        ExpectedError(message) {}
-
-    explicit AutoUpdaterError(const ExpectedError& error):
-        ExpectedError(error.GetMessage()) {}
-};
-
+// Update checks are never forced and never happen while the application is
+// running: at most one check is made at startup, and only when the settings ask
+// for it (updates.checkOnStartup = true). A newer release is reported to the
+// user, never downloaded or installed silently.
 class AutoUpdater {
 public:
-    AutoUpdater();
-    ~AutoUpdater();
+    explicit AutoUpdater(std::string repository);
 
-    std::optional<std::string> IsAppSuperseded();
+    // The request stops at once when the cancellation is triggered (the
+    // program is closing).
+    tl::expected<UpdateInfo, std::string> GetLatestRelease(Http::Cancellation* cancellation = nullptr) const;
 
-    tl::expected<bool, AutoUpdaterError> CleanupPreviousSetup();
-    tl::expected<UpdateInfo, AutoUpdaterError> GetUpdateInfo() const;
-    tl::expected<void, AutoUpdaterError> ApplyUpdate(const UpdateInfo& info) const;
+    // Removes the "<exe>~DELETE" file left behind by the self-updater of v0.2.0.
+    static bool CleanupPreviousInstall(std::string* message);
+
+private:
+    std::string m_repository;
 };
 
 }

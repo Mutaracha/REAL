@@ -1,0 +1,68 @@
+@echo off
+setlocal
+
+REM Builds REAL.exe with the MSVC toolchain only (no CMake required).
+REM Works with Visual Studio 2017/2019/2022/2026 and with the standalone
+REM "Build Tools for Visual Studio" installation.
+
+cd /d "%~dp0"
+
+set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+if not exist "%VSWHERE%" (
+    echo [build] vswhere.exe not found. Install "Build Tools for Visual Studio" with the C++ workload.
+    exit /b 1
+)
+
+set "VS_PATH="
+for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS_PATH=%%i"
+
+if not defined VS_PATH (
+    echo [build] No Visual C++ toolset found.
+    exit /b 1
+)
+
+echo [build] Using %VS_PATH%
+call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" >nul
+if errorlevel 1 (
+    echo [build] Could not initialise the MSVC environment.
+    exit /b 1
+)
+
+if not exist build mkdir build
+
+REM The identification of the build: the CI exports the number of the run, the
+REM commit is read from the checkout. Both are part of the version the program
+REM shows, so a build from a zip without a repository has neither. A release
+REM (the CI exports its tag in REAL_RELEASE) shows the version alone. The
+REM resource compiler gets the same definitions for the version resource.
+set "BUILD_DEFS="
+if defined REAL_BUILD_NUMBER set "BUILD_DEFS=%BUILD_DEFS% /DREAL_BUILD_NUMBER=%REAL_BUILD_NUMBER%"
+if not defined REAL_COMMIT (
+    for /f "usebackq tokens=*" %%i in (`git rev-parse --short HEAD 2^>nul`) do set "REAL_COMMIT=%%i"
+)
+if defined REAL_COMMIT set "BUILD_DEFS=%BUILD_DEFS% /DREAL_COMMIT=%REAL_COMMIT%"
+if defined REAL_RELEASE set "BUILD_DEFS=%BUILD_DEFS% /DREAL_RELEASE=1"
+
+echo [build] Compiling resources...
+rc /nologo %BUILD_DEFS% /fo build\real-app.res res\real-app.rc
+if errorlevel 1 exit /b 1
+
+echo [build] Compiling sources...
+cl /nologo /O1 /MT /EHsc /std:c++17 /utf-8 /W3 ^
+    /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DSPDLOG_WCHAR_FILENAMES ^
+    /D_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING %BUILD_DEFS% ^
+    /I"deps\expected\include" /I"deps\json" /I"deps\spdlog\include" ^
+    /Fo:build\ /Fd:build\REAL.pdb /Fe:build\REAL.exe ^
+    src\*.cpp src\Windows\*.cpp src\Http\*.cpp ^
+    /link /SUBSYSTEM:WINDOWS /NOLOGO ^
+    /MANIFEST:EMBED /MANIFESTINPUT:res\app.manifest ^
+    build\real-app.res ^
+    comctl32.lib winhttp.lib ole32.lib uuid.lib shell32.lib wtsapi32.lib advapi32.lib user32.lib gdi32.lib
+
+if errorlevel 1 (
+    echo [build] Build failed.
+    exit /b 1
+)
+
+echo [build] Done: %~dp0build\REAL.exe
+endlocal

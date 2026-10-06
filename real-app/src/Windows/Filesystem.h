@@ -1,41 +1,42 @@
 #pragma once
 
-#include <optional>
+#include <cstddef>
 #include <string>
-#include <vector>
 
 namespace miniant::Windows::Filesystem {
 
-#ifdef _UNICODE
-using WindowsString = std::wstring;
-#else
-using WindowsString = std::string;
-#endif
+std::wstring GetExecutablePath();
+std::wstring GetExecutableDirectory();
+std::wstring GetTempDirectory();
 
-WindowsString WrapInDoubleQuotes(const WindowsString& string);
-bool ExecuteCommand(const WindowsString& command, bool asAdministrator);
+std::wstring JoinPath(const std::wstring& directory, const std::wstring& name);
+// A full path: from the root of a drive ("C:\...") or of a network share
+// ("\\server\share\..."). Any other path is read from some folder.
+bool IsAbsolutePath(const std::wstring& path);
+// The folder of a file as a full path: a relative path is resolved the way the
+// file itself is opened, against the current folder. A file in the root of a
+// drive gives the root ("G:\"), not the bare drive.
+std::wstring GetDirectory(const std::wstring& path);
 
-WindowsString GetExecutablePath();
-WindowsString GetTempDirectory();
+bool IsFile(const std::wstring& path);
 
-std::optional<std::vector<WindowsString>> GetPathComponents(const WindowsString& path);
-std::optional<WindowsString> GetName(const WindowsString& path);
-std::optional<WindowsString> GetParentDirectory(const WindowsString& path);
+// The size of a file and whether it has the "Read-only" attribute. False when
+// there is no such file.
+bool GetFileInfo(const std::wstring& path, unsigned long long* size, bool* readOnly);
 
-bool IsDirectory(const WindowsString& path);
-bool IsFile(const WindowsString& path);
+// Gives a file another name; a file that already has that name is replaced.
+// False when the file keeps its name, with the error code of Windows.
+bool RenameFile(const std::wstring& from, const std::wstring& to, unsigned long* error = nullptr);
 
-WindowsString GetDeleteCommand(const WindowsString& filepath);
-WindowsString GetMoveCommand(const WindowsString& source, const WindowsString& destination);
-WindowsString GetRenameCommand(const WindowsString& source, const WindowsString& newName);
-WindowsString GetExtractZipCommand(const WindowsString& zipfile, const WindowsString& destination);
+// The whole file. With a limit, a larger file is not read at all: the result
+// is empty, success is false and tooLarge says why.
+std::string ReadTextFileUtf8(
+    const std::wstring& path, bool* success = nullptr, size_t maxBytes = 0, bool* tooLarge = nullptr);
+bool WriteTextFileUtf8(const std::wstring& path, const std::string& content);
 
-bool CanWriteTo(const WindowsString& path);
+// The same write, but through a temporary file next to the target: the file
+// either keeps its previous content or gets the new one whole, an interrupted
+// write cannot leave a half-written file behind.
+bool WriteTextFileUtf8Atomic(const std::wstring& path, const std::string& content);
 
-bool MoveFile(const WindowsString& source, const WindowsString& destination);
-bool RenameFile(const WindowsString& source, const WindowsString& newName);
-bool DeleteFile(const WindowsString& filepath);
-
-bool CreateDirectory(const WindowsString& path);
-bool ExtractZip(const WindowsString& zipfile, const WindowsString& destination);
 }

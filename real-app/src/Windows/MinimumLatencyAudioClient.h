@@ -4,36 +4,93 @@
 
 #include <tl/expected.hpp>
 
+#include <Windows.h>
+
+#include <Audioclient.h>
+#include <mmdeviceapi.h>
+
+#include <cstdint>
+#include <string>
+
 namespace miniant::Windows::WasapiLatency {
 
+// The smallest period the driver supports, or the fixed number of frames of
+// the settings (audio.buffer and audio.fixedBufferFrames).
+enum class PeriodSelection {
+    Minimum,
+    Fixed,
+};
+
+struct AudioStreamInfo {
+    std::wstring deviceName;
+    std::wstring deviceId;
+    EDataFlow dataFlow = eRender;
+    ERole role = eConsole;
+
+    uint32_t sampleRate = 0;
+    uint16_t channels = 0;
+    uint16_t bitsPerSample = 0;
+
+    uint32_t defaultPeriod = 0;
+    uint32_t fundamentalPeriod = 0;
+    uint32_t minPeriod = 0;
+    uint32_t maxPeriod = 0;
+    uint32_t requestedPeriod = 0;
+    uint32_t currentPeriod = 0;
+
+    // True when the driver does not offer anything smaller than its default period.
+    bool lowLatencyNotAvailable = false;
+    // True when the engine period was already locked by another application.
+    bool acceptedLockedPeriod = false;
+
+    double PeriodMilliseconds(uint32_t frames) const;
+};
+
+// Holds a running shared-mode WASAPI stream that requests the smallest period
+// supported by the endpoint driver. While such a stream exists, the Windows
+// audio engine renders every client of that endpoint with the small buffer.
 class MinimumLatencyAudioClient {
 public:
-    struct Properties {
-        uint32_t defaultBufferSize;
-        uint32_t fundamentalBufferSize;
-        uint32_t minimumBufferSize;
-        uint32_t maximumBufferSize;
-        uint32_t sampleRate;
-        uint16_t bitsPerSample;
-        uint16_t numChannels;
-    };
-
-    MinimumLatencyAudioClient(MinimumLatencyAudioClient&& other);
+    MinimumLatencyAudioClient() = default;
+    MinimumLatencyAudioClient(MinimumLatencyAudioClient&& other) noexcept;
+    MinimumLatencyAudioClient& operator=(MinimumLatencyAudioClient&& rhs) noexcept;
     ~MinimumLatencyAudioClient();
 
-    MinimumLatencyAudioClient& operator= (MinimumLatencyAudioClient&& rhs);
+    MinimumLatencyAudioClient(const MinimumLatencyAudioClient&) = delete;
+    MinimumLatencyAudioClient& operator=(const MinimumLatencyAudioClient&) = delete;
 
-    tl::expected<Properties, WindowsError> GetProperties();
+    void Stop();
+    bool IsActive() const;
 
-    static tl::expected<MinimumLatencyAudioClient, WindowsError> Start();
+    const AudioStreamInfo& GetInfo() const;
+
+    // Returns the engine period currently used for the endpoint. Fails when the
+    // stream has been invalidated (device removed, audio service restarted).
+    tl::expected<uint32_t, WindowsError> GetCurrentPeriod();
+
+    // The endpoint is given by the caller: Windows keeps a separate default
+    // device for every role (the usual "default device" and the "default
+    // communication device" that the Sound settings show), and the program
+    // takes the small buffer on each of them (see AudioSession::Apply). The
+    // role only travels into the record of the stream.
+    static tl::expected<MinimumLatencyAudioClient, WindowsError> Start(
+        IMMDevice& device,
+        EDataFlow dataFlow,
+        ERole role,
+        PeriodSelection selection,
+        uint32_t requestedPeriodFrames);
 
 private:
-    void* m_pAudioClient;
-    void* m_pFormat;
-
-    MinimumLatencyAudioClient(void* pAudioClient, void* pFormat);
-
-    void Uninitialise();
+    IAudioClient3* m_audioClient = nullptr;
+    WAVEFORMATEX* m_format = nullptr;
+    AudioStreamInfo m_info;
 };
+
+std::string DescribeStreamWin32(const AudioStreamInfo& info);
+
+// The same data without the data flow: this is what the result line of the log
+// ("Latency reduction is active: ...") is built from, the flow belongs to the
+// per-stream record instead.
+std::string DescribeStreamForStatus(const AudioStreamInfo& info);
 
 }
