@@ -738,6 +738,10 @@ std::wstring App::CurrentAudioStatusText() const {
     return m_audioEnabled ? m_audio.GetStatusText() : CurrentOffStatusText();
 }
 
+std::wstring App::CurrentTrayMenuStatusText() const {
+    return m_audioEnabled ? m_audio.GetTrayMenuStatusText() : CurrentOffStatusText();
+}
+
 void App::UpdateStatus() {
     if (!m_window) {
         return;
@@ -756,7 +760,7 @@ void App::UpdateTrayMenuState() {
 
     Windows::TrayMenuState state;
     state.enabled = m_audioEnabled;
-    state.statusText = CurrentAudioStatusText();
+    state.statusText = CurrentTrayMenuStatusText();
     state.toggleEnabled = m_settings.tray.menu.toggleEnabled;
     state.reinitialize = m_settings.tray.menu.reinitialize;
     state.openLog = m_settings.tray.menu.openLog;

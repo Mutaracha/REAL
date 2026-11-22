@@ -45,9 +45,13 @@ public:
 
     const std::vector<Windows::WasapiLatency::AudioStreamInfo>& GetStreams() const;
 
-    // Short status line, e.g. "2.67 ms - Speakers (Realtek Audio)" ("2,67 мс" in
-    // Russian).
+    // Detailed status line, e.g. "7.00 ms - latency reduction is active,
+    // Speakers (Realtek Audio)" ("7,00 мс - снижение задержки активно, ..." in Russian).
     std::wstring GetStatusText() const;
+
+    // Compact status for the tray menu, e.g. "2.67 ms - Speakers (Realtek Audio)"
+    // ("2,67 мс" in Russian).
+    std::wstring GetTrayMenuStatusText() const;
 
     // Technical description of the running stream for the log:
     // "Speakers (Realtek Audio), 48000 Hz, 2 channels, 32 bit, buffer 336 frames (7.00 ms)".

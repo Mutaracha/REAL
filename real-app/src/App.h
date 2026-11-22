@@ -72,6 +72,7 @@ private:
     // the command of a second copy of the program.
     void SetAudioEnabled(bool enabled);
     std::wstring CurrentAudioStatusText() const;
+    std::wstring CurrentTrayMenuStatusText() const;
     void UpdateStatus();
     void UpdateTrayMenuState();
     void SaveSettings();

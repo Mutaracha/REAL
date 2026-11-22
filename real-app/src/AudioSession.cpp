@@ -352,6 +352,22 @@ std::wstring AudioSession::GetStatusText() const {
     return Text::ToWide(text);
 }
 
+std::wstring AudioSession::GetTrayMenuStatusText() const {
+    if (m_streamsInfo.empty()) {
+        return Lang::Wide(Lang::Str::StatusNotActive);
+    }
+
+    const AudioStreamInfo& first = m_streamsInfo.front();
+    const std::string deviceName = Text::ToUtf8(
+        first.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : first.deviceName);
+    const std::string text = fmt::format(
+        "{} - {}",
+        Lang::Milliseconds(first.PeriodMilliseconds(first.currentPeriod)),
+        deviceName);
+
+    return Text::ToWide(text);
+}
+
 tl::expected<void, WindowsError> AudioSession::Validate() {
     if (!m_enumerator) {
         return tl::make_unexpected(WindowsError(Lang::Utf8(Lang::Str::ErrNotInitialised)));
