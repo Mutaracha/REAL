@@ -341,7 +341,7 @@ void App::LogBanner() {
     if (m_layoutUpgraded) {
         Log::Operation(Lang::Utf8(Str::OpSettingsUpgraded));
     } else if (!m_commentsRewritten.empty()) {
-        Log::Operation(Lang::Utf8(Str::OpCommentsRewritten), m_commentsRewritten);
+        Log::Operation(Lang::Utf8(Str::OpCommentsRewritten));
     }
 
     m_commentsRewritten.clear();
@@ -847,7 +847,7 @@ void App::RefreshCommentsLanguage() {
     m_fileSettings.commentLanguage = language;
 
     if (WriteSettingsFile()) {
-        Log::Operation(Lang::Utf8(Str::OpCommentsRewritten), language);
+        Log::Operation(Lang::Utf8(Str::OpCommentsRewritten));
     } else {
         Log::Error(Lang::Utf8(Str::LogSettingsWriteFailed), Text::ToUtf8(m_settingsPath));
     }
@@ -858,7 +858,7 @@ void App::RefreshCommentsLanguage() {
 void App::ApplySettings(const Config::Settings& previous) {
     if (previous.application.language != m_settings.application.language) {
         Lang::Set(Lang::FromCode(m_settings.application.language));
-        Log::Info(Lang::Utf8(Str::LogLanguageChanged), Lang::Code(Lang::Current()));
+        Log::Info(Lang::Utf8(Str::LogLanguageChanged));
         RefreshCommentsLanguage();
     }
 
@@ -1446,7 +1446,7 @@ int App::RunDiagnostics() {
     if (m_layoutUpgraded) {
         Log::Operation(Lang::Utf8(Str::OpSettingsUpgraded));
     } else if (!m_commentsRewritten.empty()) {
-        Log::Operation(Lang::Utf8(Str::OpCommentsRewritten), m_commentsRewritten);
+        Log::Operation(Lang::Utf8(Str::OpCommentsRewritten));
     }
 
     m_commentsRewritten.clear();

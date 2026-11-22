@@ -319,13 +319,15 @@ std::wstring AudioSession::GetStatusText() const {
     }
 
     const AudioStreamInfo& first = m_streamsInfo.front();
+    const std::string deviceName = Text::ToUtf8(
+        first.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : first.deviceName);
 
     if (m_streams.empty()) {
         // Every inspected device already uses its smallest buffer.
         std::string text = fmt::format(
             Lang::Utf8(Lang::Str::StatusDriverMinimum),
             Lang::Milliseconds(first.PeriodMilliseconds(first.currentPeriod)),
-            Text::ToUtf8(first.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : first.deviceName));
+            deviceName);
 
         if (m_streamsInfo.size() > 1) {
             text += fmt::format(Lang::Utf8(Lang::Str::StatusMoreDevices), m_streamsInfo.size() - 1);
@@ -337,7 +339,7 @@ std::wstring AudioSession::GetStatusText() const {
     std::string text = fmt::format(
         Lang::Utf8(Lang::Str::StatusActive),
         Lang::Milliseconds(first.PeriodMilliseconds(first.currentPeriod)),
-        Text::ToUtf8(first.deviceName.empty() ? Lang::Wide(Lang::Str::UnknownDevice) : first.deviceName));
+        deviceName);
 
     if (first.acceptedLockedPeriod) {
         text += Lang::Utf8(Lang::Str::StatusPeriodLocked);

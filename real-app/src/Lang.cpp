@@ -50,8 +50,8 @@ const Entry TABLE[] = {
     { Str::StatusNotActive, "Latency reduction is not active", "Снижение задержки не активно" },
     // The milliseconds come written in the notation of the language (see
     // Lang::Milliseconds): "7.00 ms", "7,00 мс".
-    { Str::StatusDriverMinimum, "driver already uses its smallest buffer ({}) - {}",
-                                "драйвер уже отдаёт минимальный буфер ({}) - {}" },
+    { Str::StatusDriverMinimum, "{} - driver's minimum buffer, {}",
+                                "{} - минимальный буфер драйвера, {}" },
     { Str::StatusPeriodLocked, " (buffer set by another app)", " (буфер задан другим приложением)" },
     { Str::StatusMoreDevices, " (+{} more)", " (+{} ещё)" },
 
@@ -74,8 +74,8 @@ const Entry TABLE[] = {
       "disabled: the device does not answer",
       "отключено: устройство не отвечает" },
     { Str::StatusActive,
-      "{} - {}",
-      "{} - {}" },
+      "{} - latency reduction is active, {}",
+      "{} - снижение задержки активно, {}" },
     // The technical part of a stream in the journal: the format of the device
     // and the buffer it runs with ({1} and {3} come with their nouns).
     { Str::StreamDetails,
@@ -151,8 +151,8 @@ const Entry TABLE[] = {
                        "Файл журнала выключен: уровень журнала off (Опции → Настройки, вкладка «Прочее»)." },
     { Str::LogFileMissing, "There is no log file yet.", "Файла журнала пока нет." },
     { Str::LogLanguageChanged,
-      "Language changed to {0}.",
-      "Язык изменён на {0}." },
+      "Language changed to English.",
+      "Язык изменён на русский язык." },
     { Str::LogUpdatesDisabled,
       "The update check at startup is switched off.",
       "Проверка обновлений при запуске выключена." },
@@ -588,8 +588,8 @@ const Entry TABLE[] = {
     { Str::OpStarted, "REAL {} started", "REAL {} запущен" },
     { Str::OpSettingsFile, "Settings: {}", "Настройки: {}" },
     { Str::OpSettingsCreated, "Settings file created: {}", "Создан файл настроек: {}" },
-    { Str::OpCommentsRewritten, "Settings file rewritten with comments in {} (every value is kept)",
-                                "Файл настроек перезаписан с комментариями на языке {} (значения сохранены)" },
+    { Str::OpCommentsRewritten, "Settings file rewritten with comments in English (every value is kept)",
+                                "Файл настроек перезаписан с комментариями на русском языке (значения сохранены)" },
     { Str::OpSettingsUpgraded, "Settings file rewritten in the current layout (every value is kept)",
                                "Файл настроек перезаписан в текущем оформлении (значения сохранены)" },
     { Str::OpAlreadyRunning, "REAL is already running; the command was passed to it",
